@@ -10040,6 +10040,25 @@ struct
 
   let priority = solve_deps name [DAfter DefaultArguments.priority]
 
+  let tparam_or_dyn gen t = match gen.gfollow#run_f t with
+    | (TInst({ cl_kind = KTypeParameter _ },_) as t) -> t
+    | _ -> t_dynamic
+
+  let type_in_vm gen t = match gen.gcon.platform with
+    | Java ->
+      (match gen.greal_type t with
+        | TInst(c,p) -> TInst(c,List.map (fun _ -> t_dynamic) p)
+        | TEnum(e,p) -> TEnum(e,List.map (fun _ -> t_dynamic) p)
+        | TAbstract(a,p) -> TAbstract(a,List.map (fun _ -> t_dynamic) p)
+        | TType(t,p) -> TType(t,List.map (fun _ -> t_dynamic) p)
+        | t -> t)
+    | _ -> gen.greal_type t
+
+  let real_fun_in_vm gen t =
+    match follow t with
+    | TFun(args,t) -> TFun(List.map (fun (n,o,t) -> n,o,type_in_vm gen t) args, type_in_vm gen t)
+    | _ -> t
+
   (*
     if the platform allows explicit interface implementation (C#),
     specify a explicit_fn_name function (tclass->string->string)
@@ -10089,12 +10108,13 @@ struct
               in
               replace_mono t2;
               (* if we find a function with the exact type of real_ftype, it means this interface has already been taken care of *)
-              if not (type_iseq (get_real_fun gen (apply_params f2.cf_params (List.map snd f.cf_params) t2)) real_ftype) then begin
+              let tfun = (apply_params f2.cf_params (List.map snd f.cf_params) t2) in
+              if not (type_iseq (get_real_fun gen tfun) real_ftype) then begin
                 (match f.cf_kind with | Method (MethNormal | MethInline) -> () | _ -> raise Not_found);
                 let t2 = get_real_fun gen t2 in
                 if List.length f.cf_params <> List.length f2.cf_params then raise Not_found;
                 replace_mono t2;
-                match follow (apply_params f2.cf_params (List.map snd f.cf_params) t2), follow real_ftype with
+                match follow tfun, follow real_ftype with
                 | TFun(a1,r1), TFun(a2,r2) when not implement_explicitly && not (type_iseq r1 r2) && Typeload.same_overload_args real_ftype t2 f f2 ->
                   (* different return types are the trickiest cases to deal with *)
                   (* check for covariant return type *)
@@ -10118,6 +10138,35 @@ struct
                         f2.cf_expr <- Some { e with eexpr = TFunction { tf with tf_type = newr } }
                     | _ -> ())
                   end
+                | TFun _, TFun _ when type_iseq (real_fun_in_vm gen tfun) (real_fun_in_vm gen real_ftype) ->
+                  (* when an inconsistency is found, but the types are the same for the vm *)
+                  (* replace the actual function type by the type as seen by the VM *)
+                  let old_type = f2.cf_type in
+                  let p = f2.cf_pos in
+                  f2.cf_type <- real_fun_in_vm gen f2.cf_type;
+                  (* change tf_args if found *)
+                  (match follow old_type, f2.cf_expr with
+                    | TFun(a1,r1), Some({ eexpr = TFunction(tf) } as expr) ->
+                      let arg_vars = List.map2 (fun (v,o) (_,_,t) ->
+                        let name = v.v_name in
+                        v.v_name <- name ^ "_iface_ch";
+                        alloc_var name t,o) tf.tf_args a1
+                      in
+                      let top_exprs = List.map2 (fun (vdest,_) (vorig,_) ->
+                        {
+                          eexpr = TVar(vorig,Some(mk_cast vorig.v_type (mk_local vdest p)));
+                          etype = gen.gcon.basic.tvoid;
+                          epos = p;
+                        }
+                      ) arg_vars tf.tf_args in
+                      f2.cf_expr <- Some({ expr with
+                        eexpr = TFunction({ tf with
+                          tf_args = arg_vars;
+                          tf_expr = Codegen.concat { tf.tf_expr with eexpr = TBlock(top_exprs) } tf.tf_expr;
+                        });
+                      })
+                    | _ -> ()
+                  )
                 | TFun(a1,r1), TFun(a2,r2) ->
                   (* just implement a function that will call the main one *)
                   let name, is_explicit = match explicit_fn_name with
@@ -10126,7 +10175,7 @@ struct
                     | _ -> f.cf_name, false
                   in
                   let p = f2.cf_pos in
-                  let newf = mk_class_field name real_ftype true f.cf_pos (Method MethNormal) f.cf_params in
+                  let newf = mk_class_field (name) real_ftype true f.cf_pos (Method MethNormal) f.cf_params in
                   let vars = List.map (fun (n,_,t) -> alloc_var n t) a2 in
 
                   let args = List.map2 (fun v (_,_,t) -> mk_cast t (mk_local v f2.cf_pos)) vars a1 in
