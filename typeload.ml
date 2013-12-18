@@ -1408,6 +1408,7 @@ let build_module_def ctx mt meta fvars context_init fbuild =
 			let old = ctx.g.get_build_infos in
 			ctx.g.get_build_infos <- (fun() -> Some (mt, fvars()));
 			context_init();
+			flush_pass ctx PBuildClass "field typing";
 			let r = try apply_macro ctx MBuild s el p with e -> ctx.g.get_build_infos <- old; raise e in
 			ctx.g.get_build_infos <- old;
 			(match r with
@@ -1844,7 +1845,6 @@ let init_class ctx c p context_init herits fields =
 					r := (fun() -> t);
 					context_init();
 					incr stats.s_methods_typed;
-					flush_pass ctx PBuildClass "field typing";
 					if ctx.com.verbose then Common.log ctx.com ("Typing " ^ (if ctx.in_macro then "macro " else "") ^ s_type_path c.cl_path ^ "." ^ name);
 					let fmode = (match c.cl_kind with
 						| KAbstractImpl _ ->
