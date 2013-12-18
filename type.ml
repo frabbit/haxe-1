@@ -1015,7 +1015,8 @@ let rec apply_in t ta =
 	apply t
 
 let rec unify_of tm ta b =
-	let rec apply_right tl =
+	(* could be named apply_left *)
+	let rec apply_right_rev tl =
 		let rec loop tl = match tl with
 			| t :: tl ->
 				if t == !t_in then
@@ -1026,7 +1027,11 @@ let rec unify_of tm ta b =
 			| [] ->
 				error [Unify_custom "Invalid Of-unification"]
 		in
-		let t, tl = loop (List.rev tl) in
+		let t, tl = loop (tl) in
+		t, tl
+	in
+	let apply_right tl =
+		let t, tl = apply_right_rev (List.rev tl) in
 		t, List.rev tl
 	in
 	let rec loop t = match t with
@@ -1042,8 +1047,20 @@ let rec unify_of tm ta b =
 		| TAbstract(a,tl) ->
 			let t,tl = apply_right tl in
 			TAbstract(a,tl),t
-		| TFun([(a,b,t1) as p1],t2) ->
-			if t2 == !t_in then TFun([(a,b,!t_in)],t2),t1 else TFun([p1],!t_in),t2
+		| TFun(t1,t2) ->
+			(* concat all types, call apply_right_rev (avoids multiple List.rev), combine resulting types to TFun parameters *)
+			let p_type (a,b,t) = t in
+			let t,tl = apply_right_rev (t2 :: (List.rev (List.map p_type t1)  )) in
+			let t = match tl with
+			| tret :: tparams ->
+				(* actually calling something like combine_with would be nicer here *)
+				let p_reduce ((a,b,_), t) = (a,b,t) in 
+				let combined = List.combine t1 (List.rev tparams) in
+				let p = List.map p_reduce combined in
+				TFun(p,tret),t
+			| [] -> assert false
+			in
+			t
 		| TDynamic _ ->
 			t_dynamic,t_dynamic
 		| TMono r ->
@@ -1053,7 +1070,7 @@ let rec unify_of tm ta b =
 			end
 		| TLazy f ->
 			loop (!f())
-		| TAnon _ | TFun _ ->
+		| TAnon _ ->
 			error [Unify_custom "Invalid Of-unification"]
 	in
 	let tl,tr = loop b in
