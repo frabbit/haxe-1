@@ -1015,8 +1015,7 @@ let rec apply_in t ta =
 	apply t
 
 let rec unify_of tm ta b =
-	(* could be named apply_left *)
-	let rec apply_right_rev tl =
+	let rec apply_left tl =
 		let rec loop tl = match tl with
 			| t :: tl ->
 				if t == !t_in then
@@ -1031,7 +1030,7 @@ let rec unify_of tm ta b =
 		t, tl
 	in
 	let apply_right tl =
-		let t, tl = apply_right_rev (List.rev tl) in
+		let t, tl = apply_left (List.rev tl) in
 		t, List.rev tl
 	in
 	let rec loop t = match t with
@@ -1048,17 +1047,14 @@ let rec unify_of tm ta b =
 			let t,tl = apply_right tl in
 			TAbstract(a,tl),t
 		| TFun(t1,t2) ->
-			(* concat all types, call apply_right_rev (avoids multiple List.rev), combine resulting types to TFun parameters *)
+			(* concat all types, call apply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
 			let p_type (a,b,t) = t in
-			let t,tl = apply_right_rev (t2 :: (List.rev (List.map p_type t1)  )) in
+			let t,tl = apply_left (t2 :: (List.rev (List.map p_type t1)  )) in
 			let t = match tl with
-			| tret :: tparams ->
-				(* actually calling something like combine_with would be nicer here *)
-				let p_reduce ((a,b,_), t) = (a,b,t) in 
-				let combined = List.combine t1 (List.rev tparams) in
-				let p = List.map p_reduce combined in
-				TFun(p,tret),t
-			| [] -> assert false
+				| tret :: tparams ->
+					let tl = List.map2 (fun (a,b,_) t -> a,b,t) t1 (List.rev tparams) in
+					TFun(tl,tret),t
+				| [] -> assert false
 			in
 			t
 		| TDynamic _ ->
