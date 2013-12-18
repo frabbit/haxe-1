@@ -1844,6 +1844,7 @@ let init_class ctx c p context_init herits fields =
 					r := (fun() -> t);
 					context_init();
 					incr stats.s_methods_typed;
+					flush_pass ctx PBuildClass "field typing";
 					if ctx.com.verbose then Common.log ctx.com ("Typing " ^ (if ctx.in_macro then "macro " else "") ^ s_type_path c.cl_path ^ "." ^ name);
 					let fmode = (match c.cl_kind with
 						| KAbstractImpl _ ->
