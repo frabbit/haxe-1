@@ -1009,9 +1009,9 @@ let t_in = ref t_dynamic
    examples:
    unapply_in A->In B => A->B, true
    unapply_in In->In B => In->B, true
-   unapply Of<In->In>,A> B => A->B, true
-   Of<Map<In,In>, A> B => Map<A,B>, true
-   unapply Map<Int, String> A => String, false
+   unapply_in Of<In->In>,A> B => A->B, true
+   unapply_in Of<Map<In,In>, A> B => Map<A,B>, true
+   unapply_in Map<Int, String> A => String, false
 *)
 let rec unapply_in t ta = 
 	let is_in_type t = match t with
@@ -1076,12 +1076,17 @@ let rec unapply_in t ta =
 	loop t
 
 (* 
-   try to convert/reduce an Of type to a regular type by replacing all In types, 
-   if t is not an Of type (e.g. it is a regular type like String) or it contains no In types like Of<M,A>
-   t is returned untouched.
+	try to convert/reduce an Of type to a regular type by replacing all In types, 
+	if t is not an Of type (e.g. it is a regular type like String) or it contains no In types like Of<M,A>
+	t is returned untouched.
 
-   e.g. Of<Of<In->In>, A, B> becomes A->B
-   or Of<Of<Map<In,In>, A, B> becomes Map<A,B>
+	e.g. 
+	reduce_of Of<Of<In->In>, A, B> => A->B
+	reduce_of Of<Of<Map<In,In>, A, B> => Map<A,B>
+
+	This function does not check if the resulting reduced type is actually valid (important, because it could
+	be a nested reduction), e.g.
+	reduce_of Of<In->In, A> => A->In
 *)
 let reduce_of t =
 	match t with
