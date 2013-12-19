@@ -1003,16 +1003,97 @@ let rec get_constructor build_type c =
 
 let t_in = ref t_dynamic
 
-let rec apply_in t ta =
-	let applied = ref false in
-	let rec apply t = match t with
-		| TAbstract({a_path=[],"In"},_) when not !applied ->
-			applied := true;
-			ta
-		| t ->
-			if !applied then t else map apply t
+(* tries to unnaply the leftmost In type of t with ta and unapplies nested Ofs recursively.
+   It returns a tuple (t,a) where t is the resulting type and a indicates that a 
+   replacement of In actually happened. if In cannot be replaced t is left untouched.
+   examples:
+   unapply_in A->In B => A->B, true
+   unapply_in In->In B => In->B, true
+   unapply_in Of<In->In>,A> B => A->B, true
+   unapply_in Of<Map<In,In>, A> B => Map<A,B>, true
+   unapply_in Map<Int, String> A => String, false
+*)
+let rec unapply_in t ta = 
+	let is_in_type t = match t with
+		| TAbstract({a_path=[],"In"},_) -> true
+		| t when t == !t_in -> true
+		| t -> false
 	in
-	apply t
+	(* replaces/unnapplies the leftmost In type and returns the unapplied list and a flag which
+	   indicates if an In type was really replaced
+	 *)
+	let unapply_left tl = 
+		let rec loop r = match r with
+			| t :: tl when is_in_type t -> true, ta::tl
+			| t :: tl when not (is_in_type t) -> 
+				let d, tl = loop tl in
+				d, t::tl
+			| [] -> false, []
+			| _ -> assert false
+		in
+		let d, r = loop ( tl) in
+		d,  r
+	in
+	let rec loop t = match t with
+		| TInst(c,tl) ->
+			(match unapply_left tl with
+			| true, x -> TInst(c,x), true
+			| _ -> t, false)
+		| TEnum(en,tl) ->
+			(match unapply_left tl with
+			| true, x -> TEnum(en,x), true
+			| _ -> t, false)
+		| TType(tt,tl) ->
+			(match unapply_left tl with
+			| true, x -> TType(tt,x), true
+			| _ -> t, false)
+		| TAbstract({a_path=[],"Of"},[tm;tx]) ->
+			(* unapply In types in nested Ofs like Of<Of<In->In>, A, B> *)
+			(match unapply_in tm tx with 
+			| _, false -> t, false
+			| TAbstract({a_path=[],"Of"},[_;_]), _ -> t, false (* cannot unapply In in this Of type *)
+			| x, _ -> unapply_in x ta)
+		| TAbstract(a,tl) ->
+			let d, x = unapply_left tl in
+			if d then TAbstract(a,x), true else t, false
+		| TFun(t1,t2) ->
+			(* concat all types, call apply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
+			let p_type (a,b,t) = t in
+			let d,tl = unapply_left ((List.map p_type t1)@[t2]) in
+			if d then 
+				(match List.rev tl with
+				| tret :: tparams ->
+					let tl = List.map2 (fun (a,b,_) t -> a,b,t) t1 (List.rev tparams) in
+					TFun(tl,tret), true
+				| [] -> assert false)
+			else 
+				t, false
+		| TLazy f ->
+			loop (!f())
+		| TDynamic _ | TMono _ | TAnon _ ->
+			t, false
+	in
+	loop t
+
+(* 
+	try to convert/reduce an Of type to a regular type by replacing all In types, 
+	if t is not an Of type (e.g. it is a regular type like String) or it contains no In types like Of<M,A>
+	t is returned untouched.
+
+	e.g. 
+	reduce_of Of<Of<In->In>, A, B> => A->B
+	reduce_of Of<Of<Map<In,In>, A, B> => Map<A,B>
+
+	This function does not check if the resulting reduced type is actually valid (important, because it could
+	be a nested reduction), e.g.
+	reduce_of Of<In->In, A> => A->In
+*)
+let reduce_of t =
+	match t with
+	| TAbstract({a_path=[],"Of"},[tm;tr]) -> 
+		let x, applied = unapply_in tm tr in
+		if applied then x else t
+	| _ -> t
 
 let rec unify_of tm ta b =
 	let rec apply_left tl =
@@ -1113,12 +1194,31 @@ and unify a b =
 		if ea != eb then error [cannot_unify a b];
 		unify_types a b tl1 tl2
 	| TAbstract({a_path = [],"Of"},[tm1;ta1]),TAbstract({a_path = [],"Of"},[tm2;ta2]) ->
-		unify tm1 tm2;
-		unify ta1 ta2;
+		(* 
+			try to reduce both Of types first, allows unification of 
+			Of<In->A, B> and Of<B->In, A>.
+		*)
+		(match reduce_of a, reduce_of b with
+		| _, TAbstract({a_path = [],"Of"},[_;_])
+		| TAbstract({a_path = [],"Of"},[_;_]), _ -> 
+			unify tm1 tm2;
+			unify ta1 ta2;
+		| ta,tb -> unify ta tb)
+
+		
 	| TAbstract({a_path = [],"Of"},[tm;ta]),b ->
-		unify_of tm ta b
+		(* 
+			try to unify with the reduced Of type first, because reducing is nonambiguous.
+			This allows to unify types like Of<In->B, A> with A->B.
+		*)
+		(match reduce_of a with
+		| TAbstract({a_path = [],"Of"},[_;_]) -> unify_of tm ta b
+		| t -> unify t b)
 	| a,TAbstract({a_path = [],"Of"},[tm;ta]) ->
-		unify_of tm ta a
+		(* first reduce the of type and unify with them, same reason as in the case above. *)
+		(match reduce_of b with
+		| TAbstract({a_path = [],"Of"},[_;_]) -> unify_of tm ta a
+		| t -> unify a t)
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) when a1 == a2 ->
 		unify_types a b tl1 tl2
 	| TAbstract ({a_path=[],"Void"},_) , _
