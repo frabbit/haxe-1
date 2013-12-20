@@ -1093,6 +1093,7 @@ and reduce_of t =
 	| TAbstract({a_path=[],"Of"},[tm;tr]) -> 
 		let x, applied = unapply_in tm (reduce_of tr) in
 		if applied then x else t
+	| TLazy f -> reduce_of (!f())
 	| _ -> t
 
 let rec unify_of tm ta b =
