@@ -1014,8 +1014,9 @@ let t_in = ref t_dynamic
    unapply_in Map<Int, String> A => String, false
 *)
 let rec unapply_in t ta = 
-	let is_in_type t = match t with
+	let rec is_in_type t = match t with
 		| TAbstract({a_path=[],"In"},_) -> true
+		| TLazy f -> is_in_type (!f())
 		| t when t == !t_in -> true
 		| t -> false
 	in

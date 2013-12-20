@@ -614,8 +614,14 @@ module Abstract = struct
 	let get_underlying_type a pl =
 		match a.a_path,pl with
 			| ([],"Of"),[tm;ta] -> 
+				
 				let x, applied = unapply_in tm ta in
-				if applied then x else assert false
+				if applied then 
+					x 
+				else 
+					(match tm with
+					| TMono r -> t_dynamic
+					| _ -> assert false)
 			| _ ->
 				try
 					if not (Meta.has Meta.MultiType a.a_meta) then raise Not_found;
