@@ -1129,7 +1129,7 @@ and type_field ctx e i p mode =
 		end;
 		AKExpr (mk (TField (e,FDynamic i)) (mk_mono()) p)
 	in
-	match follow e.etype with
+	match reduce_of (follow e.etype) with
 	| TInst (c,params) ->
 		let rec loop_dyn c params =
 			match c.cl_dynamic with
@@ -3057,7 +3057,7 @@ and type_expr ctx (e,p) (with_type:with_type) =
 				| _ -> ()
 		in
 		let rec get_fields t =
-			match follow t with
+			match reduce_of (follow t) with
 			| TInst (c,params) ->
 				if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc c;
 				let priv = is_parent c ctx.curclass in
