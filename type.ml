@@ -1049,7 +1049,7 @@ let rec unapply_in t ta =
 			| _ -> t, false)
 		| TAbstract({a_path=[],"Of"},[tm;tx]) ->
 			(* unapply In types in nested Ofs like Of<Of<In->In>, A, B> *)
-			(match unapply_in tm tx with 
+			(match unapply_in tm (reduce_of tx) with 
 			| _, false -> t, false
 			| TAbstract({a_path=[],"Of"},[_;_]), _ -> t, false (* cannot unapply In in this Of type *)
 			| x, _ -> unapply_in x ta)
@@ -1088,10 +1088,10 @@ let rec unapply_in t ta =
 	be a nested reduction), e.g.
 	reduce_of Of<In->In, A> => A->In
 *)
-let reduce_of t =
+and reduce_of t =
 	match t with
 	| TAbstract({a_path=[],"Of"},[tm;tr]) -> 
-		let x, applied = unapply_in tm tr in
+		let x, applied = unapply_in tm (reduce_of tr) in
 		if applied then x else t
 	| _ -> t
 
@@ -1204,8 +1204,6 @@ and unify a b =
 			unify tm1 tm2;
 			unify ta1 ta2;
 		| ta,tb -> unify ta tb)
-
-		
 	| TAbstract({a_path = [],"Of"},[tm;ta]),b ->
 		(* 
 			try to unify with the reduced Of type first, because reducing is nonambiguous.
