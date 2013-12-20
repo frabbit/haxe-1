@@ -1014,9 +1014,8 @@ let t_in = ref t_dynamic
    unapply_in Map<Int, String> A => String, false
 *)
 let rec unapply_in t ta = 
-	let rec is_in_type t = match t with
+	let is_in_type t = match follow t with
 		| TAbstract({a_path=[],"In"},_) -> true
-		| TLazy f -> is_in_type (!f())
 		| t when t == !t_in -> true
 		| t -> false
 	in
@@ -1090,11 +1089,10 @@ let rec unapply_in t ta =
 	reduce_of Of<In->In, A> => A->In
 *)
 and reduce_of t =
-	match t with
+	match follow t with
 	| TAbstract({a_path=[],"Of"},[tm;tr]) -> 
 		let x, applied = unapply_in tm (reduce_of tr) in
 		if applied then x else t
-	| TLazy f -> reduce_of (!f())
 	| _ -> t
 
 let rec unify_of tm ta b =
