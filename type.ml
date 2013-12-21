@@ -1003,6 +1003,12 @@ let rec get_constructor build_type c =
 
 let t_in = ref t_dynamic
 
+let is_in_type t = match follow t with
+	| TAbstract({a_path=[],"In"},_) -> true
+	| t when t == !t_in -> true
+	| t -> false
+
+
 (* tries to unnaply the leftmost In type of t with ta and unapplies nested Ofs recursively.
    It returns a tuple (t,a) where t is the resulting type and a indicates that a 
    replacement of In actually happened. if In cannot be replaced t is left untouched.
@@ -1013,12 +1019,9 @@ let t_in = ref t_dynamic
    unapply_in Of<Map<In,In>, A> B => Map<A,B>, true
    unapply_in Map<Int, String> A => String, false
 *)
+
 let rec unapply_in t ta = 
-	let is_in_type t = match follow t with
-		| TAbstract({a_path=[],"In"},_) -> true
-		| t when t == !t_in -> true
-		| t -> false
-	in
+	
 	(* replaces/unnapplies the leftmost In type and returns the unapplied list and a flag which
 	   indicates if an In type was really replaced
 	 *)
@@ -1034,7 +1037,7 @@ let rec unapply_in t ta =
 		let d, r = loop ( tl) in
 		d,  r
 	in
-	let rec loop t = match t with
+	let rec loop t = match follow t with
 		| TInst(c,tl) ->
 			(match unapply_left tl with
 			| true, x -> TInst(c,x), true
@@ -1060,17 +1063,15 @@ let rec unapply_in t ta =
 			(* concat all types, call apply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
 			let p_type (a,b,t) = t in
 			let d,tl = unapply_left ((List.map p_type t1)@[t2]) in
-			if d then 
+			(if d then 
 				(match List.rev tl with
 				| tret :: tparams ->
 					let tl = List.map2 (fun (a,b,_) t -> a,b,t) t1 (List.rev tparams) in
 					TFun(tl,tret), true
 				| [] -> assert false)
 			else 
-				t, false
-		| TLazy f ->
-			loop (!f())
-		| TDynamic _ | TMono _ | TAnon _ ->
+				t, false)
+		| TDynamic _ | TMono _ | TAnon _ | _ ->
 			t, false
 	in
 	loop t
@@ -1099,7 +1100,7 @@ let rec unify_of tm ta b =
 	let rec apply_left tl =
 		let rec loop tl = match tl with
 			| t :: tl ->
-				if t == !t_in then
+				if is_in_type(t) then
 					let x,xl = loop tl in
 					x,t::xl
 				else
@@ -1114,7 +1115,7 @@ let rec unify_of tm ta b =
 		let t, tl = apply_left (List.rev tl) in
 		t, List.rev tl
 	in
-	let rec loop t = match t with
+	let rec loop t = match follow t with
 		| TInst(c,tl) ->
 			let t,tl = apply_right tl in
 			TInst(c,tl),t
@@ -1140,14 +1141,7 @@ let rec unify_of tm ta b =
 			t
 		| TDynamic _ ->
 			t_dynamic,t_dynamic
-		| TMono r ->
-			begin match !r with
-				| Some t -> loop t
-				| None -> assert false (* ??? *)
-			end
-		| TLazy f ->
-			loop (!f())
-		| TAnon _ ->
+		| _ ->
 			error [Unify_custom "Invalid Of-unification"]
 	in
 	let tl,tr = loop b in
