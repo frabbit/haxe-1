@@ -1037,7 +1037,7 @@ let rec unapply_in t ta =
 		let d, r = loop ( tl) in
 		d,  r
 	in
-	let rec loop t = match follow t with
+	let rec loop t = match t with
 		| TInst(c,tl) ->
 			(match unapply_left tl with
 			| true, x -> TInst(c,x), true
@@ -1071,7 +1071,11 @@ let rec unapply_in t ta =
 				| [] -> assert false)
 			else 
 				t, false)
-		| TDynamic _ | TMono _ | TAnon _ | _ ->
+		| TMono r ->
+			(match !r with
+			| Some t -> loop t
+			| _ -> t, false)
+		| TDynamic _ | TAnon _ | _ ->
 			t, false
 	in
 	loop t
@@ -1115,7 +1119,7 @@ let rec unify_of tm ta b =
 		let t, tl = apply_left (List.rev tl) in
 		t, List.rev tl
 	in
-	let rec loop t = match follow t with
+	let rec loop t = match t with
 		| TInst(c,tl) ->
 			let t,tl = apply_right tl in
 			TInst(c,tl),t
@@ -1139,6 +1143,10 @@ let rec unify_of tm ta b =
 				| [] -> assert false
 			in
 			t
+		| TMono r ->
+			(match !r with
+			| Some t -> loop t
+			| _ -> t, t)
 		| TDynamic _ ->
 			t_dynamic,t_dynamic
 		| _ ->
