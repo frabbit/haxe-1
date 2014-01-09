@@ -650,22 +650,22 @@ and is_in_type t = match follow t with
 	| t -> false
 
 
-(* tries to unnaply the leftmost In type of t with ta and unapplies nested Ofs recursively.
+(* tries to unapply the leftmost In type of t with ta and unapplies nested Ofs recursively.
    It returns a tuple (t,a) where t is the resulting type and a indicates that a 
    replacement of In actually happened. if In cannot be replaced t is left untouched.
-   If the reversible flag is true only types which met the following critera are unapplied:
+   If the reversible flag is true the In type is only unapplied for types which met the following critera:
 
-   1) only one In type which is the most right type parameter right like: 
-   	A->In, A->B->In, Either<A,In>, Array<In>
+   1) Types with only one In type which is also the topmost right type parameter like: 
+   	  A->In, A->B->In, Either<A,In>, Array<In>
    	
-   	but not types like: In->A, In->B
+   	  but not types like: In->A, In->B
 
-   	2) Types with multiple In parameters but only if all of them are on the right like:
-   	A->In->In, Multi<X, Y, In, In>
+   2) Types with multiple In parameters but only if all of them located on the right like:
+   	  A->In->In, Multi<X, Y, In, In>
 
-   	but not types like In->A->In etc.
+   	  but not types like In->A->In etc.
 
-   examples:
+   Examples:
    unapply_in A->In B 				false|true 	=> A->B, true
    unapply_in In->In B 				false|true 	=> B->In, true
    unapply_in In->A B 				true 		=> In->A, false (this fails because the application is ambiguous and thus not reversible)
@@ -721,7 +721,7 @@ and unapply_in t ta reversible =
 			let d, x = unapply_left tl in
 			if d then TAbstract(a,x), true else t, false
 		| TFun(t1,t2) ->
-			(* concat all types, call apply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
+			(* concat all types, call unapply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
 			let p_type (a,b,t) = t in
 			let d,tl = unapply_left ((List.map p_type t1)@[t2]) in
 			(if d then 
@@ -746,15 +746,14 @@ and unapply_in t ta reversible =
 	if t is not an Of type (e.g. it is a regular type like String) or it contains no In types like Of<M,A>
 	t is returned untouched.
 	
-	If the reversible flag is true only Of types are reduced when the reduction process doesn't loose the information how they were lifted before.
-	In that case the transformation can be reversed and the type can be lifted back.
+	If the reversible flag is true Of types are only reduced when the reduction process doesn't loose the information how they were lifted before.
 	
 	e.g. 
 	reduce_of Of<Of<In->In>, A, B> true|false => A->B
 	reduce_of Of<Of<Map<In,In>, A, B> true|false => Map<A,B>
 	reduce_of Of<In->A, B> false => B->A
-	reduce_of Of<In->A, B> true => Of<In->A, B> 	(this fails because the reduced type B->A would be lifted to Of<B->In, A> 
-												 	 which is the default right-application of the in type (see unify_of))
+	reduce_of Of<In->A, B> true => Of<In->A, B> 	(this fails because the reduced type B->A is by default lifted to Of<B->In, A> 
+												 	 which is the regular right-application of the In type (see unify_of)).
 
 	
 	This function does not check if the resulting reduced type is actually valid (important, because it could
