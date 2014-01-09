@@ -3385,7 +3385,7 @@ and build_call ctx acc el (with_type:with_type) p =
 					let el, tfunc = unify_call_params ctx fopts el args r p false in
 					el,(match tfunc with TFun(_,r) -> r | _ -> assert false), {e with etype = tfunc})
 		| TAbstract({a_path=[],"Of"},[tm;tr]) ->
-			let x, applied = unapply_in tm tr in
+			let x, applied = unapply_in tm tr false in
 			if applied then 
 				loop(x) 
 			else 
