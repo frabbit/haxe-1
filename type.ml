@@ -625,6 +625,22 @@ let rec follow t =
 		follow (apply_params t.t_types tl t.t_type)
 	| _ -> t
 
+and follow_all_ofs t =
+	match t with
+	| TMono r ->
+		(match !r with
+		| Some t -> follow_all_ofs t
+		| _ -> t)
+	| TAbstract({a_path=[],"Of"},[_;_]) ->
+		(match reduce_of_irreversible t with
+		| TAbstract({a_path=[],"Of"},_) -> t
+		| t -> follow_all_ofs t)
+	| TLazy f ->
+		follow_all_ofs (!f())
+	| TType (t,tl) ->
+		follow_all_ofs (apply_params t.t_types tl t.t_type)
+	| _ -> t
+
 
 and t_in = ref t_dynamic
 
