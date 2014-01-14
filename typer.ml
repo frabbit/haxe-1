@@ -3086,7 +3086,7 @@ and type_expr ctx (e,p) (with_type:with_type) =
 				PMap.fold (fun f acc ->
 					if f.cf_name <> "_new" && can_access ctx c f true && Meta.has Meta.Impl f.cf_meta && not (Meta.has Meta.Enum f.cf_meta) then begin
 						let f = prepare_using_field f in
-						let t = apply_params a.a_types pl (follow_all_ofs f.cf_type) in
+						let t = apply_params a.a_types pl (follow f.cf_type) in
 						PMap.add f.cf_name { f with cf_public = true; cf_type = opt_type t } acc
 					end else
 						acc
@@ -3313,13 +3313,29 @@ and build_call ctx acc el (with_type:with_type) p =
 			e
 		| _ ->
 			let t = follow (field_type ctx cl [] ef p) in
+
+			let mfollow = match t with
+				| TFun ((_,_,t1) :: _, _) -> (match follow1 t1 with
+					| TAbstract({a_path=[], "Of"}, _ ) -> follow1
+					| _ -> follow)
+				| _ -> assert false
+			in
+			(* let isfollow1 = match t with
+				| TFun ((_,_,t1) :: _, _) -> (match follow1 t1 with
+					| TAbstract({a_path=[], "Of"}, _ ) -> true
+					| _ -> false)
+				| _ -> assert false
+			in *)
 			(* for abstracts we have to apply their parameters to the static function *)
-			let t,tthis = match follow_all_ofs eparam.etype with
+			let t,tthis = match mfollow eparam.etype with
 				| TAbstract(a,tl) when Meta.has Meta.Impl ef.cf_meta -> apply_params a.a_types tl t,apply_params a.a_types tl a.a_this
 				| te -> t,te
 			in
 			let params,args,r,eparam = match t with
 				| TFun ((_,_,t1) :: args,r) ->
+					(* let st = s_type (print_context()) in 
+					if isfollow1 then
+						Printf.printf "%s %s (%s)\n" (st tthis) (st t1) (st eparam.etype); *)
 					unify ctx tthis t1 eparam.epos;
 					let ef = prepare_using_field ef in
 					begin match unify_call_params ctx (Some (TInst(cl,[]),ef)) el args r p (ef.cf_kind = Method MethInline) with

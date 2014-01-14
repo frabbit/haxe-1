@@ -616,7 +616,7 @@ let rec follow t =
 		| Some t -> follow t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		(match reduce_of_reversible t with
+		(match reduce_of_irreversible t with
 		| TAbstract({a_path=[],"Of"},_) -> t
 		| t -> follow t)
 	| TLazy f ->
@@ -625,22 +625,33 @@ let rec follow t =
 		follow (apply_params t.t_types tl t.t_type)
 	| _ -> t
 
-and follow_all_ofs t =
+and follow1 t =
 	match t with
 	| TMono r ->
 		(match !r with
-		| Some t -> follow_all_ofs t
+		| Some t -> follow1 t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		(match reduce_of_irreversible t with
+		(match reduce_of_reversible t with
 		| TAbstract({a_path=[],"Of"},_) -> t
-		| t -> follow_all_ofs t)
+		| t -> t)
 	| TLazy f ->
-		follow_all_ofs (!f())
+		follow1 (!f())
 	| TType (t,tl) ->
-		follow_all_ofs (apply_params t.t_types tl t.t_type)
+		follow1 (apply_params t.t_types tl t.t_type)
 	| _ -> t
 
+and follow2 t =
+	match t with
+	| TMono r ->
+		(match !r with
+		| Some t -> follow2 t
+		| _ -> t)
+	| TLazy f ->
+		follow2 (!f())
+	| TType (t,tl) ->
+		follow2 (apply_params t.t_types tl t.t_type)
+	| _ -> t
 
 and t_in = ref t_dynamic
 
@@ -708,6 +719,7 @@ and unapply_in t ta reversible =
 			| true, x -> TEnum(en,x), true
 			| _ -> t, false)
 		| TType(tt,tl) ->
+			(*loop (follow2 t)*)
 			(match unapply_left tl with
 			| true, x -> TType(tt,x), true
 			| _ -> t, false)
@@ -1187,6 +1199,7 @@ let rec unify_of tm ta b =
 			let t,tl = apply_right tl in
 			TEnum(en,tl),t
 		| TType(tt,tl) ->
+			(* loop (follow t) *)
 			let t,tl = apply_right tl in
 			TType(tt,tl),t
 		| TAbstract(a,tl) ->
@@ -1230,31 +1243,6 @@ and unify a b =
 		(match !t with
 		| None -> if not (link t b a) then error [cannot_unify a b]
 		| Some t -> unify a t)
-	| TType (t,tl) , _ ->
-		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
-			try
-				unify_stack := (a,b) :: !unify_stack;
-				unify (apply_params t.t_types tl t.t_type) b;
-				unify_stack := List.tl !unify_stack;
-			with
-				Unify_error l ->
-					unify_stack := List.tl !unify_stack;
-					error (cannot_unify a b :: l)
-		end
-	| _ , TType (t,tl) ->
-		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
-			try
-				unify_stack := (a,b) :: !unify_stack;
-				unify a (apply_params t.t_types tl t.t_type);
-				unify_stack := List.tl !unify_stack;
-			with
-				Unify_error l ->
-					unify_stack := List.tl !unify_stack;
-					error (cannot_unify a b :: l)
-		end
-	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
-		if ea != eb then error [cannot_unify a b];
-		unify_types a b tl1 tl2
 	| TAbstract({a_path = [],"Of"},[tm1;ta1]),TAbstract({a_path = [],"Of"},[tm2;ta2]) ->
 		(* 
 			try to reduce both Of types first, first try reversible reduction, 
@@ -1283,6 +1271,32 @@ and unify a b =
 		(match reduce_of_irreversible b with
 		| TAbstract({a_path = [],"Of"},[_;_]) -> unify_of tm ta a
 		| t -> unify a t)
+	| TType (t,tl) , _ ->
+		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
+			try
+				unify_stack := (a,b) :: !unify_stack;
+				unify (apply_params t.t_types tl t.t_type) b;
+				unify_stack := List.tl !unify_stack;
+			with
+				Unify_error l ->
+					unify_stack := List.tl !unify_stack;
+					error (cannot_unify a b :: l)
+		end
+	| _ , TType (t,tl) ->
+		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
+			try
+				unify_stack := (a,b) :: !unify_stack;
+				unify a (apply_params t.t_types tl t.t_type);
+				unify_stack := List.tl !unify_stack;
+			with
+				Unify_error l ->
+					unify_stack := List.tl !unify_stack;
+					error (cannot_unify a b :: l)
+		end
+	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
+		if ea != eb then error [cannot_unify a b];
+		unify_types a b tl1 tl2
+	
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) when a1 == a2 ->
 		unify_types a b tl1 tl2
 	| TAbstract ({a_path=[],"Void"},_) , _

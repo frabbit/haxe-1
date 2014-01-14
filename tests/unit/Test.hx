@@ -249,6 +249,7 @@ class Test #if swf_mark implements mt.Protect #end {
 		tf.selectable = true;
 		#end
 		var classes = [
+			new TestTypeConstructor(),
 			new TestOps(),
 			new TestBasetypes(),
 			new TestBytes(),
@@ -266,6 +267,7 @@ class Test #if swf_mark implements mt.Protect #end {
 			new TestOrder(),
 			new TestGADT(),
 			new TestGeneric(),
+			
 			#if !no_pattern_matching
 			new TestMatch(),
 			#end
