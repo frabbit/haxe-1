@@ -1228,31 +1228,6 @@ and unify a b =
 		(match !t with
 		| None -> if not (link t b a) then error [cannot_unify a b]
 		| Some t -> unify a t)
-	| TType (t,tl) , _ ->
-		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
-			try
-				unify_stack := (a,b) :: !unify_stack;
-				unify (apply_params t.t_types tl t.t_type) b;
-				unify_stack := List.tl !unify_stack;
-			with
-				Unify_error l ->
-					unify_stack := List.tl !unify_stack;
-					error (cannot_unify a b :: l)
-		end
-	| _ , TType (t,tl) ->
-		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
-			try
-				unify_stack := (a,b) :: !unify_stack;
-				unify a (apply_params t.t_types tl t.t_type);
-				unify_stack := List.tl !unify_stack;
-			with
-				Unify_error l ->
-					unify_stack := List.tl !unify_stack;
-					error (cannot_unify a b :: l)
-		end
-	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
-		if ea != eb then error [cannot_unify a b];
-		unify_types a b tl1 tl2
 	| TAbstract({a_path = [],"Of"},[tm1;ta1]),TAbstract({a_path = [],"Of"},[tm2;ta2]) ->
 		(* 
 			try to reduce both Of types first, first try reversible reduction, 
@@ -1281,6 +1256,32 @@ and unify a b =
 		(match reduce_of_irreversible b with
 		| TAbstract({a_path = [],"Of"},[_;_]) -> unify_of tm ta a
 		| t -> unify a t)
+	| TType (t,tl) , _ ->
+		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
+			try
+				unify_stack := (a,b) :: !unify_stack;
+				unify (apply_params t.t_types tl t.t_type) b;
+				unify_stack := List.tl !unify_stack;
+			with
+				Unify_error l ->
+					unify_stack := List.tl !unify_stack;
+					error (cannot_unify a b :: l)
+		end
+	| _ , TType (t,tl) ->
+		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
+			try
+				unify_stack := (a,b) :: !unify_stack;
+				unify a (apply_params t.t_types tl t.t_type);
+				unify_stack := List.tl !unify_stack;
+			with
+				Unify_error l ->
+					unify_stack := List.tl !unify_stack;
+					error (cannot_unify a b :: l)
+		end
+	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
+		if ea != eb then error [cannot_unify a b];
+		unify_types a b tl1 tl2
+	
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) when a1 == a2 ->
 		unify_types a b tl1 tl2
 	| TAbstract ({a_path=[],"Void"},_) , _
