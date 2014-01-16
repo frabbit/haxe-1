@@ -637,8 +637,6 @@ and follow1 t =
 		| t -> t)
 	| TLazy f ->
 		follow1 (!f())
-	| TType (t,tl) ->
-		follow1 (apply_params t.t_types tl t.t_type)
 	| _ -> t
 
 and follow2 t =

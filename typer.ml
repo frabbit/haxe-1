@@ -1258,7 +1258,7 @@ and type_field ctx e i p mode =
 		ctx.opened <- x :: ctx.opened;
 		r := Some t;
 		field_access ctx mode f (FAnon f) (Type.field_type f) e p
-	| TAbstract (a,pl) ->
+	| tt@TAbstract (a,pl) ->
 		(try
  			let c = (match a.a_impl with None -> raise Not_found | Some c -> c) in
 			let f = PMap.find i c.cl_statics in
@@ -1300,6 +1300,19 @@ and type_field ctx e i p mode =
 			(match ctx.curfun, e.eexpr with
 			| FunMemberAbstract, TConst (TThis) -> type_field ctx {e with etype = apply_params a.a_types pl a.a_this} i p mode;
 			| _ -> raise Not_found)
+		(*with Not_found ->
+			(* if we have a type like Of<M,A> where M have constraints like M:(Array<In>, Mappable<In>)) we
+			   have apply ta to all constraints and check again with the resulting type like M:(Array<A>, Mappable<A>)
+			*) 
+			(match tt with 
+				TAbstract( t_patch = [], "Of", [tm,ta]) ->
+					match follow tm with
+					| TMono r ->
+						apply_in to all constraints of r and call type_field recursively with the new type
+
+					 
+			)
+		*)
 		with Not_found ->
 			no_field())
 	| _ ->

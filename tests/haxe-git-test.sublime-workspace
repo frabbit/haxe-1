@@ -1,0 +1,912 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"Tup2",
+				"Tup2LeftFunctor (unit.MyTypeConstructor)	class"
+			],
+			[
+				"ReversedEit",
+				"ReversedEitherFunctor (unit.MyTypeConstructor)	class"
+			],
+			[
+				"TestType",
+				"TestTypeConstructor (unit)	class"
+			],
+			[
+				"Print",
+				"Printer (haxe.macro)	class"
+			],
+			[
+				"Supp",
+				"SupportMacro (scuts.ht.macros)	class"
+			],
+			[
+				"Suppor",
+				"SupportTest	class"
+			],
+			[
+				"Behavi",
+				"BehaviourSource (kp.tools.CoreUsing)	typedef"
+			],
+			[
+				"Behav",
+				"BehaviourSource (kp.tools.CoreUsing)	typedef"
+			],
+			[
+				"Football",
+				"Season.Football_WM_Men (kp.competitions)	enum value"
+			],
+			[
+				"Promises",
+				"Promises (scuts.core)	class"
+			],
+			[
+				"GetAllSeas",
+				"GetAllSeasonsResponse (kp.stats.StatsService)	typedef"
+			],
+			[
+				"Stats",
+				"Stats (scuts.core.tools.Profiler)	typedef"
+			],
+			[
+				"angApply",
+				"angApplyF( f:(Void -> Void) )	Void"
+			],
+			[
+				"Directive",
+				"DirectiveBuilder (angular.support)	class"
+			],
+			[
+				"applyFromBehav",
+				"applyFromBehaviourWithCleanUp<X>(...)	Unknown<3>"
+			],
+			[
+				"apply",
+				"applyFromBehaviourWithCleanUp<X>(...)	Unknown<3>"
+			],
+			[
+				"SearchRes",
+				"StatsSearchResultDirective (kp.stats.web)	class"
+			],
+			[
+				"KpDrop",
+				"KpDropDownController (kp.ui.KpDropDown)	class"
+			],
+			[
+				"Direct",
+				"DirectiveBuilder (angular.support)	class"
+			],
+			[
+				"restr",
+				"restrictToElement()	Unknown<12>"
+			],
+			[
+				"get",
+				"getHtmlRelative(...)	Dynamic"
+			],
+			[
+				"contro",
+				"scopeController<T>(...)	Unknown<14>"
+			],
+			[
+				"Bundesliga_",
+				"Season.Football_Bundesliga_Men (kp.competitions)	enum value"
+			],
+			[
+				"getOr",
+				"getOrElse(...)	String"
+			],
+			[
+				"getOrElse",
+				"getOrElseConst(...)	String"
+			],
+			[
+				"Football_B",
+				"Competition.Football_Bundesliga_Men (kp.competitions)	enum value"
+			],
+			[
+				"UserProfi",
+				"OverlayType.UserProfileOverlay (kp.navigation.Navigation)	enum value"
+			],
+			[
+				"toString",
+				"toStringEn	function"
+			],
+			[
+				"to",
+				"toStringEn(...)	Unknown<5>"
+			],
+			[
+				"UserId",
+				"UserId (kp.config.DbTypes)	abstract"
+			],
+			[
+				"ProfileOver",
+				"OverlayType.UserProfileOverlay (kp.navigation.Navigation)	enum value"
+			],
+			[
+				"Overla",
+				"PublicProfileOverlayController (kp.profile.web)	class"
+			],
+			[
+				"appy",
+				"applyFromBehaviourWithCleanUp<X>(...)	Unknown<4>"
+			],
+			[
+				"each",
+				"each( f:(onFailure.T -> Void) )	Void"
+			],
+			[
+				"Arrays",
+				"Arrays (scuts.core)	class"
+			],
+			[
+				"closeOp",
+				"closePopoverFunc	var"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "haxe-git-test.sublime-project",
+			"settings":
+			{
+				"buffer_size": 282,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "unit/TestTypeConstructor.hx",
+			"settings":
+			{
+				"buffer_size": 5573,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "unit/MyAbstract.hx",
+			"settings":
+			{
+				"buffer_size": 6767,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "unit/Test.hx",
+			"settings":
+			{
+				"buffer_size": 7312,
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"file": "unit/MyTypeConstructor.hx",
+			"settings":
+			{
+				"buffer_size": 5903,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"command_palette":
+	{
+		"height": 392.0,
+		"selected_items":
+		[
+			[
+				"",
+				"Convert Case: Lower Case"
+			]
+		],
+		"width": 400.0
+	},
+	"console":
+	{
+		"height": 496.0
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"file_history":
+	[
+		"/home/frabbit/work/tools/haxe-git/tests/unit/MyTypeConstructor.hx",
+		"/home/frabbit/work/tools/haxe-git/tests/unit/Test.hx",
+		"/home/frabbit/work/tools/haxe-git/tests/unit/TestTypeConstructor.hx",
+		"/media/frabbit/Win7Go/PES2014/k.txt",
+		"/home/frabbit/work/projects/github/scuts_macros/support.hxml",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/SupportTest2.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/[Finished in 0.2s with exit code 1]/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/SupportTest2.hx",
+		"/home/frabbit/work/tools/haxe-git/std/neko/_std/String.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/instances/std/ArrayTFunctor.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/SupportTest.hx",
+		"/home/frabbit/work/tools/haxe-git/std/haxe/Constraints.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/Support.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/macros/SupportMacro.hx",
+		"/home/frabbit/work/tools/haxe-git/std/StdTypes.hx",
+		"/home/frabbit/Downloads/RallyeDetails.cshtml",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsCore/src/scuts/core/std/StdType.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsMCore/src/scuts/mcore/Print.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsMCore/src/scuts/mcore/Parse.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/core/Ht.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/macros/implicits/Resolver.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/macros/implicits/RealResolver.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/Implicit.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scutsHt/src/scuts/ht/macros/implicits/Helper.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/runTestsHt.hxml",
+		"/usr/lib/haxe/std/haxe/io/Path.hx",
+		"/home/frabbit/work/projects/github/scuts_macros/scuts_macros.sublime-project",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/Highscore.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/web/SeasonSelector.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/app/webclient/WebClientMain.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/web/SaisonSelectorDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/web/CompetitionModule.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/SportType.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/core/CommonTypes.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competition/SportType.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/sport/SportType.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/MatchDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsModule.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/Season.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroupsSearch.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/help/web/SupportForm.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/help/web/Help.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsSearchResult.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/ui/KpEnter.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/lib/haxe/js-externs/src/angular/Angular.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsSearchBoxDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsSearchResultDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsSearchBox.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/StatsServiceFake.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/app/webclient/Setup.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/app/webclient/Models.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsHelp.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/ui/UiModule.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/Stats.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/UserStats.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/GeneralStats.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/auth/web/TopTeaserLoginController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/angular/support/AngularBaseScopeController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/lib/haxe/scuts/scuts-core/src/scuts/core/Enums.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/app/webclient/AppController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/navigation/NavigationController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/auth/Auth.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/lib/haxe/scuts/scuts-core/src/scuts/core/Promises.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroups.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroupsSearchController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroupsDetail.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroupsSeasonFootballStatsController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroupsModule.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/config/Domain.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/tools/compiler/std/js/html/Navigator.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/routing/Router.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/CompetitionSeason.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/TipsOverviewController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/BundesligaFantasyController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/navigation/Navigation.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/TipsBundesligaModule.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsSearchDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/UserHighscoreListDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/TipGroupHighscoreListDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/HighscoreDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/FunStatsDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/GeneralStatsDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/UserStatsDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/CityHighscoreListDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/GenderHighscoreListDirective.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/MatchController.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/MatchVM.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/StatsSearch.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/CityHighscoreList.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/UserHighscoreList.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/TipGroupHighscoreList.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/FunStats.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/stats/web/GenderHighscoreList.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/auth/AuthServiceFake.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/sport/football/wm/LiveWmMen2014.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/TipsWmModule.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/ui/KpDropDown.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/ui/KpDropDown.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/ui/KpIconSelector.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tools/angular/royalslider/royalslider.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/startpage/TopTeaser.html",
+		"/home/frabbit/work/favs/kickprophet-2013/web-client-debug.hxml",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/competitions/Phase.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/gd-release",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tips/web/TipsOverview.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/app/webclient/App.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/web/TipGroupsSeasonFootballStats.html",
+		"/home/frabbit/work/favs/kickprophet-2013/main/lib/haxe/scuts/scuts-core/src/scuts/core/Arrays.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/tipgroups/TipGroupService.hx",
+		"/home/frabbit/work/favs/kickprophet-2013/main/src/haxe/kp/navigation/Navigation.html"
+	],
+	"find":
+	{
+		"height": 34.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+			"var",
+			"F",
+			"f",
+			"F",
+			"Of",
+			"oldName",
+			"newName",
+			"fieldName",
+			"false",
+			"fieldExprs",
+			"readAccess",
+			"Of",
+			"SupportTest",
+			"Functor",
+			"//",
+			"// //",
+			"// // //",
+			"// //",
+			"// // //",
+			"// //",
+			"resolveImplicitObj",
+			"ByType",
+			"directive",
+			".create",
+			"GeneralStats",
+			"StatsSearch",
+			"Sieger",
+			"Gruppe",
+			"$transclude",
+			"$element",
+			"$inject",
+			"data",
+			"flatMap",
+			"Scope",
+			"setSectio",
+			"setSection",
+			"Overlay",
+			"fromString",
+			"flatMap",
+			"zip"
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+			"webtools"
+		],
+		"reverse": true,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 1,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "haxe-git-test.sublime-project",
+					"settings":
+					{
+						"buffer_size": 282,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								233,
+								233
+							]
+						],
+						"settings":
+						{
+							"incomplete_sync": null,
+							"remote_loading": false,
+							"synced": false,
+							"syntax": "Packages/JavaScript/JSON.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "unit/TestTypeConstructor.hx",
+					"settings":
+					{
+						"buffer_size": 5573,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								4184,
+								4184
+							]
+						],
+						"settings":
+						{
+							"haxe-current-build-id": 0,
+							"incomplete_sync": null,
+							"remote_loading": false,
+							"synced": false,
+							"syntax": "Packages/Haxe/Haxe.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 2760.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 2,
+					"file": "unit/MyAbstract.hx",
+					"settings":
+					{
+						"buffer_size": 6767,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								6767,
+								6767
+							]
+						],
+						"settings":
+						{
+							"incomplete_sync": null,
+							"remote_loading": false,
+							"synced": false,
+							"syntax": "Packages/Haxe/Haxe.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 4845.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 3,
+					"file": "unit/Test.hx",
+					"settings":
+					{
+						"buffer_size": 7312,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								6190,
+								6190
+							]
+						],
+						"settings":
+						{
+							"incomplete_sync": null,
+							"remote_loading": false,
+							"synced": false,
+							"syntax": "Packages/Haxe/Haxe.tmLanguage",
+							"translate_tabs_to_spaces": false
+						},
+						"translation.x": 0.0,
+						"translation.y": 3630.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				},
+				{
+					"buffer": 4,
+					"file": "unit/MyTypeConstructor.hx",
+					"settings":
+					{
+						"buffer_size": 5903,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								5801,
+								5801
+							]
+						],
+						"settings":
+						{
+							"incomplete_sync": null,
+							"remote_loading": false,
+							"synced": false,
+							"syntax": "Packages/Haxe/Haxe.tmLanguage",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 3600.0,
+						"zoom_level": 1.0
+					},
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 34.0
+	},
+	"input":
+	{
+		"height": 31.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.exec":
+	{
+		"height": 352.0
+	},
+	"output.haxe":
+	{
+		"height": 397.0
+	},
+	"output.sftp":
+	{
+		"height": 0.0
+	},
+	"replace":
+	{
+		"height": 0.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+			[
+				"test.hx",
+				"unit/Test.hx"
+			],
+			[
+				"support",
+				"scutsHt/src/scuts/ht/SupportTest.hx"
+			],
+			[
+				"realre",
+				"scutsHt/src/scuts/ht/macros/implicits/RealResolver.hx"
+			],
+			[
+				"resolver",
+				"scutsHt/src/scuts/ht/macros/implicits/Resolver.hx"
+			],
+			[
+				"supp",
+				"scutsHt/src/scuts/ht/Support.hx"
+			],
+			[
+				"appmod",
+				"main/src/haxe/kp/app/webclient/AppModule.hx"
+			],
+			[
+				"matchdir",
+				"main/src/haxe/kp/tips/web/MatchDirective.hx"
+			],
+			[
+				"tipgroupsearch",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearch.html"
+			],
+			[
+				"angu",
+				"main/lib/haxe/js-externs/src/angular/Angular.hx"
+			],
+			[
+				"ang",
+				"main/lib/haxe/js-externs/src/angular/Angular.hx"
+			],
+			[
+				"kpen",
+				"main/src/haxe/kp/ui/KpEnter.hx"
+			],
+			[
+				"angular",
+				"main/lib/haxe/js-externs/src/angular/Angular.hx"
+			],
+			[
+				"psearchbox",
+				"main/src/haxe/kp/stats/web/StatsSearchBox.html"
+			],
+			[
+				"statsbox",
+				"main/src/haxe/kp/stats/web/StatsSearchBox.html"
+			],
+			[
+				"naviga",
+				"main/src/haxe/kp/navigation/Navigation.hx"
+			],
+			[
+				"statsmod",
+				"main/src/haxe/kp/stats/web/StatsModule.hx"
+			],
+			[
+				"topte",
+				"main/src/haxe/kp/startpage/TopTeaser.html"
+			],
+			[
+				"roy",
+				"main/src/haxe/kp/tools/angular/royalslider/royalslider.html"
+			],
+			[
+				"royal",
+				"main/src/haxe/kp/tools/angular/royalslider/royalslider.html"
+			],
+			[
+				"authser",
+				"main/src/haxe/kp/auth/AuthServiceFake.hx"
+			],
+			[
+				"angular.hx",
+				"main/lib/haxe/js-externs/src/angular/Angular.hx"
+			],
+			[
+				"navi",
+				"main/src/haxe/kp/navigation/Navigation.hx"
+			],
+			[
+				"bundesligaf",
+				"main/src/haxe/kp/tips/web/BundesligaFantasyController.hx"
+			],
+			[
+				"tipsover",
+				"main/src/haxe/kp/tips/web/TipsOverviewController.hx"
+			],
+			[
+				"bundesligafan",
+				"main/src/haxe/kp/tips/web/BundesligaFantasyController.hx"
+			],
+			[
+				"tipscon",
+				"main/src/haxe/kp/tips/web/TipsOverviewController.hx"
+			],
+			[
+				"season",
+				"main/src/haxe/kp/competitions/Season.hx"
+			],
+			[
+				"app.html",
+				"main/src/haxe/kp/app/webclient/App.html"
+			],
+			[
+				"appcontroll",
+				"main/src/haxe/kp/app/webclient/AppController.hx"
+			],
+			[
+				"tipgroupsco",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsController.hx"
+			],
+			[
+				"appco",
+				"main/src/haxe/kp/app/webclient/AppController.hx"
+			],
+			[
+				"router",
+				"main/src/haxe/kp/routing/Router.hx"
+			],
+			[
+				"appcon",
+				"main/src/haxe/kp/app/webclient/AppController.hx"
+			],
+			[
+				"naviga.hx",
+				"main/src/haxe/kp/navigation/Navigation.hx"
+			],
+			[
+				"setup",
+				"main/src/haxe/kp/app/webclient/Setup.hx"
+			],
+			[
+				"navig.hx",
+				"tools/compiler/std/js/html/Navigator.hx"
+			],
+			[
+				"domain.hx",
+				"main/src/haxe/kp/config/Domain.hx"
+			],
+			[
+				"footsta",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSeasonFootballStatsController.hx"
+			],
+			[
+				"foost",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSeasonFootballStats.html"
+			],
+			[
+				"seasfootba",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSeasonFootballStatsController.hx"
+			],
+			[
+				"tsstats",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSeasonFootballStats.html"
+			],
+			[
+				"tipgroupde",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsDetail.html"
+			],
+			[
+				"nav",
+				"main/src/haxe/kp/navigation/Navigation.hx"
+			],
+			[
+				"tgs",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearchController.hx"
+			],
+			[
+				"tgse",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearch.html"
+			],
+			[
+				"",
+				"main/src/haxe/kp/navigation/Navigation.hx"
+			],
+			[
+				"navig",
+				"main/src/haxe/kp/navigation/Navigation.hx"
+			],
+			[
+				"tipgroupsse",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearchController.hx"
+			],
+			[
+				"arrays",
+				"main/lib/haxe/scuts/scuts-core/src/scuts/core/Arrays.hx"
+			],
+			[
+				"search",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearchController.hx"
+			],
+			[
+				"tipgrousea",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearchController.hx"
+			],
+			[
+				"search.ht",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearch.html"
+			],
+			[
+				"seacontro",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsSearchController.hx"
+			],
+			[
+				"tgcontr",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsController.hx"
+			],
+			[
+				"tipgroupser",
+				"main/src/haxe/kp/tipgroups/TipGroupService.hx"
+			],
+			[
+				"tipgroups",
+				"main/src/haxe/kp/tipgroups/web/TipGroups.html"
+			],
+			[
+				"auth.hx",
+				"main/src/haxe/kp/auth/Auth.hx"
+			],
+			[
+				"promises",
+				"main/lib/haxe/scuts/scuts-core/src/scuts/core/Promises.hx"
+			],
+			[
+				"set",
+				"main/src/haxe/kp/app/webclient/Setup.hx"
+			],
+			[
+				"auth",
+				"main/src/haxe/kp/auth/Auth.hx"
+			],
+			[
+				"tipgroupscon",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsController.hx"
+			],
+			[
+				"tipcontr",
+				"main/src/haxe/kp/tipgroups/web/TipGroupsController.hx"
+			],
+			[
+				"nav.html",
+				"main/src/haxe/kp/navigation/Navigation.html"
+			],
+			[
+				"na",
+				"main/src/haxe/kp/navigation/NavigationController.hx"
+			],
+			[
+				"enums",
+				"main/lib/haxe/scuts/scuts-core/src/scuts/core/Enums.hx"
+			],
+			[
+				"arrays.hx",
+				"main/lib/haxe/scuts/scuts-core/src/scuts/core/Arrays.hx"
+			],
+			[
+				"app.htm",
+				"main/src/haxe/kp/app/webclient/App.html"
+			],
+			[
+				"app.ht",
+				"main/src/haxe/kp/app/webclient/App.html"
+			],
+			[
+				"angularbase",
+				"main/src/haxe/angular/support/AngularBaseScopeController.hx"
+			]
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"show_minimap": true,
+	"show_open_files": false,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 421.0,
+	"status_bar_visible": true
+}

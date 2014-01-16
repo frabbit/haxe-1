@@ -1,0 +1,13 @@
+{
+	"folders":
+	[
+		{
+			"path": "/home/frabbit/work/tools/haxe-git/tests"
+		}
+	],
+	"settings" : {
+		"haxe_exec" : "/home/frabbit/work/tools/haxe-git/haxe",
+		"haxe_sdk_path" : "/home/frabbit/work/tools/haxe-git",
+		"haxe_library_path" : "/home/frabbit/work/tools/haxe-git/std"
+	}
+}
