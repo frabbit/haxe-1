@@ -616,7 +616,7 @@ let rec follow t =
 		| Some t -> follow t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		(match reduce_of_reversible t with
+		(match reduce_of_irreversible t with
 		| TAbstract({a_path=[],"Of"},_) -> t
 		| t -> follow t)
 	| TLazy f ->
@@ -625,20 +625,18 @@ let rec follow t =
 		follow (apply_params t.t_types tl t.t_type)
 	| _ -> t
 
-and follow_all_ofs t =
+and follow_reversible_ofs t =
 	match t with
 	| TMono r ->
 		(match !r with
-		| Some t -> follow_all_ofs t
+		| Some t -> follow_reversible_ofs t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		(match reduce_of_irreversible t with
+		(match reduce_of_reversible t with
 		| TAbstract({a_path=[],"Of"},_) -> t
-		| t -> follow_all_ofs t)
+		| t -> t)
 	| TLazy f ->
-		follow_all_ofs (!f())
-	| TType (t,tl) ->
-		follow_all_ofs (apply_params t.t_types tl t.t_type)
+		follow_reversible_ofs (!f())
 	| _ -> t
 
 
