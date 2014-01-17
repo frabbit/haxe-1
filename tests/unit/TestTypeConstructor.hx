@@ -178,7 +178,7 @@ class TestTypeConstructor extends Test {
 		/*
 		 !!!!!!!!!!!!!
 		 TODO
-		 This fails on as3 because the call to map inside of mapMappable calls actually calls map on dynamic nand not the haxe defined function. 
+		 This fails on as3 because the call to map inside of mapMappable actually calls map on dynamic nand not the haxe defined function. 
 		 A runtime wrapper for filter and map is missing.
 		*/
 		var x = [1];
@@ -212,7 +212,7 @@ class TestTypeConstructor extends Test {
 		/*
 		 !!!!!!!!!!!!!
 		 TODO
-		 This fails on as3 because the call to filter inside of filterFilterable calls actually calls filter on dynamic and not the haxe defined function. 
+		 This fails on as3 because the call to filter inside of filterFilterable actually calls filter on dynamic and not the haxe defined function. 
 		 A runtime wrapper for filter and map is missing.
 		*/
 
