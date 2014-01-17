@@ -240,21 +240,31 @@ class TestTypeConstructor extends Test {
 	}
 
 
- 	private static function typeConstructorWithConstraints <M:(Filterable<M,In>, MappableTD<M,In>), T> (m:M<Int>):M<Int> 
+ 	private static function typeConstructorWithConstraints <M:(Filterable<M,In>, MappableTD<M,In>, { var length(default, null):Int;}), T> (m:M<Int>):M<Int> 
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
 
 	public function testTypeConstructorWithConstraints () {
+		
+		#if !as3
 		var a = [1,2,3];
 		var r = typeConstructorWithConstraints(a);
 		t(r.length == 2);
 		t(r[0] == 3);
 		t(r[1] == 4);
+		#end
+
+		var a = new List(); a.add(1); a.add(2); a.add(3);
+		var r = typeConstructorWithConstraints(a);
+		t(r.length == 2);
+		t(r.first() == 3);
+		t(r.last() == 4);
 	}
 	
 	public function testTypeConstructorClassConstraints () 
 	{
+		#if !as3
 		var x : BetterFilterable<Array<In>, Int> = [1,2,3,4];
 
 		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
@@ -263,6 +273,16 @@ class TestTypeConstructor extends Test {
 
 		t(z.length == 1);
 		t(z[0] == 2);
+		#end
+		
+		var x : BetterFilterable<List<In>, Int> = { var l = new List(); l.add(1); l.add(2); l.add(3); l.add(4); l; }
+
+		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
+
+		var z:List<Int> = cast r;
+
+		t(z.length == 1);
+		t(z.first() == 2);
 
 	}
 	
