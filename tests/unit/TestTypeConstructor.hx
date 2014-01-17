@@ -3,6 +3,7 @@ package unit;
 using unit.MyTypeConstructor;
 
 class TestTypeConstructor extends Test {
+	
 	public function testMonadTransformers() 
 	{
 		var func = new ArrayTFunctor(new ArrayTFunctor(new EitherMonad()));
@@ -238,22 +239,32 @@ class TestTypeConstructor extends Test {
 		t(r.last() == 4);
 	}
 
-	
- 	
- 	/*
- 	
- 	// this is currently not working, but it would be very important
- 	// it should work as follows if you found an of type like M<T> (Of<M, T>) inside of the 
- 	// function body, you have to look at it's constraints and replace the In
- 	// type in each constraint with the type T.
- 	// In case of Filterable<M,In> you can just follow Of<Filterable<M, In>, T> it should be quite simple.
 
-
- 	private static function typeConstructorWithConstraints <M:(Filterable<M,In>, MappableTD<M,In>)> (m:M<T>):M<T> 
+ 	private static function typeConstructorWithConstraints <M:(Filterable<M,In>, MappableTD<M,In>), T> (m:M<Int>):M<Int> 
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
+
+	public function testTypeConstructorWithConstraints () {
+		var a = [1,2,3];
+		var r = typeConstructorWithConstraints(a);
+		t(r.length == 2);
+		t(r[0] == 3);
+		t(r[1] == 4);
+	}
 	
-	*/
+	public function testTypeConstructorClassConstraints () 
+	{
+		var x : BetterFilterable<Array<In>, Int> = [1,2,3,4];
+
+		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
+
+		var z:Array<Int> = cast r;
+
+		t(z.length == 1);
+		t(z[0] == 2);
+
+	}
+	
 
 }
