@@ -614,14 +614,13 @@ module Abstract = struct
 	let get_underlying_type a pl =
 		match a.a_path,pl with
 			| ([],"Of"),[tm;ta] -> 
-				
-				let x, applied = unapply_in tm ta in
+				let x, applied = unapply_in tm (reduce_of_irreversible ta) false in
 				if applied then 
-					x 
+					follow x 
 				else 
-					(match tm with
-					| TMono r -> t_dynamic
-					| _ -> assert false)
+					(* not reducible Of type like Of<M, Int> or Of<Of<M, A>, B>, fall
+					   back to dynamic *)
+					t_dynamic
 			| _ ->
 				try
 					if not (Meta.has Meta.MultiType a.a_meta) then raise Not_found;
@@ -695,10 +694,21 @@ module Abstract = struct
 
 	let find_multitype_specialization a pl p =
 		let m = mk_mono() in
-		let at = apply_params a.a_types pl a.a_this in
+		let tl = match Meta.get Meta.MultiType a.a_meta with
+			| _,[],_ -> pl
+			| _,el,_ ->
+				let relevant = Hashtbl.create 0 in
+				List.iter (fun e -> match fst e with
+					| EConst(Ident s) -> Hashtbl.replace relevant s true
+					| _ -> error "Type parameter expected" (pos e)
+				) el;
+				let tl = List.map2 (fun (n,_) t -> if Hashtbl.mem relevant n || not (has_mono t) then t else t_dynamic) a.a_types pl in
+				tl
+		in
 		let _,cfo =
-			try find_to a pl m
+			try find_to a tl m
 			with Not_found ->
+				let at = apply_params a.a_types pl a.a_this in
 				let st = s_type (print_context()) at in
 				if has_mono at then
 					error ("Type parameters of multi type abstracts must be known (for " ^ st ^ ")") p

@@ -766,7 +766,8 @@ let rec acc_get ctx g p =
 		| TFun (_ :: args,ret) ->
 			let tcallb = TFun (args,ret) in
 			let twrap = TFun ([("_e",false,e.etype)],tcallb) in
-			let args = List.map (fun (n,_,t) -> alloc_var n t) args in
+			(* arguments might not have names in case of variable fields of function types, so we generate one (issue #2495) *)
+			let args = List.map (fun (n,_,t) -> if n = "" then gen_local ctx t else alloc_var n t) args in
 			let ve = alloc_var "_e" e.etype in
 			let ecall = make_call ctx et (List.map (fun v -> mk (TLocal v) v.v_type p) (ve :: args)) ret p in
 			let ecallb = mk (TFunction {
@@ -1105,8 +1106,9 @@ let rec type_ident_raise ?(imported_enums=true) ctx i p mode =
 		let e = type_module_type ctx t None p in
 		type_field ctx e name p mode
 
-and type_field ctx e i p mode =
+and type_field ?(resume=false) ctx e i p mode =
 	let no_field() =
+		if resume then raise Not_found;
 		let t = match follow e.etype with
 			| TAnon a -> (match !(a.a_status) with
 				| Statics {cl_kind = KAbstractImpl a} -> TAbstract(a,[])
@@ -1294,6 +1296,16 @@ and type_field ctx e i p mode =
 				AKUsing (ef,c,f,e)
 			| MSet, _ ->
 				error "This operation is unsupported" p)
+		with Not_found -> try 
+			match a,pl with
+			| {a_path=[], "Of"},[tm;ta] ->
+				let new_t = unapply_in_constraints tm ta in
+				(match new_t with
+				| TAbstract({ a_path = [], "Of"},_) ->
+					raise Not_found
+				| _ -> 
+					type_field ~resume:true ctx {e with etype = new_t} i p mode)
+			| _ -> raise Not_found
 		with Not_found -> try
 			using_field ctx mode e i p
 		with Not_found -> try
@@ -2065,10 +2077,13 @@ and type_access ctx e p mode =
 			| _ -> error "Binding new is only allowed on class types" p
 		end;
 	| EField _ ->
-		let fields path e =
+		let fields ?(resume=false) path e =
+			let resume = ref resume in
 			List.fold_left (fun e (f,_,p) ->
 				let e = acc_get ctx (e MGet) p in
-				type_field ctx e f p
+				let f = type_field ~resume:(!resume) ctx e f p in
+				resume := false;
+				f
 			) e path
 		in
 		let type_path path =
@@ -2111,8 +2126,8 @@ and type_access ctx e p mode =
 					in
 					match path with
 					| (sname,true,p) :: path ->
-						let get_static t =
-							fields ((sname,true,p) :: path) (fun _ -> AKExpr (type_module_type ctx t None p))
+						let get_static resume t =
+							fields ~resume ((sname,true,p) :: path) (fun _ -> AKExpr (type_module_type ctx t None p))
 						in
 						let check_module m v =
 							try
@@ -2125,7 +2140,7 @@ and type_access ctx e p mode =
 								(* then look for main type statics *)
 									if fst m = [] then raise Not_found; (* ensure that we use def() to resolve local types first *)
 									let t = List.find (fun t -> not (t_infos t).mt_private && t_path t = m) md.m_types in
-									Some (get_static t)
+									Some (get_static false t)
 								with Not_found ->
 									None)
 							with Error (Module_not_found m2,_) when m = m2 ->
@@ -2143,7 +2158,8 @@ and type_access ctx e p mode =
 						| [] ->
 							(try
 								let t = List.find (fun t -> snd (t_infos t).mt_path = name) (ctx.m.curmod.m_types @ ctx.m.module_types) in
-								get_static t
+								(* if the static is not found, look for a subtype instead - #1916 *)
+								get_static true t
 							with Not_found ->
 								loop (fst ctx.m.curmod.m_path))
 						| _ ->
@@ -2494,7 +2510,7 @@ and type_expr ctx (e,p) (with_type:with_type) =
 				| [] -> ()
 				| _ -> unify_error (List.map (fun n -> has_extra_field t n) !extra_fields) p);
 			end;
-			a.a_status := Closed;
+			if !(a.a_status) <> Const then a.a_status := Closed;
 			mk (TObjectDecl fl) t p)
 	| EArrayDecl [(EFor _,_) | (EWhile _,_) as e] ->
 		let v = gen_local ctx (mk_mono()) in
@@ -3080,13 +3096,20 @@ and type_expr ctx (e,p) (with_type:with_type) =
 					PMap.map (fun f -> { f with cf_type = apply_params c.cl_types params (opt_type f.cf_type); cf_public = true; }) m
 				in
 				loop c params
+			| TAbstract({a_path=[], "Of"},[tm;ta]) ->
+				let new_t = unapply_in_constraints tm ta in
+				(match new_t with
+				| TAbstract({ a_path = [], "Of"},_) ->
+					PMap.empty
+				| t -> 
+					get_fields t)
 			| TAbstract({a_impl = Some c} as a,pl) ->
 				if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc c;
 				ctx.m.module_using <- c :: ctx.m.module_using;
 				PMap.fold (fun f acc ->
 					if f.cf_name <> "_new" && can_access ctx c f true && Meta.has Meta.Impl f.cf_meta && not (Meta.has Meta.Enum f.cf_meta) then begin
 						let f = prepare_using_field f in
-						let t = apply_params a.a_types pl (follow f.cf_type) in
+						let t = apply_params a.a_types pl (follow_reversible_ofs f.cf_type) in
 						PMap.add f.cf_name { f with cf_public = true; cf_type = opt_type t } acc
 					end else
 						acc
@@ -3313,8 +3336,15 @@ and build_call ctx acc el (with_type:with_type) p =
 			e
 		| _ ->
 			let t = follow (field_type ctx cl [] ef p) in
+
+			let etype_follow = match t with
+			| TFun ((_,_,t1) :: _, _) -> (match follow_reversible_ofs t1 with
+			| TAbstract({a_path=[], "Of"}, _ ) -> follow_reversible_ofs
+			| _ -> follow)
+			| _ -> assert false
+			in
 			(* for abstracts we have to apply their parameters to the static function *)
-			let t,tthis = match follow eparam.etype with
+			let t,tthis = match etype_follow eparam.etype with
 				| TAbstract(a,tl) when Meta.has Meta.Impl ef.cf_meta -> apply_params a.a_types tl t,apply_params a.a_types tl a.a_this
 				| te -> t,te
 			in
@@ -3385,7 +3415,7 @@ and build_call ctx acc el (with_type:with_type) p =
 					let el, tfunc = unify_call_params ctx fopts el args r p false in
 					el,(match tfunc with TFun(_,r) -> r | _ -> assert false), {e with etype = tfunc})
 		| TAbstract({a_path=[],"Of"},[tm;tr]) ->
-			let x, applied = unapply_in tm tr in
+			let x, applied = unapply_in tm tr false in
 			if applied then 
 				loop(x) 
 			else 

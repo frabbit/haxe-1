@@ -379,7 +379,9 @@ let rec load_instance ctx t p allow_no_params =
 				| _ -> assert false
 			) types;
 			f (!pl)
-		end else if path = ([],"Dynamic") then
+		end else if path = ([],"In") then
+			!t_in
+		else if path = ([],"Dynamic") then
 			match t.tparams with
 			| [] -> t_dynamic
 			| [TPType t] -> TDynamic (load_complex_type ctx p t)
@@ -1177,6 +1179,7 @@ let type_function_params ctx fd fname p =
 let type_function ctx args ret fmode f do_display p =
 	let locals = save_locals ctx in
 	let fargs = List.map (fun (n,c,t) ->
+		if n.[0] = '$' then error "Function argument names starting with a dollar are not allowed" p;
 		let c = (match c with
 			| None -> None
 			| Some e ->
