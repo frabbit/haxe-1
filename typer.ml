@@ -3096,6 +3096,13 @@ and type_expr ctx (e,p) (with_type:with_type) =
 					PMap.map (fun f -> { f with cf_type = apply_params c.cl_types params (opt_type f.cf_type); cf_public = true; }) m
 				in
 				loop c params
+			| TAbstract({a_path=[], "Of"},[tm;ta]) ->
+				let new_t = unapply_in_constraints tm ta in
+				(match new_t with
+				| TAbstract({ a_path = [], "Of"},_) ->
+					PMap.empty
+				| t -> 
+					get_fields t)
 			| TAbstract({a_impl = Some c} as a,pl) ->
 				if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc c;
 				ctx.m.module_using <- c :: ctx.m.module_using;
