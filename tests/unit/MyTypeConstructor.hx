@@ -9,6 +9,7 @@ enum Either<L,R> {
   Right(r:R);
 }
 
+
 interface Functor<F> {
   public function fmap<A,B>(x:F<A>, f:A->B):F<B>;
 }
@@ -266,12 +267,8 @@ typedef Filterable<M, T> = {
   public function filter (f:T->Bool):M<T>;  
 }
 
-/*
-  supporting and applying type constraints like this correctly would be important, i already described how 
-  this could be solved in TestTypeConstructor on the bottom.
 
 typedef BetterFilterable<M:BetterFilterable<M,In>, T> = {
   public function filter (f:T->Bool):M<T>;  
 }
 
-*/
