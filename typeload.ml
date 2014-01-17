@@ -358,11 +358,16 @@ let rec load_instance ctx t p allow_no_params =
 		begin match t.tparams with
 			| [] -> pt
 			| [TPType (CTPath {tpackage=[]; tname="StdTypes"; tsub=Some("In")})] -> pt
+			| [tp1; tp2] ->
+				let t = { t with tparams = []} in
+				let t_of_inner = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath t); tp1]} in
+				let t_of_outer = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath t_of_inner); tp2]} in
+				load_instance ctx t_of_outer p allow_no_params	
 			| [tp] ->
 				let t = { t with tparams = []} in
 				let t_of = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath t); tp]} in
 				load_instance ctx t_of p allow_no_params
-			| _ -> error "Only single type parameters are currently supported" p
+			| _ -> error "Only up to two type parameters are currently supported" p
 		end
 	with Not_found ->
 		let mt = load_type_def ctx p t in

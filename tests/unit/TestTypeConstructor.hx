@@ -285,6 +285,20 @@ class TestTypeConstructor extends Test {
 		t(r.first() == 2);
 
 	}
+
+	static function passTwo <M,A,B> (m:M<A,B>):M<A,B> {
+		return m;
+	}
+
+	public function testTypeConstructorWithTwoParameters () {
+		
+		var e = Left(1);
+		var x = passTwo(e);
+		t(e.match(Left(1)));
+
+
+		
+	}
 	
 
 }
