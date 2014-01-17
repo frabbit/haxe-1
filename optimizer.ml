@@ -62,6 +62,23 @@ let api_inline ctx c field params p =
 			Some { eexpr = TConst (TString (if b then "true" else "false")); epos = p; etype = ctx.t.tstring }
 		| _ ->
 			None)
+	| ([],"Std"),"string",[v] when ctx.com.platform = Js ->
+		let pos = v.epos in
+		let stringt = ctx.com.basic.tstring in
+		let stringv = mk (TBinop (Ast.OpAdd, mk (TConst (TString "")) stringt pos, v)) stringt pos in
+		(match follow v.etype with
+		| TInst ({ cl_path = [],"String" }, []) ->
+			Some v
+		| TAbstract ({ a_path = [],"Float" }, []) ->
+			Some stringv
+		| TAbstract ({ a_path = [],"Int" }, []) ->
+			Some stringv
+		| TAbstract ({ a_path = [],"UInt" }, []) ->
+			Some stringv
+		| TAbstract ({ a_path = [],"Bool" }, []) ->
+			Some stringv
+		| _ ->
+			None)
 	| ([],"Std"),"int",[{ eexpr = TConst (TFloat f) }] ->
 		let f = float_of_string f in
 		(match classify_float f with
@@ -1007,6 +1024,23 @@ type inline_kind =
 
 let inline_constructors ctx e =
 	let vars = ref PMap.empty in
+	let is_valid_ident s =
+		try
+			if String.length s = 0 then raise Exit;
+			begin match String.unsafe_get s 0 with
+				| 'a'..'z' | 'A'..'Z' | '_' -> ()
+				| _ -> raise Exit
+			end;
+			for i = 1 to String.length s - 1 do
+				match String.unsafe_get s i with
+				| 'a'..'z' | 'A'..'Z' | '_' -> ()
+				| '0'..'9' when i > 0 -> ()
+				| _ -> raise Exit
+			done;
+			true
+		with Exit ->
+			false
+	in
 	let rec get_inline_ctor_info e = match e.eexpr with
 		| TNew ({ cl_constructor = Some ({ cf_kind = Method MethInline; cf_expr = Some { eexpr = TFunction f } } as cst) } as c,_,pl) ->
 			IKCtor (f,cst,c,pl,[])
@@ -1015,7 +1049,10 @@ let inline_constructors ctx e =
 		| TArrayDecl el ->
 			IKArray el
 		| TObjectDecl fl ->
-			IKStructure fl
+			if (List.exists (fun (s,_) -> not (is_valid_ident s)) fl) then
+				IKNone
+			else
+				IKStructure fl
 		| TCast(e,None) | TParenthesis e ->
 			get_inline_ctor_info e
 		| TBlock el ->

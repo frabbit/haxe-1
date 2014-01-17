@@ -169,6 +169,11 @@ struct
       | TInst(cl,_) -> cl
       | _ -> assert false
 
+  let get_ab_from_t t =
+    match follow t with
+      | TAbstract(ab,_) -> ab
+      | _ -> assert false
+
   let traverse gen runtime_cl =
     let basic = gen.gcon.basic in
     let uint = match get_type gen ([], "UInt") with | TTypeDecl t -> TType(t, []) | TAbstractDecl a -> TAbstract(a, []) | _ -> assert false in
@@ -193,40 +198,80 @@ struct
               { eexpr = TTypeExpr md; etype = t_dynamic (* this is after all a syntax filter *); epos = e.epos }
             ] ) }
           in
+
+          let mk_or a b =
+            {
+              eexpr = TBinop(Ast.OpBoolOr, a, b);
+              etype = basic.tbool;
+              epos = e.epos
+            }
+          in
+
+          let wrap_if_needed obj f =
+            (* introduce temp variable for complex expressions *)
+            match obj.eexpr with
+              | TLocal(v) -> f obj
+              | _ ->
+                let var = mk_temp gen "is" obj.etype in
+                let added = { obj with eexpr = TVar(var, Some(obj)); etype = basic.tvoid } in
+                let local = mk_local var obj.epos in
+                {
+                  eexpr = TBlock([ added; f local ]);
+                  etype = basic.tbool;
+                  epos = e.epos
+                }
+          in
+
           let obj = run obj in
           (match follow_module follow md with
-            | TClassDecl{ cl_path = ([], "Float") } ->
+            | TAbstractDecl{ a_path = ([], "Float") } ->
               (* on the special case of seeing if it is a Float, we need to test if both it is a float and if it is an Int *)
               let mk_is local =
-                mk_paren {
-                  eexpr = TBinop(Ast.OpBoolOr, mk_is local md, mk_is local (TClassDecl (get_cl_from_t basic.tint)));
+                (* we check if it float or int or uint *)
+                let eisint = mk_is local (TAbstractDecl (get_ab_from_t basic.tint)) in
+                let eisuint = mk_is local (TAbstractDecl (get_ab_from_t uint)) in
+                let eisfloat = mk_is local md in
+                mk_paren (mk_or eisfloat (mk_or eisint eisuint))
+              in
+              wrap_if_needed obj mk_is
+
+            | TAbstractDecl{ a_path = ([], "Int") } ->
+              (* int can be stored in double variable because of anonymous functions, check that case *)
+              let mk_isint_call local =
+                {
+                  eexpr = TCall(
+                    mk_static_field_access_infer runtime_cl "isInt" e.epos [],
+                    [ local ]
+                  );
                   etype = basic.tbool;
                   epos = e.epos
                 }
               in
-
-              let ret = match obj.eexpr with
-                | TLocal(v) -> mk_is obj
-                | _ ->
-                  let var = mk_temp gen "is" obj.etype in
-                  let added = { obj with eexpr = TVar(var, Some(obj)); etype = basic.tvoid } in
-                  let local = mk_local var obj.epos in
-                  {
-                    eexpr = TBlock([ added; mk_is local ]);
-                    etype = basic.tbool;
-                    epos = e.epos
-                  }
+              let mk_is local =
+                let eisint = mk_is local (TAbstractDecl (get_ab_from_t basic.tint)) in
+                let eisuint = mk_is local (TAbstractDecl (get_ab_from_t uint)) in
+                mk_paren (mk_or (mk_or eisint eisuint) (mk_isint_call local))
               in
-              ret
-            | TClassDecl{ cl_path = ([], "Int") } ->
-              {
-                eexpr = TCall(
-                  mk_static_field_access_infer runtime_cl "isInt" e.epos [],
-                  [ obj ]
-                );
-                etype = basic.tbool;
-                epos = e.epos
-              }
+              wrap_if_needed obj mk_is
+
+            | TAbstractDecl{ a_path = ([], "UInt") } ->
+              (* uint can be stored in double variable because of anonymous functions, check that case *)
+              let mk_isuint_call local =
+                {
+                  eexpr = TCall(
+                    mk_static_field_access_infer runtime_cl "isUInt" e.epos [],
+                    [ local ]
+                  );
+                  etype = basic.tbool;
+                  epos = e.epos
+                }
+              in
+              let mk_is local =
+                let eisuint = mk_is local (TAbstractDecl (get_ab_from_t uint)) in
+                mk_paren (mk_or eisuint (mk_isuint_call local))
+              in
+              wrap_if_needed obj mk_is
+
             | _ ->
               mk_is obj md
           )
@@ -955,13 +1000,11 @@ let configure gen =
 					let name = field_name f in
 					let propname = String.sub name 4 (String.length name - 4) in
 					if is_extern_prop (gen.greal_type ef.etype) propname then begin
-						write w "(";
 						expr_s w ef;
 						write w ".";
 						write_field w propname;
 						write w " = ";
-						expr_s w v;
-						write w ")"
+						expr_s w v
 					end else
 						do_call w e [v]
         | TField (e, (FStatic(_, cf) | FInstance(_, cf))) when Meta.has Meta.Native cf.cf_meta ->
@@ -2250,7 +2293,17 @@ let configure gen =
   DynamicOperators.configure gen
     (DynamicOperators.abstract_implementation gen (fun e -> match e.eexpr with
       | TBinop (Ast.OpEq, e1, e2)
-      | TBinop (Ast.OpNotEq, e1, e2) -> should_handle_opeq e1.etype or should_handle_opeq e2.etype
+      | TBinop (Ast.OpNotEq, e1, e2) ->
+        (
+          (* dont touch (v == null) and (null == v) comparisons because they are handled by HardNullableSynf later *)
+          match e1.eexpr, e2.eexpr with
+          | TConst(TNull), _ when is_null_expr e2 ->
+            false
+          | _, TConst(TNull) when is_null_expr e1 ->
+            false
+          | _ ->
+            should_handle_opeq e1.etype or should_handle_opeq e2.etype
+        )
       | TBinop (Ast.OpAssignOp Ast.OpAdd, e1, e2) ->
         is_dynamic_expr e1 || is_null_expr e1 || is_string e.etype
       | TBinop (Ast.OpAdd, e1, e2) -> is_dynamic e1.etype or is_dynamic e2.etype or is_type_param e1.etype or is_type_param e2.etype or is_string e1.etype or is_string e2.etype or is_string e.etype
@@ -2413,7 +2466,13 @@ let configure gen =
     Hashtbl.iter (fun name v ->
       res := { eexpr = TConst(TString name); etype = gen.gcon.basic.tstring; epos = Ast.null_pos } :: !res;
 
-      let f = open_out (gen.gcon.file ^ "/src/Resources/" ^ name) in
+      let full_path = gen.gcon.file ^ "/src/Resources/" ^ name in
+      let parts = Str.split_delim (Str.regexp "[\\/]+") full_path in
+      let dir_list = List.rev (List.tl (List.rev parts)) in
+
+      Common.mkdir_recursive "" dir_list;
+
+      let f = open_out full_path in
       output_string f v;
       close_out f
     ) gen.gcon.resources;

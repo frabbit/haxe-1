@@ -7,6 +7,9 @@
 *.exe
 .*.swp
 
+/doc/hxclasses
+/doc/*.swf
+/doc/*.swc
 
 /version.ml
 /haxe
@@ -49,3 +52,4 @@
 build.bat
 tests/unit/compile.php.hxml
 /doc/*.xml
+tests/optimization/testopt.js

@@ -244,6 +244,11 @@ let write_mappings ctx =
 	output_string channel ("\"sources\":[" ^
 		(String.concat "," (List.map (fun s -> "\"" ^ to_url s ^ "\"") sources)) ^
 		"],\n");
+	if Common.defined ctx.com Define.SourceMapContent then begin
+		output_string channel ("\"sourcesContent\":[" ^
+			(String.concat "," (List.map (fun s -> try "\"" ^ Ast.s_escape (Std.input_file ~bin:true s) ^ "\"" with _ -> "null") sources)) ^
+			"],\n");
+	end;
 	output_string channel "\"names\":[],\n";
 	output_string channel "\"mappings\":\"";
 	Buffer.output_buffer channel ctx.smap.mappings;
@@ -1073,7 +1078,9 @@ let generate_type ctx = function
 		if not c.cl_extern then
 			generate_class ctx c
 		else if not ctx.js_flatten && Meta.has Meta.InitPackage c.cl_meta then
-			generate_package_create ctx c.cl_path
+			(match c.cl_path with
+			| ([],_) -> ()
+			| _ -> generate_package_create ctx c.cl_path)
 	| TEnumDecl e when e.e_extern ->
 		()
 	| TEnumDecl e -> generate_enum ctx e
@@ -1112,10 +1119,10 @@ let alloc_ctx com =
 		separator = false;
 		found_expose = false;
 	} in
-	ctx.type_accessor <- (fun t -> 
+	ctx.type_accessor <- (fun t ->
 		let p = t_path t in
 		match t with
-		| TClassDecl { cl_extern = true } 
+		| TClassDecl { cl_extern = true }
 		| TEnumDecl { e_extern = true }
 			-> dot_path p
 		| _ -> s_path ctx p);
