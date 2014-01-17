@@ -734,7 +734,9 @@ and unapply_in t ta reversible =
 			(match !r with
 			| Some t -> loop t
 			| _ -> t, false)
-		| TDynamic _ | TAnon _ | _ ->
+		| TLazy f ->
+			loop (!f())
+		| TDynamic _ | TAnon _ ->
 			t, false
 	in
 	loop t
