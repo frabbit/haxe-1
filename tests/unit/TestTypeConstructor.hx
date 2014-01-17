@@ -169,8 +169,6 @@ class TestTypeConstructor extends Test {
 	public function testMappableWithTypedef() {
 
 		function mapMappable <M,A,B>(m:MappableTD<M,A>, f:A->B):M<B> {
-			// you can currently not apply map again (like m.map(f).map(f)), this is a limitation 
-			// which could be solved with a proper constraint on MappableTD, a solution how they can be applied on of types is  described at the bottom.
 			return m.map(f);
 		}
 		
