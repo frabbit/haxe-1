@@ -621,7 +621,7 @@ module Abstract = struct
 				else 
 					(match tm with
 					| TMono r -> t_dynamic
-					| _ -> assert false)
+					| _ -> t_dynamic)
 			| _ ->
 				try
 					if not (Meta.has Meta.MultiType a.a_meta) then raise Not_found;
