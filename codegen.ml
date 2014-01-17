@@ -614,14 +614,13 @@ module Abstract = struct
 	let get_underlying_type a pl =
 		match a.a_path,pl with
 			| ([],"Of"),[tm;ta] -> 
-				
-				let x, applied = unapply_in tm ta false in
+				let x, applied = unapply_in tm (reduce_of_irreversible ta) false in
 				if applied then 
-					x 
+					follow x 
 				else 
-					(match tm with
-					| TMono r -> t_dynamic
-					| _ -> t_dynamic)
+					(* not reducible Of type like Of<M, Int> or Of<Of<M, A>, B>, fall
+					   back to dynamic *)
+					t_dynamic
 			| _ ->
 				try
 					if not (Meta.has Meta.MultiType a.a_meta) then raise Not_found;
