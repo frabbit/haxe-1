@@ -269,20 +269,22 @@ class TestTypeConstructor extends Test {
 
 		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
 
-		var z:Array<Int> = cast r;
+		
 
-		t(z.length == 1);
-		t(z[0] == 2);
+		t(r.length == 1);
+		t(r[0] == 2);
 		#end
 		
 		var x : BetterFilterable<List<In>, Int> = { var l = new List(); l.add(1); l.add(2); l.add(3); l.add(4); l; }
 
+
 		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
 
-		var z:List<Int> = cast r;
 
-		t(z.length == 1);
-		t(z.first() == 2);
+		
+
+		t(r.length == 1);
+		t(r.first() == 2);
 
 	}
 	
