@@ -747,11 +747,7 @@ and unapply_in_constraints tm ta =
 		| TInst (c,params) -> 
 			let new_kind = match c.cl_kind with 
 			| KTypeParameter tp ->
-				(*Printf.printf "tinst with type params\n";
-				Printf.printf "params %i\n" (List.length tp);*)
 				let unapply t = 
-					(*let st = s_type (print_context()) in
-					Printf.printf "type param %s\n" (st t);*)
 					let t1,applied = unapply_in t (reduce_of_irreversible ta) false in
 					if applied then t1 else t
 				in
