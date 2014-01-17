@@ -1296,6 +1296,16 @@ and type_field ?(resume=false) ctx e i p mode =
 				AKUsing (ef,c,f,e)
 			| MSet, _ ->
 				error "This operation is unsupported" p)
+		with Not_found -> try 
+			match a,pl with
+			| {a_path=[], "Of"},[tm;ta] ->
+				let new_t = unapply_in_constraints tm ta in
+				(match new_t with
+				| TAbstract({ a_path = [], "Of"},_) ->
+					raise Not_found
+				| _ -> 
+					type_field ~resume:true ctx {e with etype = new_t} i p mode)
+			| _ -> raise Not_found
 		with Not_found -> try
 			using_field ctx mode e i p
 		with Not_found -> try

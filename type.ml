@@ -741,6 +741,29 @@ and unapply_in t ta reversible =
 	in
 	loop t
 
+and unapply_in_constraints tm ta = 
+	let rec loop t = 
+		match follow_reversible_ofs t with 
+		| TInst (c,params) -> 
+			let new_kind = match c.cl_kind with 
+			| KTypeParameter tp ->
+				(*Printf.printf "tinst with type params\n";
+				Printf.printf "params %i\n" (List.length tp);*)
+				let unapply t = 
+					(*let st = s_type (print_context()) in
+					Printf.printf "type param %s\n" (st t);*)
+					let t1,applied = unapply_in t (reduce_of_irreversible ta) false in
+					if applied then t1 else t
+				in
+				KTypeParameter (List.map unapply tp)
+			| _ -> c.cl_kind
+			in
+			TInst({c with cl_kind = new_kind}, params)
+		| TLazy f -> loop (!f())
+		| t -> t
+	in
+	loop tm
+
 (* 
 	try to convert/reduce an Of type to a regular type by replacing all In types, 
 	if t is not an Of type (e.g. it is a regular type like String) or it contains no In types like Of<M,A>
