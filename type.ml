@@ -744,6 +744,8 @@ and unapply_in t ta reversible =
 and unapply_in_constraints tm ta = 
 	let rec loop t = 
 		match follow_reversible_ofs t with 
+		| TAbstract ({a_path=[],"Of"},[tm1; ta1]) ->
+			loop (unapply_in_constraints tm1 ta1)
 		| TInst (c,params) -> 
 			let new_kind = match c.cl_kind with 
 			| KTypeParameter tp ->

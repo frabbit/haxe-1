@@ -272,3 +272,66 @@ typedef BetterFilterable<M:BetterFilterable<M,In>, T> = {
   public function filter (f:T->Bool):M<T>;  
 }
 
+
+interface Category<Cat:Category<Cat, In, In>, A, B> 
+{
+  public function create<A,B> (f:A->B):Cat<A,B>;
+
+  public function run (a:A):B;
+
+  public function dot <C>(f:Cat<C, A>):Cat<C, B>;
+  
+  public function next <C>(f:Cat<B, C>):Cat<A, C>;
+
+
+}
+
+interface Arrow<Arr:Arrow<Arr, In, In>,A,B> extends Category<Arr, A, B>
+{
+
+  
+
+  public function first  <C>():Arr<Tup2<A,C>, Tup2<B,C>>;
+  public function second <C>():Arr<Tup2<C,A>, Tup2<C,B>>;
+
+  public function split <A1,B1>(g:Arr<A1, B1>):Arr<Tup2<A,A1>, Tup2<B,B1>>;
+
+}
+
+class FunctionArrow<A,B> implements Arrow<FunctionArrow<In,In>, A, B>
+{
+  var a : A->B;
+
+  public function new (a:A->B) {
+    this.a = a;
+  }
+
+  public function create<A,B> (f:A->B):FunctionArrow<A,B> {
+    return new FunctionArrow(f);
+  }
+
+  public function run (a:A):B 
+  {
+    return this.a(a);
+  }
+
+  public function first  <C>():FunctionArrow<Tup2<A,C>,Tup2<B,C>> {
+    return create(function (t:Tup2<A,C>) return { _1 : this.a(t._1), _2 : t._2 });
+
+  }
+  public function second <C>():FunctionArrow<Tup2<C,A>, Tup2<C,B>> {
+    return create(function (t:Tup2<C,A>) return { _1 : t._1, _2 : this.a(t._2) });
+  }
+
+  public function split <A1,B1>(g:FunctionArrow<A1, B1>):FunctionArrow<Tup2<A,A1>, Tup2<B,B1>> {
+    return first().next(g.second());
+  }
+
+  public function dot <C>(f:FunctionArrow<C, A>):FunctionArrow<C, B> {
+    return create(function (c:C) return a(f.a(c)));
+  }
+  
+  public function next <C>(f:FunctionArrow<B, C>):FunctionArrow<A, C> {
+    return create(function (c:A) return f.a(a(c)));
+  }
+}

@@ -296,9 +296,32 @@ class TestTypeConstructor extends Test {
 		var x = passTwo(e);
 		t(e.match(Left(1)));
 
-
-		
 	}
+
+	public function testArrows () 
+	{
+		
+		function arr <A,B>(f:A->B) return new FunctionArrow(f);
+		var a = arr(function (x) return "foo"+Std.string(x));
+		var r = a.dot(arr(function (y) return y+2));
+		t(r.run(1) == "foo3");
+	}
+	
+	static function withArrow <Arr:(Arrow<Arr,In,In>)> (a:Arr<Int,String>):Int->String
+	{
+		return a.dot(a.create(function (y) return y+2))
+			.dot(a.create(function (y) return y+2)).run;
+	}
+
+	public function testTypeConstructorWithTwoParametersAndConstraint () 
+	{
+		function arr <A,B>(f:A->B) return new FunctionArrow(f);
+		var a = arr(function (x) return "foo"+Std.string(x));
+		var r = withArrow(a);
+
+		t(r(1) == "foo5");
+	}
+	
 	
 
 }
