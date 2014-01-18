@@ -1257,16 +1257,13 @@ and unify a b =
 			try to reduce both Of types first, first try reversible reduction, 
 			Of<In->A, B> and Of<B->In, A>.
 		*)
-		(match reduce_of_reversible a, reduce_of_reversible b with
-		| _, TAbstract({a_path = [],"Of"},[_;_])
-		| TAbstract({a_path = [],"Of"},[_;_]), _ -> 
-			(match reduce_of_irreversible a, reduce_of_irreversible b with
+		
+		(match reduce_of_irreversible a, reduce_of_irreversible b with
 			| _, TAbstract({a_path = [],"Of"},[_;_])
 			| TAbstract({a_path = [],"Of"},[_;_]), _ -> 
 				unify tm1 tm2;
 				unify ta1 ta2;
 			| ta,tb -> unify ta tb)
-		| ta,tb -> unify ta tb)
 	| TAbstract({a_path = [],"Of"},[tm;ta]),b ->
 		(* 
 			try to unify with the reduced Of type first if a can be reduced.
