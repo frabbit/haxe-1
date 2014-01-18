@@ -25,7 +25,6 @@ open Type
 open As3
 open As3hl
 open Common
-open Codegen
 
 type read = Read
 type write = Unused__ | Write
@@ -207,7 +206,7 @@ let rec follow_basic t =
 	| TType (t,tl) ->
 		follow_basic (apply_params t.t_types tl t.t_type)
 	| TAbstract (a,pl) when a.a_impl <> None ->
-		follow_basic (Abstract.get_underlying_type a pl)
+		follow_basic (Codegen.Abstract.get_underlying_type a pl)
 	| _ -> t
 
 let rec type_id ctx t =

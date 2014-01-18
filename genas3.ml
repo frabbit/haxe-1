@@ -22,7 +22,6 @@
 
 open Type
 open Common
-open Codegen
 
 type context_infos = {
 	com : Common.context;
@@ -214,7 +213,7 @@ let rec type_str ctx t p =
 	| TEnum _ | TInst _ when List.memq t ctx.local_types ->
 		"*"
 	| TAbstract ({ a_impl = Some _ } as a,pl) ->
-		type_str ctx (Abstract.get_underlying_type a pl) p
+		type_str ctx (Codegen.Abstract.get_underlying_type a pl) p
 	| TAbstract (a,_) ->
 		(match a.a_path with
 		| [], "Void" -> "void"
