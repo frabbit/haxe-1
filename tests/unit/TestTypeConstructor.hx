@@ -338,6 +338,43 @@ class TestTypeConstructor extends Test {
 		t(r(1) == "foo5");
 	}
 
+	public function testUnification () {
+		var x1 : FourTypeParameters<Int, String, Float, Array<Int>> = null;
+		var x2 : Of<Of<Of<Of<FourTypeParameters<In, In, In, In>, Int>, String>, Float>, Array<Int>> = null;
+		var x3 : Of<Of<Of<FourTypeParameters<Int, In, In, In>, String>, Float>, Array<Int>> = null;
+		var x4 : Of<Of<Of<FourTypeParameters<In, String, In, In>, Int>, Float>, Array<Int>> = null;
+		var x5 : Of<Of<Of<FourTypeParameters<In, In, Float, In>, Int>, String>, Array<Int>> = null;
+		var x6 : Of<Of<Of<FourTypeParameters<In, In, In, Array<Int>>, Int>, String>, Float> = null;
+		var x7 : Of<Of<FourTypeParameters<In, In, Float, Array<Int>>, Int>, String> = null;
+		var x8 : Of<Of<FourTypeParameters<In, String, In, Array<Int>>, Int>, Float> = null;
+		var x9 : Of<Of<FourTypeParameters<Int, In, In, Array<Int>>, String>, Float> = null;
+
+		var a1 = [x1,x2,x3,x4,x5,x6,x7,x8,x9];
+		var a2 = [x2,x3,x4,x5,x6,x7,x8,x9];
+
+		/*
+		this doesn't work currently, i guess we have to check this in unify types
+		because we first check type_eq which does no follow (i guess there is a reason why) and after following (pattern matching)
+		we don't check if the followed types are equal. Where is the best place to add this check, i guess it's type_eq? but does it 
+		have side effects?
+		
+		var a3 = a1.concat(a2);
+		var a3:Array<FourTypeParameters<Int, String, Float, Array<Int>>> = a2;
+		*/
+
+		x1 = x2; x1 = x3; x1 = x4; x1 = x5; x1 = x6; x1 = x7; x1 = x8; x1 = x9;
+		x2 = x1; x2 = x3; x2 = x4; x2 = x5; x2 = x6; x2 = x7; x2 = x8; x2 = x9; 
+		x3 = x1; x3 = x2; x3 = x4; x3 = x5; x3 = x6; x3 = x7; x3 = x8; x3 = x9;
+		x4 = x1; x4 = x2; x4 = x3; x4 = x5; x4 = x6; x4 = x7; x4 = x8; x4 = x9;
+		x5 = x1; x5 = x2; x5 = x3; x5 = x4; x5 = x6; x5 = x7; x5 = x8; x5 = x9;
+		x6 = x1; x6 = x2; x6 = x3; x6 = x4; x6 = x5; x6 = x7; x6 = x8; x6 = x9;
+		x7 = x1; x7 = x2; x7 = x3; x7 = x4; x7 = x5; x7 = x6; x7 = x8; x7 = x9;
+		x8 = x1; x8 = x2; x8 = x3; x8 = x4; x8 = x5; x8 = x6; x8 = x7; x8 = x9;
+		x9 = x1; x9 = x2; x9 = x3; x9 = x4; x9 = x5; x9 = x6; x9 = x7; x9 = x8;
+		
+
+	}
+
 }
 
 typedef FourTypeParameters<A,B,C,D> = {
