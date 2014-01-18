@@ -1254,10 +1254,11 @@ and unify a b =
 		| Some t -> unify a t)
 	| TAbstract({a_path = [],"Of"},[tm1;ta1]),TAbstract({a_path = [],"Of"},[tm2;ta2]) ->
 		(* 
-			try to reduce both Of types first, first try reversible reduction, 
-			Of<In->A, B> and Of<B->In, A>.
+			unify the reduced Of types
+			example:
+			unify Of<In->A, B> Of<B->In, A> becomes
+			unify B->A B->A
 		*)
-		
 		(match reduce_of_irreversible a, reduce_of_irreversible b with
 			| _, TAbstract({a_path = [],"Of"},[_;_])
 			| TAbstract({a_path = [],"Of"},[_;_]), _ -> 
@@ -1266,13 +1267,15 @@ and unify a b =
 			| ta,tb -> unify ta tb)
 	| TAbstract({a_path = [],"Of"},[tm;ta]),b ->
 		(* 
-			try to unify with the reduced Of type first if a can be reduced.
-			This allows to unify types like Of<In->B, A> with A->B.
+			try to unify with the reduced Of type first
+			example:
+			unify Of<In->B, A> A->B becomes
+			unify A->B A->B
 		*)
 		let t = reduce_of_irreversible a in
 		if is_of_type t then unify_of tm ta b else unify t b
 	| a,TAbstract({a_path = [],"Of"},[tm;ta]) ->
-		(* first reduce the of type and unify with them, same reason as in the case above. *)
+		(* first reduce the Of type, same as in the case above. *)
 		let t = reduce_of_irreversible b in
 		if is_of_type t then unify_of tm ta a else unify a t
 	| TType (t,tl) , _ ->
