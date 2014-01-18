@@ -1299,12 +1299,8 @@ and type_field ?(resume=false) ctx e i p mode =
 		with Not_found -> try 
 			match a,pl with
 			| {a_path=[], "Of"},[tm;ta] ->
-				let new_t = unapply_in_constraints tm ta in
-				(match new_t with
-				| TAbstract({ a_path = [], "Of"},_) ->
-					raise Not_found
-				| _ -> 
-					type_field ~resume:true ctx {e with etype = new_t} i p mode)
+				let t = unapply_in_constraints tm ta in
+				if is_of_type t then raise Not_found else type_field ~resume:true ctx {e with etype = t} i p mode
 			| _ -> raise Not_found
 		with Not_found -> try
 			using_field ctx mode e i p
@@ -3097,12 +3093,8 @@ and type_expr ctx (e,p) (with_type:with_type) =
 				in
 				loop c params
 			| TAbstract({a_path=[], "Of"},[tm;ta]) ->
-				let new_t = unapply_in_constraints tm ta in
-				(match new_t with
-				| TAbstract({ a_path = [], "Of"},_) ->
-					PMap.empty
-				| t -> 
-					get_fields t)
+				let t = unapply_in_constraints tm ta in
+				if is_of_type t then PMap.empty else get_fields t
 			| TAbstract({a_impl = Some c} as a,pl) ->
 				if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc c;
 				ctx.m.module_using <- c :: ctx.m.module_using;
@@ -3338,9 +3330,8 @@ and build_call ctx acc el (with_type:with_type) p =
 			let t = follow (field_type ctx cl [] ef p) in
 
 			let etype_follow = match t with
-			| TFun ((_,_,t1) :: _, _) -> (match follow_reversible_ofs t1 with
-			| TAbstract({a_path=[], "Of"}, _ ) -> follow_reversible_ofs
-			| _ -> follow)
+			| TFun ((_,_,t1) :: _, _) -> 
+				if is_of_type (follow_reversible_ofs t1) then follow_reversible_ofs else follow
 			| _ -> assert false
 			in
 			(* for abstracts we have to apply their parameters to the static function *)
