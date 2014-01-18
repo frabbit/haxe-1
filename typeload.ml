@@ -355,8 +355,20 @@ let rec load_instance ctx t p allow_no_params =
 	try
 		if t.tpackage <> [] || t.tsub <> None then raise Not_found;
 		let pt = List.assoc t.tname ctx.type_params in
-		if t.tparams <> [] then error ("Class type parameter " ^ t.tname ^ " can't have parameters") p;
-		pt
+		begin match t.tparams with
+			| [] -> pt
+			| [TPType (CTPath {tpackage=[]; tname="StdTypes"; tsub=Some("In")})] -> pt
+			| [tp1; tp2] ->
+				let t = { t with tparams = []} in
+				let t_of_inner = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath t); tp1]} in
+				let t_of_outer = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath t_of_inner); tp2]} in
+				load_instance ctx t_of_outer p allow_no_params	
+			| [tp] ->
+				let t = { t with tparams = []} in
+				let t_of = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath t); tp]} in
+				load_instance ctx t_of p allow_no_params
+			| _ -> error "Only up to two type parameters are currently supported" p
+		end
 	with Not_found ->
 		let mt = load_type_def ctx p t in
 		let is_generic = match mt with TClassDecl {cl_kind = KGeneric} -> true | _ -> false in
@@ -372,7 +384,9 @@ let rec load_instance ctx t p allow_no_params =
 				| _ -> assert false
 			) types;
 			f (!pl)
-		end else if path = ([],"Dynamic") then
+		end else if path = ([],"In") then
+			!t_in
+		else if path = ([],"Dynamic") then
 			match t.tparams with
 			| [] -> t_dynamic
 			| [TPType t] -> TDynamic (load_complex_type ctx p t)
@@ -1402,6 +1416,7 @@ let build_module_def ctx mt meta fvars context_init fbuild =
 			let old = ctx.g.get_build_infos in
 			ctx.g.get_build_infos <- (fun() -> Some (mt, fvars()));
 			context_init();
+			flush_pass ctx PBuildClass "field typing";
 			let r = try apply_macro ctx MBuild s el p with e -> ctx.g.get_build_infos <- old; raise e in
 			ctx.g.get_build_infos <- old;
 			(match r with

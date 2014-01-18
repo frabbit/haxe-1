@@ -612,13 +612,23 @@ module Abstract = struct
 	let cast_stack = ref []
 
 	let get_underlying_type a pl =
-		try
-			if not (Meta.has Meta.MultiType a.a_meta) then raise Not_found;
-			let m = mk_mono() in
-			let _ = find_to a pl m in
-			follow m
-		with Not_found ->
-			apply_params a.a_types pl a.a_this
+		match a.a_path,pl with
+			| ([],"Of"),[tm;ta] -> 
+				let x, applied = unapply_in tm (reduce_of_irreversible ta) false in
+				if applied then 
+					follow x 
+				else 
+					(* not reducible Of type like Of<M, Int> or Of<Of<M, A>, B>, fall
+					   back to dynamic *)
+					t_dynamic
+			| _ ->
+				try
+					if not (Meta.has Meta.MultiType a.a_meta) then raise Not_found;
+					let m = mk_mono() in
+					let _ = find_to a pl m in
+					follow m
+				with Not_found ->
+					apply_params a.a_types pl a.a_this
 
 	let make_static_call ctx c cf a pl args t p =
 		let ta = TAnon { a_fields = c.cl_statics; a_status = ref (Statics c) } in

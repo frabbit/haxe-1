@@ -1296,6 +1296,16 @@ and type_field ?(resume=false) ctx e i p mode =
 				AKUsing (ef,c,f,e)
 			| MSet, _ ->
 				error "This operation is unsupported" p)
+		with Not_found -> try 
+			match a,pl with
+			| {a_path=[], "Of"},[tm;ta] ->
+				let new_t = unapply_in_constraints tm ta in
+				(match new_t with
+				| TAbstract({ a_path = [], "Of"},_) ->
+					raise Not_found
+				| _ -> 
+					type_field ~resume:true ctx {e with etype = new_t} i p mode)
+			| _ -> raise Not_found
 		with Not_found -> try
 			using_field ctx mode e i p
 		with Not_found -> try
@@ -3086,13 +3096,20 @@ and type_expr ctx (e,p) (with_type:with_type) =
 					PMap.map (fun f -> { f with cf_type = apply_params c.cl_types params (opt_type f.cf_type); cf_public = true; }) m
 				in
 				loop c params
+			| TAbstract({a_path=[], "Of"},[tm;ta]) ->
+				let new_t = unapply_in_constraints tm ta in
+				(match new_t with
+				| TAbstract({ a_path = [], "Of"},_) ->
+					PMap.empty
+				| t -> 
+					get_fields t)
 			| TAbstract({a_impl = Some c} as a,pl) ->
 				if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc c;
 				ctx.m.module_using <- c :: ctx.m.module_using;
 				PMap.fold (fun f acc ->
 					if f.cf_name <> "_new" && can_access ctx c f true && Meta.has Meta.Impl f.cf_meta && not (Meta.has Meta.Enum f.cf_meta) then begin
 						let f = prepare_using_field f in
-						let t = apply_params a.a_types pl (follow f.cf_type) in
+						let t = apply_params a.a_types pl (follow_reversible_ofs f.cf_type) in
 						PMap.add f.cf_name { f with cf_public = true; cf_type = opt_type t } acc
 					end else
 						acc
@@ -3319,8 +3336,15 @@ and build_call ctx acc el (with_type:with_type) p =
 			e
 		| _ ->
 			let t = follow (field_type ctx cl [] ef p) in
+
+			let etype_follow = match t with
+			| TFun ((_,_,t1) :: _, _) -> (match follow_reversible_ofs t1 with
+			| TAbstract({a_path=[], "Of"}, _ ) -> follow_reversible_ofs
+			| _ -> follow)
+			| _ -> assert false
+			in
 			(* for abstracts we have to apply their parameters to the static function *)
-			let t,tthis = match follow eparam.etype with
+			let t,tthis = match etype_follow eparam.etype with
 				| TAbstract(a,tl) when Meta.has Meta.Impl ef.cf_meta -> apply_params a.a_types tl t,apply_params a.a_types tl a.a_this
 				| te -> t,te
 			in
@@ -3376,7 +3400,7 @@ and build_call ctx acc el (with_type:with_type) p =
 		ignore(acc_get ctx acc p);
 		assert false
 	| AKExpr e ->
-		let el , t, e = (match follow e.etype with
+		let rec loop t = match follow t with
 		| TFun (args,r) ->
 			let fopts = (match acc with
 				| AKExpr {eexpr = TField(e, (FStatic (_,f) | FInstance(_,f) | FAnon(f)))} ->
@@ -3390,6 +3414,12 @@ and build_call ctx acc el (with_type:with_type) p =
 				| _ ->
 					let el, tfunc = unify_call_params ctx fopts el args r p false in
 					el,(match tfunc with TFun(_,r) -> r | _ -> assert false), {e with etype = tfunc})
+		| TAbstract({a_path=[],"Of"},[tm;tr]) ->
+			let x, applied = unapply_in tm tr false in
+			if applied then 
+				loop(x) 
+			else 
+				error (s_type (print_context()) e.etype ^ " cannot be called") e.epos
 		| TMono _ ->
 			let t = mk_mono() in
 			let el = List.map (fun e -> type_expr ctx e Value) el in
@@ -3403,7 +3433,8 @@ and build_call ctx acc el (with_type:with_type) p =
 				mk_mono()
 			else
 				error (s_type (print_context()) e.etype ^ " cannot be called") e.epos), e
-		) in
+		in
+		let el , t, e = loop e.etype in
 		mk (TCall (e,el)) t p
 
 (* ---------------------------------------------------------------------- *)
@@ -4220,6 +4251,7 @@ let rec create com =
 			| "Float" -> ctx.t.tfloat <- TAbstract (a,[]);
 			| "Int" -> ctx.t.tint <- TAbstract (a,[])
 			| "Bool" -> ctx.t.tbool <- TAbstract (a,[])
+			| "In" when !t_in == t_dynamic -> t_in := TAbstract(a,[])
 			| _ -> ());
 		| TEnumDecl e ->
 			()
