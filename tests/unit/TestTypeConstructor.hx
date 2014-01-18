@@ -290,12 +290,28 @@ class TestTypeConstructor extends Test {
 		return m;
 	}
 
-	public function testTypeConstructorWithTwoParameters () {
+	public function testTypeConstructorWithTwoTypeParameters () {
 		
 		var e = Left(1);
 		var x = passTwo(e);
 		t(e.match(Left(1)));
 
+	}
+
+	static function passFour <M,A,B,C,D> (m:M<A,B,C,D>):M<A,B,C,D> {
+		return m;
+	}
+
+	public function testTypeConstructorWithMoreThanTwoTypeParameters () {
+		var e:FourTypeParameters<Int, String, Float, Array<Int>> = {
+			a : 1,
+			b : "a",
+			c : 1.1,
+			d : [1]
+		}
+		
+		var x = passFour(e);
+		t(x == e);
 	}
 
 	public function testArrows () 
@@ -306,7 +322,7 @@ class TestTypeConstructor extends Test {
 		var r = a.dot(arr(function (y) return y+2));
 		t(r.run(1) == "foo3");
 	}
-	
+
 	static function withArrow <Arr:(Arrow<Arr,In,In>)> (a:Arr<Int,String>):Int->String
 	{
 		return a.dot(a.create(function (y) return y+2))
@@ -321,7 +337,12 @@ class TestTypeConstructor extends Test {
 
 		t(r(1) == "foo5");
 	}
-	
-	
 
+}
+
+typedef FourTypeParameters<A,B,C,D> = {
+	var a:A;
+	var b:B;
+	var c:C;
+	var d:D;
 }
