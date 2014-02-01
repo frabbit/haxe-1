@@ -1273,7 +1273,7 @@ and unify_to_field ab tl b (t,cfo) =
 	b
 	end
 
-and type_eq_with_variance  t1 t2 err eq_opt = 
+and unify_with_variance  t1 t2 err eq_opt = 
 	try
 		type_eq eq_opt t1 t2
 	with Unify_error l ->
@@ -1302,7 +1302,7 @@ and type_eq_with_variance  t1 t2 err eq_opt =
 				let unify_field f2 { cf_type = t2 } = 
 					try 
 						let { cf_type = t1 } = PMap.find f2 a.a_fields in
-						type_eq_with_variance t1 t2 (cannot_unify ft1 ft2) EqRightDynamic
+						unify_with_variance t1 t2 (cannot_unify ft1 ft2) EqRightDynamic
 					with Not_found ->
 						raise (Unify_error l)
 				in
@@ -1315,7 +1315,7 @@ and type_eq_with_variance  t1 t2 err eq_opt =
 			error (err :: (Invariant_parameter (t1,t2)) :: l))
 
 and unify_types a b tl1 tl2 =
-	List.iter2 (fun t1 t2 -> type_eq_with_variance t1 t2 (cannot_unify a b) EqRightDynamic) tl1 tl2
+	List.iter2 (fun t1 t2 -> unify_with_variance t1 t2 (cannot_unify a b) EqRightDynamic) tl1 tl2
 	
 	
 		
@@ -1328,7 +1328,7 @@ and unify_with_access t1 f2 =
 	(* read only *)
 	| Method MethNormal | Method MethInline | Var { v_write = AccNo } | Var { v_write = AccNever } -> unify t1 f2.cf_type
 	(* read/write *)
-	| _ -> type_eq_with_variance t1 f2.cf_type (cannot_unify t1 f2.cf_type) EqBothDynamic
+	| _ -> unify_with_variance t1 f2.cf_type (cannot_unify t1 f2.cf_type) EqBothDynamic
 
 let iter_dt f dt = match dt with
 	| DTBind(_,dt) -> f dt
