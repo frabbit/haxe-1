@@ -636,6 +636,17 @@ and follow_reversible_ofs t =
 		follow_reversible_ofs (!f())
 	| _ -> t
 
+and follow_basic t =
+	match t with
+	| TMono r ->
+		(match !r with
+		| Some t -> follow_basic t
+		| _ -> t)
+	| TLazy f ->
+		follow_basic (!f())
+	| TType (t,tl) ->
+		follow_basic (apply_params t.t_types tl t.t_type)
+	| _ -> t
 
 and t_in = ref t_dynamic
 
@@ -1042,6 +1053,8 @@ let rec type_eq param a b =
 			Unify_error l -> error (cannot_unify a b :: l))
 	| TDynamic a , TDynamic b ->
 		type_eq param a b
+	(* | _ , TAbstract ({a_path=[],"In"},_) when param = EqRightDynamic || param = EqBothDynamic -> () *)
+	(* | TAbstract ({a_path=[],"In"},_), _ when param = EqBothDynamic -> () *)
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) ->
 		if a1 != a2 && not (param = EqCoreType && a1.a_path = a2.a_path) then error [cannot_unify a b];
 		List.iter2 (type_eq param) tl1 tl2
@@ -1070,8 +1083,9 @@ let rec type_eq param a b =
 			) a2.a_fields;
 		with
 			Unify_error l -> error (cannot_unify a b :: l))
+
 	| _ , _ ->
-		if b == t_dynamic && (param = EqRightDynamic || param = EqBothDynamic) then
+		if (b == t_dynamic) && (param = EqRightDynamic || param = EqBothDynamic) then
 			()
 		else if a == t_dynamic && param = EqBothDynamic then
 			()
@@ -1202,7 +1216,8 @@ let rec unify_of tm ta b =
 				else
 					t,!t_in :: tl
 			| [] ->
-				error [Unify_custom "Invalid Of-unification"]
+				(* let s_type = s_type print_context() in *)
+				error [Unify_custom "Invalid Of-unification cannot unify "]
 		in
 		let t, tl = loop (tl) in
 		t, tl
@@ -1262,6 +1277,8 @@ and unify a b =
 		(match !t with
 		| None -> if not (link t b a) then error [cannot_unify a b]
 		| Some t -> unify a t)
+	| TAbstract ({a_path=[],"In"},_) , _ -> ()
+	| _, TAbstract ({a_path=[],"In"},_) -> ()
 	| TAbstract({a_path = [],"Of"},[tm1;ta1]),TAbstract({a_path = [],"Of"},[tm2;ta2]) ->
 		(* 
 			unify the reduced Of types
@@ -1270,6 +1287,10 @@ and unify a b =
 			unify B->A B->A
 		*)
 		(match reduce_of_irreversible a, reduce_of_irreversible b with
+			
+			| TAbstract({a_path = [],"Of"},[tm1;ta1]), TAbstract({a_path = [],"Of"},[tm2;ta2]) ->
+				unify tm1 tm2;
+				unify ta1 ta2;
 			| _, TAbstract({a_path = [],"Of"},[_;_])
 			| TAbstract({a_path = [],"Of"},[_;_]), _ -> 
 				unify tm1 tm2;
@@ -1282,12 +1303,41 @@ and unify a b =
 			unify Of<In->B, A> A->B becomes
 			unify A->B A->B
 		*)
-		let t = reduce_of_irreversible a in
-		if is_of_type t then unify_of tm ta b else unify t b
+		(let t = reduce_of_irreversible a in
+		(*let s_type = s_type (print_context()) in
+		Printf.printf "2%s: %s => %s => %s\n" (if (is_of_type t) then "isOf" else "noOf") (s_type t) (s_type b) (s_type (follow_basic b));*)
+		if is_of_type t 
+			then 
+				try
+					unify_of tm ta b 
+				with Unify_error err ->
+					(let b = follow_basic b in
+					if is_of_type b then
+						try 
+							unify t b
+						with Unify_error _ ->
+							raise (Unify_error err)
+					else 
+						raise (Unify_error err))
+			else 
+				unify t b)
 	| a,TAbstract({a_path = [],"Of"},[tm;ta]) ->
 		(* first reduce the Of type, same as in the case above. *)
 		let t = reduce_of_irreversible b in
-		if is_of_type t then unify_of tm ta a else unify a t
+		if is_of_type t 
+			then 
+				try
+					unify_of tm ta a 
+				with Unify_error err ->
+					(let a = follow_basic a in 
+					if is_of_type a then
+						try 
+							unify a t 
+						with Unify_error _ ->
+							raise (Unify_error err)
+					else 
+						raise (Unify_error err))
+			else unify a t
 	| TType (t,tl) , _ ->
 		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
 			try
@@ -1334,7 +1384,7 @@ and unify a b =
 				loop cs (List.map (apply_params c.cl_types tl) tls)
 			) c.cl_implements
 			|| (match c.cl_kind with
-			| KTypeParameter pl -> List.exists (fun t -> match follow t with TInst (cs,tls) -> loop cs (List.map (apply_params c.cl_types tl) tls) | _ -> false) pl
+			| KTypeParameter pl -> List.exists (fun t -> match follow t with TInst (cs,tls) -> loop cs (List.map (fun t -> apply_params c.cl_types tl t) tls) | _ -> false) pl
 			| _ -> false)
 		in
 		if not (loop c1 tl1) then error [cannot_unify a b]
@@ -1442,6 +1492,7 @@ and unify a b =
 		()
 	| TFun _, TAbstract ({ a_path = ["haxe"],"Function" },[]) ->
 		()
+
 	| TDynamic t , _ ->
 		if t == a then
 			()
