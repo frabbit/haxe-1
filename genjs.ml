@@ -89,12 +89,12 @@ let s_path ctx = if ctx.js_flatten then flat_path else dot_path
 let kwds =
 	let h = Hashtbl.create 0 in
 	List.iter (fun s -> Hashtbl.add h s ()) [
-		(* JS reserved words: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Reserved_Words *)
-		"break"; "case"; "catch"; "class"; "const"; "continue"; "debugger"; "default"; "delete";
-		"do"; "else"; "enum"; "export"; "extends"; "finally"; "for"; "function"; "if"; "implements";
-		"import"; "in"; "instanceof"; "interface"; "let"; "new"; "package"; "private"; "protected";
-		"public"; "return"; "static"; "super"; "switch"; "this"; "throw"; "try"; "typeof"; "var";
-		"void"; "while"; "with"; "yield";
+		"abstract"; "as"; "boolean"; "break"; "byte"; "case"; "catch"; "char"; "class"; "continue"; "const";
+		"debugger"; "default"; "delete"; "do"; "double"; "else"; "enum"; "export"; "extends"; "false"; "final";
+		"finally"; "float"; "for"; "function"; "goto"; "if"; "implements"; "import"; "in"; "instanceof"; "int";
+		"interface"; "is"; "let"; "long"; "namespace"; "native"; "new"; "null"; "package"; "private"; "protected";
+		"public"; "return"; "short"; "static"; "super"; "switch"; "synchronized"; "this"; "throw"; "throws";
+		"transient"; "true"; "try"; "typeof"; "use"; "var"; "void"; "volatile"; "while"; "with"; "yield"
 	];
 	h
 
@@ -103,7 +103,11 @@ let kwds =
 let kwds2 =
 	let h = Hashtbl.create 0 in
 	List.iter (fun s -> Hashtbl.add h s ()) [
-		"console"; "window";
+		(* https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects *)
+		"Infinity"; "NaN"; "decodeURI"; "decodeURIComponent"; "encodeURI"; "encodeURIComponent";
+		"escape"; "eval"; "isFinite"; "isNaN"; "parseFloat"; "parseInt"; "undefined"; "unescape";
+
+		"JSON"; "Number"; "Object"; "console"; "window";
 	];
 	h
 
@@ -404,6 +408,24 @@ let rec gen_call ctx e el in_value =
 		print ctx " instanceof ";
 		gen_value ctx t;
 		spr ctx ")";
+	| TLocal { v_name = "__typeof__" },  [o] ->
+		spr ctx "typeof(";
+		gen_value ctx o;
+		spr ctx ")";
+	| TLocal { v_name = "__strict_eq__" } , [x;y] ->
+		(* add extra parenthesis here because of operator precedence *)
+		spr ctx "((";
+		gen_value ctx x;
+		spr ctx ") === ";
+		gen_value ctx y;
+		spr ctx ")";
+	| TLocal { v_name = "__strict_neq__" } , [x;y] ->
+		(* add extra parenthesis here because of operator precedence *)
+		spr ctx "((";
+		gen_value ctx x;
+		spr ctx ") !== ";
+		gen_value ctx y;
+		spr ctx ")";
 	| TLocal ({v_name = "__define_feature__"}), [_;e] ->
 		gen_expr ctx e
 	| TLocal { v_name = "__feature__" }, { eexpr = TConst (TString f) } :: eif :: eelse ->
@@ -517,7 +539,7 @@ and gen_expr ctx e =
 	| TBlock el ->
 		print ctx "{";
 		let bend = open_block ctx in
-		List.iter (gen_block ctx) el;
+		List.iter (gen_block_element ctx) el;
 		bend();
 		newline ctx;
 		print ctx "}";
@@ -611,7 +633,7 @@ and gen_expr ctx e =
 		let bend = open_block ctx in
 		newline ctx;
 		print ctx "var %s = %s.next()" (ident v.v_name) it;
-		gen_block ctx e;
+		gen_block_element ctx e;
 		bend();
 		newline ctx;
 		spr ctx "}";
@@ -651,7 +673,7 @@ and gen_expr ctx e =
 					newline ctx;
 					print ctx "var %s = %s" v.v_name vname;
 				end;
-				gen_block ctx e;
+				gen_block_element ctx e;
 				if !else_block then begin
 					newline ctx;
 					print ctx "}";
@@ -666,7 +688,7 @@ and gen_expr ctx e =
 					newline ctx;
 					print ctx "var %s = %s" v.v_name vname;
 				end;
-				gen_block ctx e;
+				gen_block_element ctx e;
 				bend();
 				newline ctx;
 				spr ctx "} else ";
@@ -693,7 +715,7 @@ and gen_expr ctx e =
 					spr ctx ":"
 			) el;
 			let bend = open_block ctx in
-			gen_block ctx e2;
+			gen_block_element ctx e2;
 			if not (has_return e2) then begin
 				newline ctx;
 				print ctx "break";
@@ -706,7 +728,7 @@ and gen_expr ctx e =
 		| Some e ->
 			spr ctx "default:";
 			let bend = open_block ctx in
-			gen_block ctx e;
+			gen_block_element ctx e;
 			bend();
 			newline ctx;
 		);
@@ -721,17 +743,19 @@ and gen_expr ctx e =
 		spr ctx ")"
 
 
-and gen_block ?(after=false) ctx e =
+and gen_block_element ?(after=false) ctx e =
 	match e.eexpr with
 	| TBlock el ->
-		List.iter (gen_block ~after ctx) el
+		List.iter (gen_block_element ~after ctx) el
 	| TCall ({ eexpr = TLocal { v_name = "__feature__" } }, { eexpr = TConst (TString f) } :: eif :: eelse) ->
 		if has_feature ctx f then
-			gen_block ~after ctx eif
+			gen_block_element ~after ctx eif
 		else (match eelse with
 			| [] -> ()
-			| [e] -> gen_block ~after ctx e
+			| [e] -> gen_block_element ~after ctx e
 			| _ -> assert false)
+	| TFunction _ ->
+		gen_block_element ~after ctx (mk (TParenthesis e) e.etype e.epos)
 	| _ ->
 		if not after then newline ctx;
 		gen_expr ctx e;
@@ -1250,7 +1274,7 @@ let generate com =
 		print ctx "function $bind(o,m) { if( m == null ) return null; if( m.__id__ == null ) m.__id__ = $fid++; var f; if( o.hx__closures__ == null ) o.hx__closures__ = {}; else f = o.hx__closures__[m.__id__]; if( f == null ) { f = function(){ return f.method.apply(f.scope, arguments); }; f.scope = o; f.method = m; o.hx__closures__[m.__id__] = f; } return f; }";
 		newline ctx;
 	end;
-	List.iter (gen_block ~after:true ctx) (List.rev ctx.inits);
+	List.iter (gen_block_element ~after:true ctx) (List.rev ctx.inits);
 	List.iter (generate_static ctx) (List.rev ctx.statics);
 	(match com.main with
 	| None -> ()

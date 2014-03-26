@@ -96,7 +96,7 @@ class Template {
 
 		If `macros` has a field 'name', all occurrences of $$name(args) are
 		replaced with the result of calling that field. The first argument is
-		always the the resolve() method, followed by the given arguments.
+		always the resolve() method, followed by the given arguments.
 		If `macros` has no such field, the result is unspecified.
 
 		If `context` is null, the result is unspecified. If `macros` is null,
@@ -325,7 +325,7 @@ class Template {
 			default: throw "Unknown operation "+p.p;
 			}
 		case "!":
-			var e = makeExpr(l);
+			var e : Void->Dynamic = makeExpr(l);
 			return function() {
 				var v : Dynamic = e();
 				return (v == null || v == false);
