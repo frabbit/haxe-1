@@ -71,6 +71,8 @@ let handle_side_effects com gen_temp e =
 		match e.eexpr with
 		| TBlock el ->
 			{e with eexpr = TBlock (block loop el)}
+		| TCall({eexpr = TLocal v},_) when Meta.has Meta.Unbound v.v_meta ->
+			e
 		| TCall(e1,el) ->
 			let e1 = loop e1 in
 			{e with eexpr = TCall(e1,ordered_list el)}
@@ -90,6 +92,15 @@ let handle_side_effects com gen_temp e =
 				e1,mk (TConst (TBool(false))) com.basic.tbool e.epos
 			in
 			mk (TIf(e_if,e_then,Some e_else)) com.basic.tbool e.epos
+		| TBinop((OpAssign | OpAssignOp _) as op,{eexpr = TArray(e11,e12)},e2) ->
+			let e1 = match ordered_list [e11;e12] with
+				| [e1;e2] ->
+					{e with eexpr = TArray(e1,e2)}
+				| _ ->
+					assert false
+			in
+			let e2 = loop e2 in
+			{e with eexpr = TBinop(op,e1,e2)}
  		| TBinop(op,e1,e2) ->
 			begin match ordered_list [e1;e2] with
 				| [e1;e2] ->
@@ -104,42 +115,28 @@ let handle_side_effects com gen_temp e =
 				| _ ->
 					assert false
 			end
+		| TWhile(e1,e2,flag) when (match e1.eexpr with TParenthesis {eexpr = TConst(TBool true)} -> false | _ -> true) ->
+			let p = e.epos in
+			let e_break = mk TBreak t_dynamic p in
+			let e_not = mk (TUnop(Not,Prefix,Codegen.mk_parent e1)) e1.etype e1.epos in
+			let e_if = mk (TIf(e_not,e_break,None)) com.basic.tvoid p in
+			let e_block = if flag = NormalWhile then Codegen.concat e_if e2 else Codegen.concat e2 e_if in
+			let e_true = mk (TConst (TBool true)) com.basic.tbool p in
+			let e = mk (TWhile(Codegen.mk_parent e_true,e_block,NormalWhile)) e.etype p in
+			loop e
 		| _ ->
 			Type.map_expr loop e
 	and ordered_list el =
-		let had_side_effect = ref false in
 		let bind e =
-			if !had_side_effect then
-				declare_temp e.etype (Some (loop e)) e.epos
-			else begin
-				had_side_effect := true;
+			declare_temp e.etype (Some (loop e)) e.epos
+		in
+		let rec no_side_effect e =
+			if Optimizer.has_side_effect e then
+				bind e
+			else
 				e
-			end
 		in
-		let rec no_side_effect e = match e.eexpr with
-			| TNew _ | TCall _ | TArrayDecl _ | TObjectDecl _ | TBinop ((OpAssignOp _ | OpAssign),_,_) | TUnop ((Increment|Decrement),_,_) ->
-				bind e;
-			| TBinop(op,e1,e2) when Optimizer.has_side_effect e1 || Optimizer.has_side_effect e2 ->
-				bind e;
-			| TConst _ | TLocal _ | TTypeExpr _ | TFunction _
-			| TReturn _ | TBreak | TContinue | TThrow _ | TCast (_,Some _) ->
-				e
-			| TBlock _ ->
-				loop e
-			| _ ->
-				Type.map_expr no_side_effect e
-		in
-		let rec loop2 acc el = match el with
-			| e :: el ->
-				let e = no_side_effect e in
-				if !had_side_effect then
-					(List.map no_side_effect (List.rev el)) @ e :: acc
-				else
-					loop2 (e :: acc) el
-			| [] ->
-				acc
-		in
-		List.map loop (loop2 [] (List.rev el))
+		List.map no_side_effect el
 	in
 	let e = loop e in
 	match close_block() with
@@ -203,7 +200,7 @@ let promote_complex_rhs ctx e =
 		List.rev !r
 	and find e = match e.eexpr with
 		| TReturn (Some e1) -> loop (fun e -> {e with eexpr = TReturn (Some e)}) e1
-		| TBinop(OpAssign, ({eexpr = TLocal _ | TField _ | TArray _} as e1), e2) -> loop (fun er -> {e with eexpr = TBinop(OpAssign, e1, er)}) e2
+		| TBinop(OpAssign | OpAssignOp _ as op, ({eexpr = TLocal _ | TField _ | TArray _} as e1), e2) -> loop (fun er -> {e with eexpr = TBinop(op, e1, er)}) e2
 		| TBlock(el) -> {e with eexpr = TBlock (block el)}
 		| _ -> Type.map_expr find e
 	in
@@ -305,12 +302,12 @@ let check_local_vars_init e =
 				vars := intersect !vars v1)
 		| TWhile (cond,e,flag) ->
 			(match flag with
-			| NormalWhile ->
+			| NormalWhile when (match cond.eexpr with TParenthesis {eexpr = TConst (TBool true)} -> false | _ -> true) ->
 				loop vars cond;
 				let old = !vars in
 				loop vars e;
 				vars := old;
-			| DoWhile ->
+			| _ ->
 				loop vars e;
 				loop vars cond)
 		| TTry (e,catches) ->
@@ -672,7 +669,7 @@ let rename_local_vars com e =
 	in
 	let save() =
 		let old = !vars in
-		if cfg.pf_unique_locals then (fun() -> ()) else (fun() -> vars := if !rebuild_vars then rebuild old else old)
+		if cfg.pf_unique_locals || not cfg.pf_locals_scope then (fun() -> ()) else (fun() -> vars := if !rebuild_vars then rebuild old else old)
 	in
 	let rename vars v =
 		let count = ref 1 in
@@ -800,6 +797,81 @@ let rename_local_vars com e =
 	loop e;
 	e
 
+let check_deprecation com =
+	let curclass = ref null_class in
+	let definition_positions = (Common.defined_value_safe com Define.DeprecationWarnings) = "def-pos" in
+	let warned_positions = Hashtbl.create 0 in
+	let get_deprecation_message meta s p_usage p_definition =
+		try
+			let s = match Meta.get Meta.Deprecated meta with
+				| _,[EConst(String s),_],_ -> s
+				| _ -> Printf.sprintf "Usage of this %s is deprecated" s
+			in
+			if not (Hashtbl.mem warned_positions p_usage) then begin
+				Hashtbl.replace warned_positions p_usage true;
+				com.warning s p_usage;
+			end;
+			if definition_positions then com.warning "Defined here" p_definition
+		with Not_found ->
+			()
+	in
+	let check_cf cf p = get_deprecation_message cf.cf_meta "field" p cf.cf_pos in
+	let check_class c p = if c != !curclass then get_deprecation_message c.cl_meta "class" p c.cl_pos in
+	let check_enum en p = get_deprecation_message en.e_meta "enum" p en.e_pos in
+	let check_ef ef p = get_deprecation_message ef.ef_meta "enum field" p ef.ef_pos in
+	let check_module_type mt p = match mt with
+		| TClassDecl c -> check_class c p
+		| TEnumDecl en -> check_enum en p
+		| _ -> ()
+	in
+	let rec expr e = match e.eexpr with
+		| TField(e1,fa) ->
+			expr e1;
+			begin match fa with
+				| FStatic(c,cf) | FInstance(c,cf) ->
+					check_class c e.epos;
+					check_cf cf e.epos
+				| FAnon cf ->
+					check_cf cf e.epos
+				| FClosure(co,cf) ->
+					(match co with None -> () | Some c -> check_class c e.epos);
+					check_cf cf e.epos
+				| FEnum(en,ef) ->
+					check_enum en e.epos;
+					check_ef ef e.epos;
+				| _ ->
+					()
+			end
+		| TNew(c,_,el) ->
+			List.iter expr el;
+			check_class c e.epos;
+			(match c.cl_constructor with None -> () | Some cf -> check_cf cf e.epos)
+		| TTypeExpr(mt) | TCast(_,Some mt) ->
+			check_module_type mt e.epos
+		| _ ->
+			Type.iter expr e
+	in
+	List.iter (fun t -> match t with
+		| TClassDecl c ->
+			curclass := c;
+			let field cf = match cf.cf_expr with None -> () | Some e -> expr e in
+			(match c.cl_constructor with None -> () | Some cf -> field cf);
+			(match c.cl_init with None -> () | Some e -> expr e);
+			List.iter field c.cl_ordered_statics;
+			List.iter field c.cl_ordered_fields;
+		| _ ->
+			()
+	) com.types
+
+let check_unification com e t =
+	begin match follow e.etype,follow t with
+		| TEnum _,TDynamic _ ->
+			add_feature com "may_print_enum";
+		| _ ->
+			()
+	end;
+	e
+
 (* PASS 1 end *)
 
 (* Saves a class state so it can be restored later, e.g. after DCE or native path rewrite *)
@@ -921,6 +993,7 @@ let add_rtti ctx t =
 
 (* Adds member field initializations as assignments to the constructor *)
 let add_field_inits ctx t =
+	let is_as3 = Common.defined ctx.com Define.As3 && not ctx.in_macro in
 	let apply c =
 		let ethis = mk (TConst TThis) (TInst (c,List.map snd c.cl_types)) c.cl_pos in
 		(* TODO: we have to find a variable name which is not used in any of the functions *)
@@ -929,8 +1002,8 @@ let add_field_inits ctx t =
 		let inits,fields = List.fold_left (fun (inits,fields) cf ->
 			match cf.cf_kind,cf.cf_expr with
 			| Var _, Some _ ->
-				if Common.defined ctx.com Define.As3 then (inits, cf :: fields) else (cf :: inits, cf :: fields)
-			| Method MethDynamic, Some e when Common.defined ctx.com Define.As3 ->
+				if is_as3 then (inits, cf :: fields) else (cf :: inits, cf :: fields)
+			| Method MethDynamic, Some e when is_as3 ->
 				(* TODO : this would have a better place in genSWF9 I think - NC *)
 				(* we move the initialization of dynamic functions to the constructor and also solve the
 				   'this' problem along the way *)
@@ -963,7 +1036,7 @@ let add_field_inits ctx t =
 					let lhs = mk (TField(ethis,FInstance (c,cf))) cf.cf_type e.epos in
 					cf.cf_expr <- None;
 					let eassign = mk (TBinop(OpAssign,lhs,e)) e.etype e.epos in
-					if Common.defined ctx.com Define.As3 then begin
+					if is_as3 then begin
 						let echeck = mk (TBinop(OpEq,lhs,(mk (TConst TNull) lhs.etype e.epos))) ctx.com.basic.tbool e.epos in
 						mk (TIf(echeck,eassign,None)) eassign.etype e.epos
 					end else
@@ -1069,12 +1142,16 @@ let post_process_end() =
 let run com tctx main =
 	if com.display = DMUsage then
 		Codegen.detect_usage com;
+	if Common.defined com Define.DeprecationWarnings then
+		check_deprecation com;
+
 	(* PASS 1: general expression filters *)
  	let filters = [
+ 		Codegen.UnificationCallback.run (check_unification com);
 		Codegen.Abstract.handle_abstract_casts tctx;
 		blockify_ast;
 		(match com.platform with
-			| Cpp -> (fun e ->
+			| Cpp | Flash8 -> (fun e ->
 				let save = save_locals tctx in
 				let e = handle_side_effects com (Typecore.gen_local tctx) e in
 				save();

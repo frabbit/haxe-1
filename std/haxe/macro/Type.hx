@@ -40,7 +40,16 @@ enum Type {
 
 typedef AnonType = {
 	var fields : Array<ClassField>;
-	//var status : AnonStatus;
+	var status : AnonStatus;
+}
+
+enum AnonStatus {
+	AClosed;
+	AOpened;
+	AConst;
+	AClassStatics( t : Ref<ClassType> );
+	AEnumStatics( t : Ref<EnumType> );
+	AAbstractStatics( t : Ref<AbstractType> );
 }
 
 typedef TypeParameter = {
@@ -82,6 +91,7 @@ enum ClassKind {
 	KGenericInstance(cl:Ref<ClassType>, params:Array<Type>);
 	KMacroType;
 	KAbstractImpl(a:Ref<AbstractType>);
+	KGenericBuild;
 }
 
 typedef ClassType = {> BaseType,
@@ -134,42 +144,42 @@ typedef AbstractType = {>BaseType,
 typedef MetaAccess = {
 	/**
 		Return the wrapped `Metadata` array.
-		
+
 		Modifying this array has no effect on the origin of `this` MetaAccess.
 		The `add` and `remove` methods can be used for that.
 	**/
 	function get() : Expr.Metadata;
-	
+
 	/**
 		Adds the metadata specified by `name`, `params` and `pos` to the origin
 		of `this` MetaAccess.
-		
+
 		Metadata names are not unique during compilation, so this method never
 		overwrites a previous metadata.
-		
+
 		If a `Metadata` array is obtained through a call to `get`, a subsequent
 		call to `add` has no effect on that array.
-		
+
 		If any argument is null, compilation fails with an error.
 	**/
 	function add( name : String, params : Array<Expr>, pos : Expr.Position ) : Void;
-	
+
 	/**
 		Removes all `name` metadata entries from the origin of `this`
 		MetaAccess.
-		
+
 		This method might clear several metadata entries of the same name.
-		
+
 		If a `Metadata` array is obtained through a call to `get`, a subsequent
 		call to `remove` has no effect on that array.
-		
+
 		If `name` is null, compilation fails with an error.
 	**/
 	function remove( name : String ) : Void;
-	
+
 	/**
 		Tells if the origin of `this` MetaAccess has a `name` metadata entry.
-		
+
 		If `name` is null, compilation fails with an error.
 	**/
 	function has( name : String ) : Bool;
