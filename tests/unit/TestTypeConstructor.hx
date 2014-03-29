@@ -352,15 +352,11 @@ class TestTypeConstructor extends Test {
 		var a1 = [x1,x2,x3,x4,x5,x6,x7,x8,x9];
 		var a2 = [x2,x3,x4,x5,x6,x7,x8,x9];
 
-		/*
-		this doesn't work currently, i guess we have to check this in unify types
-		because we first check type_eq which does no follow (i guess there is a reason why) and after following (pattern matching)
-		we don't check if the followed types are equal. Where is the best place to add this check, i guess it's type_eq? but does it 
-		have side effects?
-
+		
+		// variance unification
 		var a3 = a1.concat(a2);
 		var a3:Array<FourTypeParameters<Int, String, Float, Array<Int>>> = a2;
-		*/
+		
 
 		x1 = x2; x1 = x3; x1 = x4; x1 = x5; x1 = x6; x1 = x7; x1 = x8; x1 = x9;
 		x2 = x1; x2 = x3; x2 = x4; x2 = x5; x2 = x6; x2 = x7; x2 = x8; x2 = x9; 
