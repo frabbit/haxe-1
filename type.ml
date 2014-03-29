@@ -542,9 +542,8 @@ let rec follow t =
 		| Some t -> follow t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		(match reduce_of_irreversible t with
-		| TAbstract({a_path=[],"Of"},_) -> t
-		| t -> follow t)
+		let t = reduce_of_irreversible t in
+		if is_of_type t then t else follow t
 	| TLazy f ->
 		follow (!f())
 	| TType (t,tl) ->
@@ -571,6 +570,9 @@ and is_in_type t = match follow t with
 	| t when t == !t_in -> true
 	| t -> false
 
+and is_of_type t = match t with
+	| TAbstract({ a_path = [], "Of"},_) -> true
+	| t -> false
 
 (* tries to unapply the leftmost In type of t with ta and unapplies nested Ofs recursively.
    It returns a tuple (t,a) where t is the resulting type and a indicates that a
@@ -1214,14 +1216,12 @@ and unify a b =
 			try to unify with the reduced Of type first if a can be reduced.
 			This allows to unify types like Of<In->B, A> with A->B.
 		*)
-		(match reduce_of_irreversible a with
-		| TAbstract({a_path = [],"Of"},[_;_]) -> unify_of tm ta b
-		| t -> unify t b)
+		let t = reduce_of_irreversible a in
+		if is_of_type t then unify_of tm ta b else unify t b
 	| a,TAbstract({a_path = [],"Of"},[tm;ta]) ->
 		(* first reduce the of type and unify with them, same reason as in the case above. *)
-		(match reduce_of_irreversible b with
-		| TAbstract({a_path = [],"Of"},[_;_]) -> unify_of tm ta a
-		| t -> unify a t)
+		let t = reduce_of_irreversible b in
+		if is_of_type t then unify_of tm ta a else unify a t
 	| TType (t,tl) , _ ->
 		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
 			try
