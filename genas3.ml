@@ -22,7 +22,6 @@
 
 open Type
 open Common
-open Codegen
 
 type context_infos = {
 	com : Common.context;
