@@ -1535,8 +1535,14 @@ and unify_types a b tl1 tl2 =
 		try
 			with_variance (type_eq EqRightDynamic) t1 t2
 		with Unify_error l ->
-			let err = cannot_unify a b in
-			error (err :: (Invariant_parameter (t1,t2)) :: l)
+			try 
+				if is_of_type t1 || is_of_type t2 then
+					with_variance (type_eq EqRightDynamic) (reduce_of_irreversible t1) (reduce_of_irreversible t2)
+				else
+					raise (Unify_error l)
+			with Unify_error l ->
+				let err = cannot_unify a b in
+				error (err :: (Invariant_parameter (t1,t2)) :: l)
 	) tl1 tl2
 
 and with_variance f t1 t2 =
