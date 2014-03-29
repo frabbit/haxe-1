@@ -567,11 +567,21 @@ and t_in = ref t_dynamic
 
 and is_in_type t = match follow t with
 	| TAbstract({a_path=[],"In"},_) -> true
+	| TLazy f -> is_in_type (!f())
+	| TMono r ->
+		(match !r with
+		| Some t -> is_in_type t
+		| _ -> false)
 	| t when t == !t_in -> true
 	| t -> false
 
 and is_of_type t = match t with
 	| TAbstract({ a_path = [], "Of"},_) -> true
+	| TLazy f -> is_of_type (!f())
+	| TMono r ->
+		(match !r with
+		| Some t -> is_of_type t
+		| _ -> false)
 	| t -> false
 
 (* tries to unapply the leftmost In type of t with ta and unapplies nested Ofs recursively.
