@@ -3518,12 +3518,6 @@ and build_call ctx acc el (with_type:with_type) p =
 				| _ ->
 					let el, tfunc = unify_call_params ctx fopts el args r p false in
 					el,(match tfunc with TFun(_,r) -> r | _ -> assert false), {e with etype = tfunc})
-		| TAbstract({a_path=[],"Of"},[tm;tr]) ->
-			let x, applied = unapply_in tm tr false in
-			if applied then
-				loop(x)
-			else
-				error (s_type (print_context()) e.etype ^ " cannot be called") e.epos
 		| TMono _ ->
 			let t = mk_mono() in
 			let el = List.map (fun e -> type_expr ctx e Value) el in
