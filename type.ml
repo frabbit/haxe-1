@@ -558,9 +558,7 @@ and follow_reversible_ofs t =
 		| Some t -> follow_reversible_ofs t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		(match reduce_of_reversible t with
-		| TAbstract({a_path=[],"Of"},_) -> t
-		| t -> t)
+		reduce_of_reversible t
 	| TLazy f ->
 		follow_reversible_ofs (!f())
 	| _ -> t
