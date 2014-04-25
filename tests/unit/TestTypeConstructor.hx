@@ -378,7 +378,7 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	function testMiscHelper1 <M,X, Z:M<X>> (mk:X->Z, v:X) {
+	function testMiscHelper1 <M:M<In>,X> (mk:X->Z, v:X) {
 
 		var z:Z = mk(v);
 		return z;
