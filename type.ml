@@ -566,7 +566,6 @@ and follow_reversible_ofs t =
 and t_in = ref t_dynamic
 
 and is_in_type t = match follow t with
-	| TAbstract({a_path=[],"In"},_) -> true
 	| TLazy f -> is_in_type (!f())
 	| TMono r ->
 		(match !r with
