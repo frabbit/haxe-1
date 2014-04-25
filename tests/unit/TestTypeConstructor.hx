@@ -3,21 +3,21 @@ package unit;
 using unit.MyTypeConstructor;
 
 class TestTypeConstructor extends Test {
-	
-	public function testMonadTransformers() 
+
+	public function testMonadTransformers()
 	{
 		var func = new ArrayTFunctor(new ArrayTFunctor(new EitherMonad()));
 		var e = Right([[1]]);
 
 		var r = e.arrayT().arrayT().fmap(function (x) return x+1, func).runT().runT();
 
-		
+
 		var rx : Either<String, Array<Array<Int>>> = r;
 		t(r.match(Right([[2]])));
 
 		var r = e.fmap(function (x) return 1, new EitherMonad());
 
-		t(r.match(Right(1)));		
+		t(r.match(Right(1)));
 
 		var r = e.arrayT().fmap(function (x) return [1], new ArrayTFunctor(new EitherMonad())).runT();
 
@@ -31,22 +31,22 @@ class TestTypeConstructor extends Test {
 
 		t(r.match(Right([[2]])));
 
-		
+
 
 		var e2 = Right([[Right(1)]]);
 
-		
+
 
 		var r = e2.arrayT().arrayT().eitherT().fmap(function (x) return x+1, new EitherTFunctor(new ArrayTFunctor(new ArrayTFunctor(new EitherMonad())))).runT().runT().runT();
 
-		
-		
+
+
 		t(r.match(Right([[Right(2)]])));
 
 
 	}
 
-	public function testLeftInType() 
+	public function testLeftInType()
 	{
 		var x : Of<Either<In, Int>, String> = Left("hello");
 
@@ -61,10 +61,10 @@ class TestTypeConstructor extends Test {
 		t(r.match(Left("hello world")));
 	}
 
-	public function testReversedTypedef() 
+	public function testReversedTypedef()
 	{
 		var x : Of<ReversedEitherAlias<Int, In>, String> = Left("hello");
-		
+
 		var r = x.fmap(function (x) return x+" world", new EitherLeftMonad());
 
 		t(r.match(Left("hello world")));
@@ -75,7 +75,7 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	public function testStructure() 
+	public function testStructure()
 	{
 		// explicit left lifted Of type
 
@@ -105,7 +105,7 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	public function testReversedAbstract() 
+	public function testReversedAbstract()
 	{
 		var x : ReversedEither<Int, String> = new ReversedEither(Left("hello"));
 
@@ -116,13 +116,13 @@ class TestTypeConstructor extends Test {
 
 
 	public function testMappable() {
-		
+
 		function mapMappable <M,A,B>(m:Mappable<M,A>, f:A->B):M<B> {
 			return m.map(f);
 		}
 
 		var x = new MyArray([1]);
-		
+
 		var r = mapMappable(x, function (y) return y+1);
 
 		t(r.a[0] == 2);
@@ -137,7 +137,7 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	
+
 
 	public function testFlatMappable() {
 
@@ -146,7 +146,7 @@ class TestTypeConstructor extends Test {
 		}
 
 		var x = new MyArray([1]);
-		
+
 		var r = flatMapFlatMappable(x, function (y) return new MyArray([y+1]));
 
 		t(r.a[0] == 2);
@@ -161,67 +161,67 @@ class TestTypeConstructor extends Test {
 
 
 	}
-	
-	
-	
-	
+
+
+
+
 
 	public function testMappableWithTypedef() {
 
 		function mapMappable <M,A,B>(m:MappableTD<M,A>, f:A->B):M<B> {
 			return m.map(f);
 		}
-		
-		
-		#if !as3	
+
+
+		#if !as3
 		/*
 		 !!!!!!!!!!!!!
 		 TODO
-		 This fails on as3 because the call to map inside of mapMappable actually calls map on dynamic nand not the haxe defined function. 
+		 This fails on as3 because the call to map inside of mapMappable actually calls map on dynamic nand not the haxe defined function.
 		 A runtime wrapper for filter and map is missing.
 		*/
 		var x = [1];
-		
+
 		var r = mapMappable(x, function (y) return y+1);
 
 		t(r[0] == 2);
 
 		#end
-		
+
 		var x = new List();
 		x.add(1);
-		
+
 		var r = mapMappable(x, function (y) return y+1);
 
 		t(r.first() == 2);
 
 	}
-	
+
 
 
 
 	public function testFilterableWithTypedef() {
-		
+
 		function filterFilterable <M,A,B>(m:Filterable<M,A>, f:A->Bool):M<A> {
 			// you can currently not apply filter again, this is a limitation which could be solved with constraints described at the bottom
 			return m.filter(f);
 		}
-		
-		#if !as3	
+
+		#if !as3
 		/*
 		 !!!!!!!!!!!!!
 		 TODO
-		 This fails on as3 because the call to filter inside of filterFilterable actually calls filter on dynamic and not the haxe defined function. 
+		 This fails on as3 because the call to filter inside of filterFilterable actually calls filter on dynamic and not the haxe defined function.
 		 A runtime wrapper for filter and map is missing.
 		*/
 
 		var x = [1,2,3,4];
-				
+
 		var r = filterFilterable(x, function (y) return y > 2);
 		t(r.length == 2);
 		t(r[0] == 3);
 		t(r[1] == 4);
-		
+
 		#end
 
 		var x = new List();
@@ -238,13 +238,13 @@ class TestTypeConstructor extends Test {
 	}
 
 
- 	private static function typeConstructorWithConstraints <M:(Filterable<M,In>, MappableTD<M,In>, { var length(default, null):Int;}), T> (m:M<Int>):M<Int> 
+ 	private static function typeConstructorWithConstraints <M:(Filterable<M,In>, MappableTD<M,In>, { var length(default, null):Int;}), T> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
 
 	public function testTypeConstructorWithConstraints () {
-		
+
 		#if !as3
 		var a = [1,2,3];
 		var r = typeConstructorWithConstraints(a);
@@ -259,27 +259,27 @@ class TestTypeConstructor extends Test {
 		t(r.first() == 3);
 		t(r.last() == 4);
 	}
-	
-	public function testTypeConstructorClassConstraints () 
+
+	public function testTypeConstructorClassConstraints ()
 	{
 		#if !as3
 		var x : BetterFilterable<Array<In>, Int> = [1,2,3,4];
 
 		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
 
-		
+
 
 		t(r.length == 1);
 		t(r[0] == 2);
 		#end
-		
+
 		var x : BetterFilterable<List<In>, Int> = { var l = new List(); l.add(1); l.add(2); l.add(3); l.add(4); l; }
 
 
 		var r = x.filter(function (x) return x < 3).filter(function (x) return x > 1);
 
 
-		
+
 
 		t(r.length == 1);
 		t(r.first() == 2);
@@ -291,7 +291,7 @@ class TestTypeConstructor extends Test {
 	}
 
 	public function testTypeConstructorWithTwoTypeParameters () {
-		
+
 		var e = Left(1);
 		var x = passTwo(e);
 		t(e.match(Left(1)));
@@ -309,27 +309,27 @@ class TestTypeConstructor extends Test {
 			c : 1.1,
 			d : [1]
 		}
-		
+
 		var x = passFour(e);
 		t(x == e);
 	}
 
-	public function testArrows () 
+	public function testArrows ()
 	{
-		
+
 		function arr <A,B>(f:A->B) return new FunctionArrow(f);
 		var a = arr(function (x) return "foo"+Std.string(x));
 		var r = a.dot(arr(function (y) return y+2));
 		t(r.run(1) == "foo3");
 	}
-	
+
 	static function withArrow <Arr:(Arrow<Arr,In,In>)> (a:Arr<Int,String>):Int->String
 	{
 		return a.dot(a.create(function (y) return y+2))
 			.dot(a.create(function (y) return y+2)).run;
 	}
 
-	public function testTypeConstructorWithTwoParametersAndConstraint () 
+	public function testTypeConstructorWithTwoParametersAndConstraint ()
 	{
 		function arr <A,B>(f:A->B) return new FunctionArrow(f);
 		var a = arr(function (x) return "foo"+Std.string(x));
@@ -363,19 +363,43 @@ class TestTypeConstructor extends Test {
 		x9  = x1; x9  = x2; x9  = x3; x9  = x4; x9  = x5; x9  = x6; x9  = x7; x9  = x8; x9  = x10;
 		x10 = x1; x10 = x2; x10 = x3; x10 = x4; x10 = x5; x10 = x6; x10 = x7; x10 = x8; x10 = x9;
 
-		
+
 		// variance unification
 		var a1 = [x1,x2,x3,x4,x5,x6,x7,x8,x9,x10];
-		var a2 = [x2,x3,x4,x5,x6,x7,x8,x9,x10];		
+		var a2 = [x2,x3,x4,x5,x6,x7,x8,x9,x10];
 		var a3 = a1.concat(a2);
 		var a3:Array<FourTypeParameters<Int, String, Float, Array<Int>>> = a2;
-		
+
 		var a1 : List<Array<Array<Int>>> = null;
 		var a2 : List<Of<Array<In>, Of<Array<In>, Int>>> = null;
 
 		a1 = a2;
 		a2 = a1;
-		
+
+	}
+
+	function testMiscHelper1 <M,X, Z:M<X>> (mk:X->Z, v:X) {
+
+		var z:Z = mk(v);
+		return z;
+	}
+
+	public function testMisc () {
+		var a = [1];
+		var b = testMiscHelper1(function (x) return [x], 1);
+
+		eq(a[0], b[0]);
+
+
+		var a = new List();
+		a.add(1);
+		var b = testMiscHelper1(function (x) {
+			var a = new List();
+			a.add(x);
+			return a;
+		}, 1);
+
+		eq(a.first(), b.first());
 	}
 }
 
