@@ -237,7 +237,7 @@ class RunTravis {
 
 		Sys.setCwd(unitDir);
 		switch (Sys.getEnv("TARGET")) {
-			case "macro", null:
+			case "macro", "bytecode", null:
 				runCommand("haxe", ["compile-macro.hxml"]);
 
 				//generate documentation
@@ -324,6 +324,11 @@ class RunTravis {
 
 				runCommand("haxe", ["compile-as3.hxml", "-D", "fdb"]);
 				runFlash("unit9_as3.swf");
+			case "neko-sys":
+				Sys.setCwd("../sys");
+				runCommand("haxe", ["compile-neko.hxml"]);
+				Sys.setCwd("bin/neko");
+				runCommand("neko", ["sys.n"]);
 			case "openfl-samples":
 				getOpenFLDependencies(unitDir);
 
