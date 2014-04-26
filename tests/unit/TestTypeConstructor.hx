@@ -378,7 +378,7 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	function testMiscHelper1 <M:M<In>,X> (mk:X->M<X>, v:X) {
+	private function miscHelper1 <M:M<In>,X> (mk:X->M<X>, v:X) {
 
 		var z:M<X> = mk(v);
 		return z;
@@ -386,14 +386,14 @@ class TestTypeConstructor extends Test {
 
 	public function testMisc () {
 		var a = [1];
-		var b = testMiscHelper1(function (x) return [x], 1);
+		var b = miscHelper1(function (x) return [x], 1);
 
 		eq(a[0], b[0]);
 
 
 		var a = new List();
 		a.add(1);
-		var b = testMiscHelper1(function (x) {
+		var b = miscHelper1(function (x) {
 			var a = new List();
 			a.add(x);
 			return a;
