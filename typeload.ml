@@ -349,7 +349,10 @@ let rec load_instance ctx t p allow_no_params =
 		let pt = List.assoc t.tname ctx.type_params in
 		begin match t.tparams with
 			| [] -> pt
-			| [TPType (CTPath {tpackage=[]; tname="StdTypes"; tsub=Some("In")})] -> !t_in
+			| [TPType (CTPath {tpackage=[]; tname="In"; tsub=None})] ->
+				let p1 = TPType (CTPath {tpackage=[]; tname="StdTypes"; tparams=[]; tsub=Some("In")}) in
+				let t = { t with tparams = [p1] } in
+				load_instance ctx t p allow_no_params
 			| tps ->
 				let mk_of tm ta = { tpackage=[]; tname="StdTypes"; tsub=Some("Of"); tparams = [TPType (CTPath tm); ta]} in
 				let rec loop tps =
