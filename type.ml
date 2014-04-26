@@ -567,6 +567,8 @@ and t_in = ref t_dynamic
 
 and is_in_type t = match follow t with
 	| TLazy f -> is_in_type (!f())
+	| TAbstract({cl_path=[],"In"},_) -> true
+	| TInst({cl_path=[],"In"},_) -> true (* Parameters of Type Parameters like M<In> are currently not mapped *)
 	| TMono r ->
 		(match !r with
 		| Some t -> is_in_type t
@@ -1543,7 +1545,7 @@ and unify_types a b tl1 tl2 =
 		try
 			with_variance (type_eq EqRightDynamic) t1 t2
 		with Unify_error l ->
-			try 
+			try
 				if is_of_type t1 || is_of_type t2 then
 					with_variance (type_eq EqRightDynamic) (reduce_of_irreversible t1) (reduce_of_irreversible t2)
 				else
