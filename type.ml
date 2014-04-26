@@ -567,7 +567,7 @@ and t_in = ref t_dynamic
 
 and is_in_type t = match follow t with
 	| TLazy f -> is_in_type (!f())
-	| TAbstract({cl_path=[],"In"},_) -> true
+	| TAbstract({a_path=[],"In"},_) -> true
 	| TInst({cl_path=[],"In"},_) -> true (* Parameters of Type Parameters like M<In> are currently not mapped *)
 	| TMono r ->
 		(match !r with
