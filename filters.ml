@@ -1079,11 +1079,14 @@ let post_process_end() =
 	incr pp_counter
 
 let run com tctx main =
-	if com.display = DMUsage then
-		Codegen.detect_usage com;
+	begin match com.display with
+		| DMUsage | DMPosition ->
+			Codegen.detect_usage com;
+		| _ ->
+			()
+	end;
 	if not (Common.defined com Define.NoDeprecationWarnings) then
 		Codegen.DeprecationCheck.run com;
-
 	(* PASS 1: general expression filters *)
  	let filters = [
  		Codegen.UnificationCallback.run (check_unification com);
@@ -1118,6 +1121,8 @@ let run com tctx main =
 	) com.types;
 	(* update cache dependencies before DCE is run *)
 	Codegen.update_cache_dependencies com;
+	(* check @:remove metadata before DCE so it is ignored there (issue #2923) *)
+	List.iter (check_remove_metadata tctx) com.types;
 	(* DCE *)
 	let dce_mode = (try Common.defined_value com Define.Dce with _ -> "no") in
 	if not (Common.defined com Define.As3 || dce_mode = "no" || Common.defined com Define.DocGen) then Dce.run com main (dce_mode = "full" && not (Common.defined com Define.Interp));
@@ -1141,7 +1146,6 @@ let run com tctx main =
 		add_rtti;
 		(match com.platform with | Java | Cs -> (fun _ _ -> ()) | _ -> add_field_inits);
 		add_meta_field;
-		check_remove_metadata;
 		check_void_field;
 	] in
 	List.iter (fun t -> List.iter (fun f -> f tctx t) type_filters) com.types

@@ -83,11 +83,13 @@ module Meta = struct
 		| HxGen
 		| IfFeature
 		| Impl
+		| PythonImport
 		| Include
 		| InitPackage
 		| Internal
 		| IsVar
 		| JavaNative
+		| JsRequire
 		| Keep
 		| KeepInit
 		| KeepSub
@@ -97,6 +99,7 @@ module Meta = struct
 		| MergeBlock
 		| MultiType
 		| Native
+		| NativeChildren
 		| NativeGen
 		| NativeGeneric
 		| NoCompletion
@@ -130,6 +133,7 @@ module Meta = struct
 		| SkipReflection
 		| Sound
 		| Struct
+		| StructAccess
 		| SuppressWarnings
 		| This
 		| Throws
@@ -144,6 +148,7 @@ module Meta = struct
 		| Unsafe
 		| Usage
 		| Used
+		| Void
 		| Last
 		(* do not put any custom metadata after Last *)
 		| Dollar of string

@@ -30,24 +30,26 @@ NATIVE_LIBS=-cclib libs/extc/extc_stubs.o -cclib -lz -cclib libs/objsize/c_objsi
 
 ifeq ($(BYTECODE),1)
 	TARGET_FLAG = bytecode
-	CC_CMD = $(OCAMLC)
+	COMPILER = $(OCAMLC)
 	LIB_EXT = cma
 	MODULE_EXT = cmo
 	NATIVE_LIB_FLAG = -custom
 else
 	TARGET_FLAG = native
-	CC_CMD = $(OCAMLOPT)
+	COMPILER = $(OCAMLOPT)
 	LIB_EXT = cmxa
 	MODULE_EXT = cmx
 endif
 
-CC_PARSER_CMD = $(CC_CMD) -pp camlp4o $(CFLAGS) -c parser.ml
+CC_CMD = $(COMPILER) $(CFLAGS) -c $<
+
+CC_PARSER_CMD = $(COMPILER) -pp camlp4o $(CFLAGS) -c parser.ml
 
 RELDIR=../../..
 
 MODULES=ast type lexer common genxml parser typecore optimizer typeload \
 	codegen gencommon genas3 gencpp genjs genneko genphp genswf8 \
-	genswf9 genswf genjava gencs interp dce filters typer matcher version main
+	genswf9 genswf genjava gencs genpy interp dce filters typer matcher version main
 
 ADD_REVISION=0
 
@@ -79,7 +81,7 @@ libs:
 	make -C libs/objsize OCAMLOPT=$(OCAMLOPT) OCAMLC=$(OCAMLC) $(TARGET_FLAG)
 
 haxe: $(MODULES:=.$(MODULE_EXT))
-	$(CC_CMD) -o $(OUTPUT) $(NATIVE_LIBS) $(NATIVE_LIB_FLAG) $(LFLAGS) $(LIBS:=.$(LIB_EXT)) $(MODULES:=.$(MODULE_EXT))
+	$(COMPILER) -o $(OUTPUT) $(NATIVE_LIBS) $(NATIVE_LIB_FLAG) $(LFLAGS) $(LIBS:=.$(LIB_EXT)) $(MODULES:=.$(MODULE_EXT))
 
 haxelib:
 	(cd $(CURDIR)/extra/haxelib_src && $(CURDIR)/$(OUTPUT) haxelib.hxml && nekotools boot bin/haxelib.n)
@@ -138,6 +140,8 @@ genneko.$(MODULE_EXT): type.$(MODULE_EXT) lexer.$(MODULE_EXT) common.$(MODULE_EX
 
 genphp.$(MODULE_EXT): type.$(MODULE_EXT) lexer.$(MODULE_EXT) common.$(MODULE_EXT) codegen.$(MODULE_EXT) ast.$(MODULE_EXT)
 
+genpy.$(MODULE_EXT): type.$(MODULE_EXT) lexer.$(MODULE_EXT) common.$(MODULE_EXT) codegen.$(MODULE_EXT) ast.$(MODULE_EXT)
+
 genswf.$(MODULE_EXT): type.$(MODULE_EXT) genswf9.$(MODULE_EXT) genswf8.$(MODULE_EXT) common.$(MODULE_EXT) ast.$(MODULE_EXT)
 
 genswf8.$(MODULE_EXT): type.$(MODULE_EXT) lexer.$(MODULE_EXT) common.$(MODULE_EXT) codegen.$(MODULE_EXT) ast.$(MODULE_EXT)
@@ -150,7 +154,7 @@ interp.$(MODULE_EXT): typecore.$(MODULE_EXT) type.$(MODULE_EXT) lexer.$(MODULE_E
 
 matcher.$(MODULE_EXT): optimizer.$(MODULE_EXT) codegen.$(MODULE_EXT) typecore.$(MODULE_EXT) type.$(MODULE_EXT) typer.$(MODULE_EXT) common.$(MODULE_EXT) ast.$(MODULE_EXT)
 
-main.$(MODULE_EXT): filters.$(MODULE_EXT) matcher.$(MODULE_EXT) typer.$(MODULE_EXT) typeload.$(MODULE_EXT) typecore.$(MODULE_EXT) type.$(MODULE_EXT) parser.$(MODULE_EXT) optimizer.$(MODULE_EXT) lexer.$(MODULE_EXT) interp.$(MODULE_EXT) genxml.$(MODULE_EXT) genswf.$(MODULE_EXT) genphp.$(MODULE_EXT) genneko.$(MODULE_EXT) genjs.$(MODULE_EXT) gencpp.$(MODULE_EXT) genas3.$(MODULE_EXT) common.$(MODULE_EXT) codegen.$(MODULE_EXT) ast.$(MODULE_EXT) gencommon.$(MODULE_EXT) genjava.$(MODULE_EXT) gencs.$(MODULE_EXT) version.$(MODULE_EXT)
+main.$(MODULE_EXT): filters.$(MODULE_EXT) matcher.$(MODULE_EXT) typer.$(MODULE_EXT) typeload.$(MODULE_EXT) typecore.$(MODULE_EXT) type.$(MODULE_EXT) parser.$(MODULE_EXT) optimizer.$(MODULE_EXT) lexer.$(MODULE_EXT) interp.$(MODULE_EXT) genxml.$(MODULE_EXT) genswf.$(MODULE_EXT) genphp.$(MODULE_EXT) genneko.$(MODULE_EXT) genjs.$(MODULE_EXT) gencpp.$(MODULE_EXT) genas3.$(MODULE_EXT) common.$(MODULE_EXT) codegen.$(MODULE_EXT) ast.$(MODULE_EXT) gencommon.$(MODULE_EXT) genjava.$(MODULE_EXT) gencs.$(MODULE_EXT) genpy.$(MODULE_EXT) version.$(MODULE_EXT)
 
 optimizer.$(MODULE_EXT): typecore.$(MODULE_EXT) type.$(MODULE_EXT) parser.$(MODULE_EXT) common.$(MODULE_EXT) ast.$(MODULE_EXT)
 
@@ -173,7 +177,7 @@ ast.$(MODULE_EXT):
 
 version.$(MODULE_EXT):
 	echo $(VERSION_EXTRA) > version.ml
-	$(CC_CMD) $(CFLAGS) -c version.ml
+	$(COMPILER) $(CFLAGS) -c version.ml
 
 # Clean
 
@@ -200,10 +204,10 @@ clean_tools:
 # SUFFIXES
 
 .ml.cmx:
-	$(CC_CMD) $(CFLAGS) -c $<
+	$(CC_CMD)
 
 .ml.cmo:
-	$(CC_CMD) $(CFLAGS) -c $<
+	$(CC_CMD)
 
 .mll.ml:
 	ocamllex $<

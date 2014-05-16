@@ -295,11 +295,12 @@ let rec build_generic ctx c p tl =
 			()
 	in
 	List.iter check_recursive tl;
-	let gctx = try make_generic ctx c.cl_types tl p with Generic_Exception (msg,p) -> error msg p in
-	let name = (snd c.cl_path) ^ "_" ^ gctx.name in
 	if !recurse then begin
 		TInst (c,tl) (* build a normal instance *)
-	end else try
+	end else begin
+	let gctx = make_generic ctx c.cl_types tl p in
+	let name = (snd c.cl_path) ^ "_" ^ gctx.name in
+	try
 		Typeload.load_instance ctx { tpackage = pack; tname = name; tparams = []; tsub = None } p false
 	with Error(Module_not_found path,_) when path = (pack,name) ->
 		let m = (try Hashtbl.find ctx.g.modules (Hashtbl.find ctx.g.types_module c.cl_path) with Not_found -> assert false) in
@@ -352,8 +353,18 @@ let rec build_generic ctx c p tl =
 			let f = { f with cf_type = t} in
 			(* delay the expression mapping to make sure all cf_type fields are set correctly first *)
 			(delays := (fun () ->
-				try (match f.cf_expr with None -> () | Some e -> f.cf_expr <- Some (generic_substitute_expr gctx e))
-				with Unify_error l -> error (error_msg (Unify l)) f.cf_pos) :: !delays);
+				try (match f.cf_expr with
+					| None ->
+						begin match f.cf_kind with
+							| Method _ when not c.cl_interface && not c.cl_extern ->
+								display_error ctx (Printf.sprintf "Field %s has no expression (possible typing order issue)" f.cf_name) f.cf_pos;
+								error (Printf.sprintf "While building %s" (s_type_path cg.cl_path)) p;
+							| _ ->
+								()
+						end
+					| Some e -> f.cf_expr <- Some (generic_substitute_expr gctx e)
+				) with Unify_error l ->
+					error (error_msg (Unify l)) f.cf_pos) :: !delays);
 			f
 		in
 		if c.cl_init <> None || c.cl_dynamic <> None then error "This class can't be generic" p;
@@ -410,6 +421,7 @@ let rec build_generic ctx c p tl =
 		) c.cl_ordered_fields;
 		List.iter (fun f -> f()) !delays;
 		TInst (cg,[])
+	end
 
 (* -------------------------------------------------------------------------- *)
 (* HAXE.XML.PROXY *)
@@ -636,13 +648,13 @@ module Abstract = struct
 
 	let find_to ab pl b =
 		if follow b == t_dynamic then
-			List.find (fun (t,_) -> t == t_dynamic) ab.a_to
+			List.find (fun (t,_) -> follow t == t_dynamic) ab.a_to
 		else
 			List.find (Type.unify_to_field ab pl b) ab.a_to
 
 	let find_from ab pl a b =
 		if follow a == t_dynamic then
-			List.find (fun (t,_) -> t == t_dynamic) ab.a_from
+			List.find (fun (t,_) -> follow t == t_dynamic) ab.a_from
 		else
 			List.find (Type.unify_from_field ab pl a b) ab.a_from
 
@@ -914,21 +926,44 @@ let detect_usage com =
 	let usage = ref [] in
 	List.iter (fun t -> match t with
 		| TClassDecl c ->
+			let check_constructor c p =
+				try
+					let _,cf = get_constructor (fun cf -> cf.cf_type) c in
+					if Meta.has Meta.Usage cf.cf_meta then
+						usage := p :: !usage;
+				with Not_found ->
+					()
+			in
 			let rec expr e = match e.eexpr with
-				| TField(_,fa) ->
-					begin match extract_field fa with
-						| Some cf when Meta.has Meta.Usage cf.cf_meta ->
-							let p = {e.epos with pmin = e.epos.pmax - (String.length cf.cf_name)} in
-							usage := p :: !usage;
-						| _ ->
-							()
-					end;
+				| TField(_,FEnum(_,ef)) when Meta.has Meta.Usage ef.ef_meta ->
+					let p = {e.epos with pmin = e.epos.pmax - (String.length ef.ef_name)} in
+					usage := p :: !usage;
+					Type.iter expr e
+				| TField(_,(FAnon cf | FInstance (_,cf) | FStatic (_,cf) | FClosure (_,cf))) when Meta.has Meta.Usage cf.cf_meta ->
+					let p = {e.epos with pmin = e.epos.pmax - (String.length cf.cf_name)} in
+					usage := p :: !usage;
 					Type.iter expr e
 				| TLocal v when Meta.has Meta.Usage v.v_meta ->
 					usage := e.epos :: !usage
+				| TVar (v,_) when com.display = DMPosition && Meta.has Meta.Usage v.v_meta ->
+					raise (Typecore.DisplayPosition [e.epos])
+				| TFunction tf when com.display = DMPosition && List.exists (fun (v,_) -> Meta.has Meta.Usage v.v_meta) tf.tf_args ->
+					raise (Typecore.DisplayPosition [e.epos])
+				| TTypeExpr mt when (Meta.has Meta.Usage (t_infos mt).mt_meta) ->
+					usage := e.epos :: !usage
+				| TNew (c,_,_) ->
+					check_constructor c e.epos;
+					Type.iter expr e;
+				| TCall({eexpr = TConst TSuper},_) ->
+					begin match c.cl_super with
+						| Some (c,_) ->
+							check_constructor c e.epos
+						| _ ->
+							()
+					end
 				| _ -> Type.iter expr e
 			in
-			let field cf = match cf.cf_expr with None -> () | Some e -> expr e in
+			let field cf = ignore(follow cf.cf_type); match cf.cf_expr with None -> () | Some e -> expr e in
 			(match c.cl_constructor with None -> () | Some cf -> field cf);
 			(match c.cl_init with None -> () | Some e -> expr e);
 			List.iter field c.cl_ordered_statics;
@@ -1713,4 +1748,3 @@ module DeprecationCheck = struct
 				()
 		) com.types
 end
-
