@@ -928,7 +928,7 @@ let rec get_constructor build_type c =
 let print_context() = ref []
 
 let rec s_type ctx t =
-	match t with
+	match reduce_of_reversible t with
 	| TMono r ->
 		(match !r with
 		| None -> Printf.sprintf "Unknown<%d>" (try List.assq t (!ctx) with Not_found -> let n = List.length !ctx in ctx := (t,n) :: !ctx; n)
@@ -1436,6 +1436,12 @@ let type_iseq a b =
 		true
 	with
 		Unify_error _ -> false
+let type_iseq2 a b =
+	try
+		type_eq EqRightDynamic a b;
+		true
+	with
+		Unify_error _ -> false
 
 let unify_stack = ref []
 let abstract_cast_stack = ref []
@@ -1808,23 +1814,60 @@ and unify_to_field ab tl b ?(allow_transitive_cast=true) (t,cfo) =
 	r
 	end
 
-and unify_with_variance t1 t2 =
+and unify_with_variance t1 t2 f =
+
 	let allows_variance_to t (tf,cfo) = match cfo with
-		| None -> type_iseq tf t
+		| None -> type_iseq2 tf t
 		| Some _ -> false
 	in
-	match follow t1,follow t2 with
-	| TInst(c1,tl1),TInst(c2,tl2) when c1 == c2 ->
-		List.iter2 unify_with_variance tl1 tl2
-	| TEnum(en1,tl1),TEnum(en2,tl2) when en1 == en2 ->
-		List.iter2 unify_with_variance tl1 tl2
-	| TAbstract(a1,pl1),TAbstract(a2,pl2) ->
+	let abstract_variance a1 pl1 a2 pl2 =
 		let ta1 = apply_params a1.a_types pl1 a1.a_this in
 		let ta2 = apply_params a2.a_types pl2 a2.a_this in
 		if (Meta.has Meta.CoreType a1.a_meta) && (Meta.has Meta.CoreType a2.a_meta) then
 			type_eq EqStrict ta1 ta2;
 		if not (List.exists (allows_variance_to ta2) a1.a_to) && not (List.exists (allows_variance_to ta1) a2.a_from) then
 			error [cannot_unify t1 t2]
+	in
+	let s_type = s_type (print_context ()) in
+	(match follow t1,follow t2 with
+	| a,((TMono x) as b) ->
+		(match !x with
+		| None -> if not (link x b a) then error [cannot_unify t1 t2]
+		| _ -> error [cannot_unify t1 t2])
+	| ((TMono x) as a),b ->
+		(match !x with
+		| None -> if not (link x a b) then error [cannot_unify t1 t2]
+		| _ -> error [cannot_unify t1 t2])
+	| TFun(args1,r1),TFun(args2,r2) ->
+		let g (_,_,t1) (_,_,t2) = (with_variance f) t1 t2 in
+		List.iter2 g args1 args2;
+		with_variance f r1 r2
+	| TInst(c1,tl1),TInst(c2,tl2) when c1 == c2 ->
+		List.iter2 (with_variance f) tl1 tl2
+	| TEnum(en1,tl1),TEnum(en2,tl2) when en1 == en2 ->
+		List.iter2 (with_variance f) tl1 tl2
+
+	| (TAbstract(({ a_path = [],"Of"}) as a1,pl1) as a), (TAbstract(({ a_path = [],"Of"}) as b2,pl2) as b) ->
+		let a = follow_reversible_ofs a in
+		let b = follow_reversible_ofs b in
+		if is_of_type a && is_of_type b then
+			abstract_variance a1 pl1 b2 pl2
+		else
+			(with_variance f) a b
+	| (TAbstract({ a_path = [],"Of"},pl1) as a),b ->
+		let a = follow_reversible_ofs a in
+		if is_of_type a
+		then error [cannot_unify t1 t2]
+		else (with_variance f) a b
+	| a,(TAbstract({ a_path = [],"Of"},_) as b) ->
+		Printf.printf "|||||||| %s with %s\n%s\n" (s_type a) (s_type b) (s_type (follow_reversible_ofs b));
+		let b = follow_reversible_ofs b in
+		if is_of_type b
+		then error [cannot_unify t1 t2]
+		else (with_variance f) a b
+
+	| TAbstract(a1,pl1),TAbstract(a2,pl2) ->
+		abstract_variance a1 pl1 a2 pl2
 	| TAbstract(a,pl),t ->
 		type_eq EqStrict (apply_params a.a_types pl a.a_this) t;
 		if not (List.exists (allows_variance_to t) a.a_to) then error [cannot_unify t1 t2]
@@ -1832,7 +1875,7 @@ and unify_with_variance t1 t2 =
 		type_eq EqStrict t (apply_params a.a_types pl a.a_this);
 		if not (List.exists (allows_variance_to t) a.a_from) then error [cannot_unify t1 t2]
 	| _ ->
-		error [cannot_unify t1 t2]
+		error [cannot_unify t1 t2])
 
 and unify_types a b tl1 tl2 =
 	List.iter2 (fun t1 t2 ->
@@ -1853,7 +1896,7 @@ and with_variance f t1 t2 =
 	try
 		f t1 t2
 	with Unify_error l -> try
-		unify_with_variance t1 t2
+		unify_with_variance t1 t2 f
 	with Unify_error _ ->
 		raise (Unify_error l)
 
