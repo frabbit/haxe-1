@@ -2016,7 +2016,7 @@ let generate_field_kind ctx f c stat =
 			Some (HFMethod {
 				hlm_type = m;
 				hlm_final = stat || (Meta.has Meta.Final f.cf_meta);
-				hlm_override = not stat && loop c name;
+				hlm_override = not stat && (loop c name || loop c f.cf_name);
 				hlm_kind = kind;
 			})
 		);

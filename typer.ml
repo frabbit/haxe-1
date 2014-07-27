@@ -237,6 +237,10 @@ let class_field ctx c pl name p =
 
 (* checks if we can access to a given class field using current context *)
 let rec can_access ctx ?(in_overload=false) c cf stat =
+	let c = match c.cl_kind with
+		| KGenericInstance(c,_) -> c
+		| _ -> c
+	in
 	if cf.cf_public then
 		true
 	else if not in_overload && ctx.com.config.pf_overload && Meta.has Meta.Overload cf.cf_meta then
@@ -358,7 +362,7 @@ let parse_expr_string ctx s p inl =
 	let rec loop e = let e = Ast.map_expr loop e in (fst e,p) in
 	match parse_string ctx (head ^ s ^ ";}") p inl with
 	| EClass { d_data = [{ cff_name = "main"; cff_kind = FFun { f_expr = Some e } }]} -> if inl then e else loop e
-	| _ -> assert false
+	| _ -> raise Interp.Invalid_expr
 
 let collect_toplevel_identifiers ctx =
 	let acc = DynArray.create () in
@@ -1253,12 +1257,16 @@ let rec type_ident_raise ?(imported_enums=true) ctx i p mode =
 			| t :: l ->
 				match t with
  				| TAbstractDecl ({a_impl = Some c} as a) when Meta.has Meta.Enum a.a_meta ->
-					let cf = PMap.find i c.cl_statics in
-					if not (Meta.has Meta.Enum cf.cf_meta) then
+ 					begin try
+						let cf = PMap.find i c.cl_statics in
+						if not (Meta.has Meta.Enum cf.cf_meta) then
+							loop l
+						else begin
+							let et = type_module_type ctx (TClassDecl c) None p in
+							AKInline(et,cf,FStatic(c,cf),monomorphs cf.cf_params cf.cf_type)
+						end
+					with Not_found ->
 						loop l
-					else begin
-						let et = type_module_type ctx (TClassDecl c) None p in
-						AKInline(et,cf,FStatic(c,cf),monomorphs cf.cf_params cf.cf_type)
 					end
 				| TClassDecl _ | TAbstractDecl _ ->
 					loop l
@@ -1543,10 +1551,14 @@ let type_bind ctx (e : texpr) params p =
 	let inner_fun_args l = List.map (fun (v,o) -> v.v_name, o, v.v_type) l in
 	let t_inner = TFun(inner_fun_args missing_args, ret) in
 	let call = make_call ctx (vexpr loc) ordered_args ret p in
+	let e_ret = match follow ret with
+		| TAbstract ({a_path = [],"Void"},_) -> call
+		| _ -> mk (TReturn (Some call)) t_dynamic p;
+	in
 	let func = mk (TFunction {
 		tf_args = List.map (fun (v,o) -> v, if o then Some TNull else None) missing_args;
 		tf_type = ret;
-		tf_expr = mk (TReturn (Some call)) ret p;
+		tf_expr = e_ret;
 	}) t_inner p in
 	let outer_fun_args l = List.map (fun (v,o,_) -> v.v_name, o, v.v_type) l in
 	let func = mk (TFunction {
@@ -1766,17 +1778,24 @@ let rec type_binop ctx op e1 e2 is_assign_op with_type p =
 				| _ ->  error "Invalid field type for abstract setter" p
 			in
 			let l = save_locals ctx in
-			let v = gen_local ctx ta in
+			let v,is_temp = match et.eexpr with
+				| TLocal v -> v,false
+				| _ -> gen_local ctx ta,true
+			in
 			let ev = mk (TLocal v) ta p in
 			(* this relies on the fact that cf_name is set_name *)
 			let getter_name = String.sub cf.cf_name 4 (String.length cf.cf_name - 4) in
 			let get = type_binop ctx op (EField ((EConst (Ident v.v_name),p),getter_name),p) e2 true with_type p in
 			unify ctx get.etype ret p;
 			l();
-			mk (TBlock [
-				mk (TVar (v,Some et)) ctx.t.tvoid p;
-				make_call ctx ef [ev;get] ret p
-			]) ret p
+			let e_call = make_call ctx ef [ev;get] ret p in
+			if is_temp then
+				mk (TBlock [
+					mk (TVar (v,Some et)) ctx.t.tvoid p;
+					e_call
+				]) ret p
+			else
+				e_call
 		| AKAccess(ebase,ekey) ->
 			let a,pl,c = match follow ebase.etype with TAbstract({a_impl = Some c} as a,pl) -> a,pl,c | _ -> error "Invalid operation" p in
 			let et = type_module_type ctx (TClassDecl c) None p in
@@ -2705,7 +2724,7 @@ and type_expr ctx (e,p) (with_type:with_type) =
 			| TAnon a when not (PMap.is_empty a.a_fields) -> Some a
 			| TAbstract (a,tl) when not (Meta.has Meta.CoreType a.a_meta) ->
 				begin match follow (Codegen.Abstract.get_underlying_type a tl) with
-					| TAnon a -> Some a
+					| TAnon a when not (PMap.is_empty a.a_fields) -> Some a
 					| _ -> None
 				end
 			| _ -> None)

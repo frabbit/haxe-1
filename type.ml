@@ -1814,8 +1814,8 @@ and unify_to_field ab tl b ?(allow_transitive_cast=true) (t,cfo) =
 	r
 	end
 
-and unify_with_variance t1 t2 f =
 
+and unify_with_variance f t1 t2 =
 	let allows_variance_to t (tf,cfo) = match cfo with
 		| None -> type_iseq2 tf t
 		| Some _ -> false
@@ -1843,10 +1843,9 @@ and unify_with_variance t1 t2 f =
 		List.iter2 g args1 args2;
 		with_variance f r1 r2
 	| TInst(c1,tl1),TInst(c2,tl2) when c1 == c2 ->
-		List.iter2 (with_variance f) tl1 tl2
+		List.iter2 f tl1 tl2
 	| TEnum(en1,tl1),TEnum(en2,tl2) when en1 == en2 ->
-		List.iter2 (with_variance f) tl1 tl2
-
+		List.iter2 f tl1 tl2
 	| (TAbstract(({ a_path = [],"Of"}) as a1,pl1) as a), (TAbstract(({ a_path = [],"Of"}) as b2,pl2) as b) ->
 		let a = follow_reversible_ofs a in
 		let b = follow_reversible_ofs b in
@@ -1865,7 +1864,8 @@ and unify_with_variance t1 t2 f =
 		if is_of_type b
 		then error [cannot_unify t1 t2]
 		else (with_variance f) a b
-
+	| TAbstract(a1,tl1),TAbstract(a2,tl2) when a1 == a2 && Meta.has Meta.CoreType a1.a_meta ->
+		List.iter2 f tl1 tl2
 	| TAbstract(a1,pl1),TAbstract(a2,pl2) ->
 		abstract_variance a1 pl1 a2 pl2
 	| TAbstract(a,pl),t ->
@@ -1896,7 +1896,7 @@ and with_variance f t1 t2 =
 	try
 		f t1 t2
 	with Unify_error l -> try
-		unify_with_variance t1 t2 f
+		unify_with_variance (with_variance f) t1 t2
 	with Unify_error _ ->
 		raise (Unify_error l)
 
