@@ -730,8 +730,11 @@ and reduce_of t reversible =
 		| _ -> t)
 	| TLazy f ->
 		reduce_of (!f()) reversible
+	(* Not sure if this is required, it currently changes the behaviour of s_type. *)
+	(*
 	| TType (t,tl) ->
-		reduce_of (apply_params t.t_types tl t.t_type) reversible
+	reduce_of (apply_params t.t_types tl t.t_type) reversible
+	*)
 	| _ -> t
 
 and reduce_of_irreversible t = reduce_of t false
@@ -1817,7 +1820,7 @@ and unify_to_field ab tl b ?(allow_transitive_cast=true) (t,cfo) =
 
 and unify_with_variance f t1 t2 =
 	let allows_variance_to t (tf,cfo) = match cfo with
-		| None -> type_iseq2 tf t
+		| None -> type_iseq tf t
 		| Some _ -> false
 	in
 	let abstract_variance a1 pl1 a2 pl2 =
