@@ -173,32 +173,35 @@ let make_path f =
 		| ["hx";path] -> ExtString.String.nsplit path "/"
 		| _ -> cl
 	) in
-	let error() =
-		let msg = "Could not process argument " ^ f in
-		let msg = msg ^ "\n" ^
-			if String.length f == 0 then
-				"Class name must not be empty"
-			else match (List.hd (List.rev cl)).[0] with
-				| 'A'..'Z' -> "Invalid class name"
-				| _ -> "Class name must start with uppercase character"
-		in
+ 	let error msg =
+		let msg = "Could not process argument " ^ f ^ "\n" ^ msg in
 		failwith msg
 	in
 	let invalid_char x =
 		for i = 1 to String.length x - 1 do
 			match x.[i] with
 			| 'A'..'Z' | 'a'..'z' | '0'..'9' | '_' -> ()
-			| _ -> error()
-		done;
-		false
+			| c -> error ("invalid character: " ^ (String.make 1 c))
+		done
 	in
 	let rec loop = function
-		| [] -> error()
-		| [x] -> if String.length x = 0 || not (x.[0] = '_' || (x.[0] >= 'A' && x.[0] <= 'Z')) || invalid_char x then error() else [] , x
+		| [] ->
+			error "empty part"
+		| [x] ->
+			if String.length x = 0 then
+				error "empty part"
+			else if not (x.[0] = '_' || (x.[0] >= 'A' && x.[0] <= 'Z')) then
+				error "Class name must start with uppercase character";
+			invalid_char x;
+			[],x
 		| x :: l ->
-			if String.length x = 0 || x.[0] < 'a' || x.[0] > 'z' || invalid_char x then error() else
-				let path , name = loop l in
-				x :: path , name
+			if String.length x = 0 then
+				error "empty part"
+			else if x.[0] < 'a' || x.[0] > 'z' then
+				error "Package name must start with a lower case character";
+			invalid_char x;
+			let path,name = loop l in
+			x :: path,name
 	in
 	loop cl
 
@@ -1047,7 +1050,7 @@ try
 		("-swf-version",Arg.Float (fun v ->
 			if not !swf_version || com.flash_version < v then com.flash_version <- v;
 			swf_version := true;
-		),"<version> : change the SWF version (6 to 10)");
+		),"<version> : change the SWF version");
 		("-swf-header",Arg.String (fun h ->
 			try
 				swf_header := Some (match ExtString.String.nsplit h ":" with
@@ -1379,9 +1382,6 @@ try
 	end;
 	com.config <- get_config com; (* make sure to adapt all flags changes defined after platform *)
 
-	(* check file extension. In case of wrong commandline, we don't want
-		to accidentaly delete a source file. *)
-	if not !no_output && file_extension com.file = ext then delete_file com.file;
 	List.iter (fun f -> f()) (List.rev (!pre_compilation));
 	if !classes = [([],"Std")] && not !force_typing then begin
 		let help_spec = basic_args_spec @ [
@@ -1418,6 +1418,9 @@ try
 		com.modules <- modules;
 		Filters.run com tctx main;
 		if ctx.has_error then raise Abort;
+		(* check file extension. In case of wrong commandline, we don't want
+			to accidentaly delete a source file. *)
+		if not !no_output && file_extension com.file = ext then delete_file com.file;
 		(match !xml_out with
 		| None -> ()
 		| Some "hx" ->
@@ -1561,7 +1564,7 @@ with
 			| Typer.ITEnum(en,ef) -> Buffer.add_string b (Printf.sprintf "<i k=\"enum\" t=\"%s\">%s</i>\n" (s_type ef.ef_type) ef.ef_name);
 			| Typer.ITGlobal(mt,s,t) -> Buffer.add_string b (Printf.sprintf "<i k=\"global\" p=\"%s\" t=\"%s\">%s</i>\n" (s_type_path (t_infos mt).mt_path) (s_type t) s);
 			| Typer.ITType(mt) -> Buffer.add_string b (Printf.sprintf "<i k=\"type\" p=\"%s\">%s</i>\n" (s_type_path (t_infos mt).mt_path) (snd (t_infos mt).mt_path));
-			| Typer.ITPackage s -> Buffer.add_string b (Printf.sprintf "<i k=\"package\">%s<i>\n" s)
+			| Typer.ITPackage s -> Buffer.add_string b (Printf.sprintf "<i k=\"package\">%s</i>\n" s)
 		) il;
 		Buffer.add_string b "</il>";
 		raise (Completion (Buffer.contents b))

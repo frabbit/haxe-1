@@ -262,7 +262,7 @@ class Printer {
 					}].join("\n")
 					+ "\n}";
 				case TDClass(superClass, interfaces, isInterface):
-					(isInterface ? "interface " : "class ") + t.name + (t.params.length > 0 ? "<" + t.params.map(printTypeParamDecl).join(", ") + ">" : "")
+					(isInterface ? "interface " : "class ") + t.name + (t.params != null && t.params.length > 0 ? "<" + t.params.map(printTypeParamDecl).join(", ") + ">" : "")
 					+ (superClass != null ? " extends " + printTypePath(superClass) : "")
 					+ (interfaces != null ? (isInterface ? [for (tp in interfaces) " extends " + printTypePath(tp)] : [for (tp in interfaces) " implements " + printTypePath(tp)]).join("") : "")
 					+ " {\n"
@@ -270,7 +270,9 @@ class Printer {
 						var fstr = printField(f);
 						tabs + fstr + switch(f.kind) {
 							case FVar(_, _), FProp(_, _, _, _): ";";
-							case FFun(func) if (func.expr == null): ";";
+							case FFun({expr:null}): ";";
+							case FFun({expr:{expr:EBlock(_)}}): "";
+							case FFun(_): ";";
 							case _: "";
 						};
 					}].join("\n")
