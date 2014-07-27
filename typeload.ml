@@ -1568,7 +1568,6 @@ let build_module_def ctx mt meta fvars context_init fbuild =
 			let old = ctx.g.get_build_infos in
 			ctx.g.get_build_infos <- (fun() -> Some (mt, List.map snd (t_infos mt).mt_types, fvars()));
 			context_init();
-			flush_pass ctx PBuildClass "field typing";
 			let r = try apply_macro ctx MBuild s el p with e -> ctx.g.get_build_infos <- old; raise e in
 			ctx.g.get_build_infos <- old;
 			(match r with
