@@ -1107,7 +1107,7 @@ let rec add_constructor ctx c force_constructor p =
 		()
 
 let set_heritance ctx c herits p =
-	let ctx = { ctx with curclass = c; type_params = c.cl_types; } in
+	let ctx = { ctx with curclass = c; type_params = ("In", !t_in) :: c.cl_types; } in
 	let process_meta csup =
 		List.iter (fun m ->
 			match m with
