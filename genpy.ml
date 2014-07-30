@@ -1943,7 +1943,6 @@ module Generator = struct
 						(* importing a class from a module *)
 						"from " ^ module_name ^ " import " ^ object_name ^ " as " ^ class_name
 			in
-			if Buffer.length ctx.buf > 0 then newline ctx;
 			if ignore_error then begin
 				spr_line ctx "try:";
 				spr ctx "\t";
@@ -2000,7 +1999,10 @@ module Generator = struct
 				| [] -> c.cl_constructor = None
 				| _ -> c.cl_interface
 			in
-			if use_pass then spr ctx "\tpass";
+			if use_pass then begin
+				newline ctx;
+				spr ctx "\tpass";
+			end
 		end;
 		gen_class_init ctx c
 
@@ -2130,7 +2132,8 @@ module Generator = struct
 			match mt with
 			| TClassDecl c when c.cl_extern -> gen_import ctx c
 			| _ -> ()
-		) ctx.com.types
+		) ctx.com.types;
+		newline ctx
 
 	let gen_types ctx =
 		let used_paths = Hashtbl.create 0 in
