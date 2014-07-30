@@ -542,26 +542,13 @@ let rec follow t =
 		| Some t -> follow t
 		| _ -> t)
 	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		let t = reduce_of_irreversible t in
+		let t = reduce_of t in
 		if is_of_type t then t else follow t
 	| TLazy f ->
 		follow (!f())
 	| TType (t,tl) ->
 		follow (apply_params t.t_types tl t.t_type)
 	| _ -> t
-
-and follow_reversible_ofs t =
-	match t with
-	| TMono r ->
-		(match !r with
-		| Some t -> follow_reversible_ofs t
-		| _ -> t)
-	| TAbstract({a_path=[],"Of"},[_;_]) ->
-		reduce_of_reversible t
-	| TLazy f ->
-		follow_reversible_ofs (!f())
-	| _ -> t
-
 
 and t_in = ref t_dynamic
 
@@ -611,7 +598,7 @@ and is_of_type t = match t with
 
 *)
 
-and unapply_in t ta reversible =
+and unapply_in t ta =
 
 	(* replaces/unnapplies the leftmost In type and returns the unapplied list and a flag which
 	   indicates if an In type was really replaced
@@ -620,7 +607,7 @@ and unapply_in t ta reversible =
 		let rec loop r = match r with
 			| t :: [] when is_in_type t -> true, ta::[]
 			| t :: tl when is_in_type t ->
-				if reversible && not (List.for_all is_in_type tl) then
+				if not (List.for_all is_in_type tl) then
 					false, r
 				else
 					true, ta::tl
@@ -648,10 +635,10 @@ and unapply_in t ta reversible =
 			| _ -> t, false)
 		| TAbstract({a_path=[],"Of"},[tm;tx]) ->
 			(* unapply In types in nested Ofs like Of<Of<In->In>, A, B> *)
-			(match unapply_in tm (reduce_of tx reversible) reversible with
+			(match unapply_in tm (reduce_of tx) with
 			| _, false -> t, false
 			| TAbstract({a_path=[],"Of"},[_;_]), _ -> t, false (* cannot unapply In in this Of type *)
-			| x, _ -> unapply_in x ta reversible)
+			| x, _ -> unapply_in x ta)
 		| TAbstract(a,tl) ->
 			let d, x = unapply_left tl in
 			if d then TAbstract(a,x), true else t, false
@@ -680,14 +667,14 @@ and unapply_in t ta reversible =
 
 and unapply_in_constraints tm ta =
 	let rec loop t =
-		match follow_reversible_ofs t with
+		match follow t with
 		| TAbstract ({a_path=[],"Of"},[tm1; ta1]) ->
 			loop (unapply_in_constraints tm1 ta1)
 		| TInst (c,params) ->
 			let new_kind = match c.cl_kind with
 			| KTypeParameter tp ->
 				let unapply t =
-					let t1,applied = unapply_in t (reduce_of_irreversible ta) false in
+					let t1,applied = unapply_in t (reduce_of ta) in
 					if applied then t1 else t
 				in
 				KTypeParameter (List.map unapply tp)
@@ -719,26 +706,18 @@ and unapply_in_constraints tm ta =
 	reduce_of Of<In->In, A> true|false => A->In
 *)
 
-and reduce_of t reversible =
+and reduce_of t =
 	match t with
 	| TAbstract({a_path=[],"Of"},[tm;tr]) ->
-		let x, applied = unapply_in tm (reduce_of tr reversible) reversible in
+		let x, applied = unapply_in tm (reduce_of tr) in
 		if applied then x else t
 	| TMono r ->
 		(match !r with
-		| Some t -> reduce_of t reversible
+		| Some t -> reduce_of t
 		| _ -> t)
 	| TLazy f ->
-		reduce_of (!f()) reversible
-	(* Not sure if this is required, it currently changes the behaviour of s_type. *)
-	(*
-	| TType (t,tl) ->
-	reduce_of (apply_params t.t_types tl t.t_type) reversible
-	*)
+		reduce_of (!f())
 	| _ -> t
-
-and reduce_of_irreversible t = reduce_of t false
-and reduce_of_reversible t = reduce_of t true
 
 let rec is_nullable ?(no_lazy=false) = function
 	| TMono r ->
@@ -931,7 +910,7 @@ let rec get_constructor build_type c =
 let print_context() = ref []
 
 let rec s_type ctx t =
-	match reduce_of_reversible t with
+	match reduce_of t with
 	| TMono r ->
 		(match !r with
 		| None -> Printf.sprintf "Unknown<%d>" (try List.assq t (!ctx) with Not_found -> let n = List.length !ctx in ctx := (t,n) :: !ctx; n)
@@ -1498,6 +1477,8 @@ let rec unify_of tm ta b =
 			| _ -> t, t)
 		| TDynamic _ ->
 			t_dynamic,t_dynamic
+		| TAnon _ ->
+			error [Unify_custom "Invalid Of-unification cannot unify structures with Of types"]
 		| _ ->
 			error [Unify_custom "Invalid Of-unification"]
 	in
@@ -1526,7 +1507,7 @@ and unify a b =
 			unify Of<In->A, B> Of<B->In, A> becomes
 			unify B->A B->A
 		*)
-		(match reduce_of_irreversible a, reduce_of_irreversible b with
+		(match reduce_of a, reduce_of b with
 			| _, TAbstract({a_path = [],"Of"},[_;_])
 			| TAbstract({a_path = [],"Of"},[_;_]), _ ->
 				unify tm1 tm2;
@@ -1539,11 +1520,11 @@ and unify a b =
 			unify Of<In->B, A> A->B becomes
 			unify A->B A->B
 		*)
-		let t = reduce_of_irreversible a in
+		let t = reduce_of a in
 		if is_of_type t then unify_of tm ta b else unify t b
 	| a,TAbstract({a_path = [],"Of"},[tm;ta]) ->
 		(* first reduce the Of type, same as in the case above. *)
-		let t = reduce_of_irreversible b in
+		let t = reduce_of b in
 		if is_of_type t then unify_of tm ta a else unify a t
 	| TType (t,tl) , _ ->
 		if not (List.exists (fun (a2,b2) -> fast_eq a a2 && fast_eq b b2) (!unify_stack)) then begin
@@ -1850,20 +1831,20 @@ and unify_with_variance f t1 t2 =
 	| TEnum(en1,tl1),TEnum(en2,tl2) when en1 == en2 ->
 		List.iter2 f tl1 tl2
 	| (TAbstract(({ a_path = [],"Of"}) as a1,pl1) as a), (TAbstract(({ a_path = [],"Of"}) as b2,pl2) as b) ->
-		let a = follow_reversible_ofs a in
-		let b = follow_reversible_ofs b in
+		let a = follow a in
+		let b = follow b in
 		if is_of_type a && is_of_type b then
 			abstract_variance a1 pl1 b2 pl2
 		else
 			(with_variance f) a b
 	| (TAbstract({ a_path = [],"Of"},pl1) as a),b ->
-		let a = follow_reversible_ofs a in
+		let a = follow a in
 		if is_of_type a
 		then error [cannot_unify t1 t2]
 		else (with_variance f) a b
 	| a,(TAbstract({ a_path = [],"Of"},_) as b) ->
-		Printf.printf "|||||||| %s with %s\n%s\n" (s_type a) (s_type b) (s_type (follow_reversible_ofs b));
-		let b = follow_reversible_ofs b in
+		Printf.printf "|||||||| %s with %s\n%s\n" (s_type a) (s_type b) (s_type (follow b));
+		let b = follow b in
 		if is_of_type b
 		then error [cannot_unify t1 t2]
 		else (with_variance f) a b
@@ -1893,7 +1874,7 @@ and unify_types a b tl1 tl2 =
 		with Unify_error l ->
 			try
 				if is_of_type t1 || is_of_type t2 then
-					with_variance (type_eq EqRightDynamic) (reduce_of_irreversible t1) (reduce_of_irreversible t2)
+					with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2)
 				else
 					raise (Unify_error l)
 			with Unify_error l ->

@@ -695,7 +695,7 @@ module Abstract = struct
 				t_dynamic
 			else match a.a_path,pl with
 				| ([],"Of"),[tm;ta] ->
-					let x, applied = unapply_in tm (reduce_of_irreversible ta) false in
+					let x, applied = unapply_in tm (reduce_of ta) in
 					if applied then
 						follow x
 					else

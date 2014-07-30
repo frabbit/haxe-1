@@ -3527,7 +3527,7 @@ and handle_display ctx e iscall p =
 				PMap.fold (fun f acc ->
 					if f.cf_name <> "_new" && can_access ctx c f true && Meta.has Meta.Impl f.cf_meta && not (Meta.has Meta.Enum f.cf_meta) then begin
 						let f = prepare_using_field f in
-						let t = apply_params a.a_types pl (follow_reversible_ofs f.cf_type) in
+						let t = apply_params a.a_types pl (follow f.cf_type) in
 						PMap.add f.cf_name { f with cf_public = true; cf_type = opt_type t } acc
 					end else
 						acc
@@ -3732,13 +3732,8 @@ and build_call ctx acc el (with_type:with_type) p =
 		| _ ->
 			let t = follow (field_type ctx cl [] ef p) in
 
-			let etype_follow = match t with
-			| TFun ((_,_,t1) :: _, _) -> 
-				if is_of_type (follow_reversible_ofs t1) then follow_reversible_ofs else follow
-			| _ -> assert false
-			in
 			(* for abstracts we have to apply their parameters to the static function *)
-			let t,tthis,is_abstract_impl_call = match etype_follow eparam.etype with
+			let t,tthis,is_abstract_impl_call = match follow eparam.etype with
 				| TAbstract(a,tl) when Meta.has Meta.Impl ef.cf_meta -> apply_params a.a_types tl t,apply_params a.a_types tl a.a_this,true
 				| te -> t,te,false
 			in
@@ -4179,7 +4174,7 @@ let make_macro_api ctx p =
 					"addFeature", Interp.VFunction (Interp.Fun1 (fun v ->
 						Common.add_feature ctx.com (Interp.dec_string v);
 						Interp.VNull
-					));	
+					));
 					"quoteString", Interp.VFunction (Interp.Fun1 (fun v ->
 						Interp.enc_string ("\"" ^ Ast.s_escape (Interp.dec_string v) ^ "\"")
 					));
