@@ -38,25 +38,9 @@ class EitherMonad<L> implements Monad<Either<L, In>>
 }
 
 
-class EitherLeftMonad<R> implements Monad<Either<In, R>> 
-{
-     public function new () {}
-     public function fmap<A,B>(x:Either<A, R>, f:A->B):Either<B, R> {
-         return switch (x) {
-            case Right(r): Right(r);
-            case Left(l): Left(f(l));
-         }
-     }
-     public function flatMap<A,B>(x:Either<A, R>, f:A->Either<B,R>):Either<B, R> {
-         return switch (x) {
-            case Right(r): Right(r);
-            case Left(l): f(l);
-         }
-     }
-}
 
 
-class ReversedEitherMonad<R> implements Monad<ReversedEither<R, In>> 
+class ReversedEitherMonad<R> implements Monad<ReversedEither<R, In>>
 {
      public function new () {}
      public function fmap<A,B>(x:ReversedEither<R, A>, f:A->B):ReversedEither<R, B> {
@@ -74,7 +58,7 @@ class ReversedEitherMonad<R> implements Monad<ReversedEither<R, In>>
 }
 
 
- 
+
 class ArrayMonad implements Monad<Array<In>> {
   public function new () {}
   public inline function fmap<S,T>(a:Array<S>, f:S->T):Array<T> {
@@ -86,7 +70,7 @@ class ArrayMonad implements Monad<Array<In>> {
 }
 
 
-abstract ArrayT<M, A>(M<Array<A>>) 
+abstract ArrayT<M, A>(M<Array<A>>)
 {
   public function new (x:M<Array<A>>) {
     this = x;
@@ -95,7 +79,7 @@ abstract ArrayT<M, A>(M<Array<A>>)
     return this;
   }
 
-  public static function runT <M1,A1>(a:ArrayT<M1,A1>):M1<Array<A1>> 
+  public static function runT <M1,A1>(a:ArrayT<M1,A1>):M1<Array<A1>>
   {
     return a.unwrap();
   }
@@ -105,7 +89,7 @@ abstract ArrayT<M, A>(M<Array<A>>)
   }
 }
 
-abstract EitherT<M,L,A>(M<Either<L,A>>) 
+abstract EitherT<M,L,A>(M<Either<L,A>>)
 {
   public function new (x:M<Either<L,A>>) {
     this = x;
@@ -114,7 +98,7 @@ abstract EitherT<M,L,A>(M<Either<L,A>>)
     return this;
   }
 
-  public static function runT <M1,L,A1>(a:EitherT<M1,L,A1>):M1<Either<L,A1>> 
+  public static function runT <M1,L,A1>(a:EitherT<M1,L,A1>):M1<Either<L,A1>>
   {
     return a.unwrap();
   }
@@ -125,15 +109,15 @@ abstract EitherT<M,L,A>(M<Either<L,A>>)
 }
 
 
-class ArrayTFunctor<M> implements Functor<ArrayT<M,In>> 
+class ArrayTFunctor<M> implements Functor<ArrayT<M,In>>
 {
   var functorM:Functor<M>;
-  
-  public function new (functorM:Functor<M>) 
+
+  public function new (functorM:Functor<M>)
   {
     this.functorM = functorM;
   }
-  
+
   public function fmap<A,B>(v:ArrayT<M, A>,f:A->B):ArrayT<M, B>
   {
     function g (a:Array<A>) return a.map(f);
@@ -143,18 +127,18 @@ class ArrayTFunctor<M> implements Functor<ArrayT<M,In>>
 
 }
 
-class EitherTFunctor<M,L> implements Functor<EitherT<M,L,In>> 
+class EitherTFunctor<M,L> implements Functor<EitherT<M,L,In>>
 {
   var functorM:Functor<M>;
-  
-  public function new (functorM:Functor<M>) 
+
+  public function new (functorM:Functor<M>)
   {
     this.functorM = functorM;
   }
-  
+
   public function fmap<A,B>(v:EitherT<M,L,A>,f:A->B):EitherT<M,L,B>
   {
-    function g (a:Either<L,A>) 
+    function g (a:Either<L,A>)
       return switch (a) {
         case Left(x): Left(x);
         case Right(x): Right(f(x));
@@ -167,13 +151,13 @@ class EitherTFunctor<M,L> implements Functor<EitherT<M,L,In>>
 
 
 class FunctorSyntax {
-  public static function fmap<M, S, T>(x:M<S>, f:S->T, m:Functor<M>):M<T> 
+  public static function fmap<M, S, T>(x:M<S>, f:S->T, m:Functor<M>):M<T>
   {
     return m.fmap(x, f);
   }
 }
 class MonadSyntax {
-  public static function flatMap<M, S, T>(x:M<S>, f:S->M<T>, m:Monad<M>):M<T> 
+  public static function flatMap<M, S, T>(x:M<S>, f:S->M<T>, m:Monad<M>):M<T>
   {
     return m.flatMap(x, f);
   }
@@ -182,7 +166,7 @@ class MonadSyntax {
 
 typedef ReversedEitherAlias<B,A> = Either<A,B>;
 
-abstract ReversedEither<R,L>(Either<L,R>) 
+abstract ReversedEither<R,L>(Either<L,R>)
 {
   public function new (x:Either<L,R>) this = x;
 
@@ -193,28 +177,15 @@ abstract ReversedEither<R,L>(Either<L,R>)
 
 typedef Tup2<A,B> = { var _1 : A; var _2 : B; }
 
-class Tup2LeftFunctor<T> implements Functor<Tup2<In, T>> 
-{
-  public function new () {}
-  
-  public inline function fmap<A,B>(a:Tup2<A, T>, f:A->B):Tup2<B, T> {
-    return {
-      _1 : f(a._1),
-      _2 : a._2,
-    }
-  }
-
-}
-
 class Tup2RightFunctor<T> implements Functor<Tup2<T, In>> {
   public function new () {}
-  public inline function fmap<A,B>(a:Tup2<T, A>, f:A->B):Tup2<T, B> 
+  public inline function fmap<A,B>(a:Tup2<T, A>, f:A->B):Tup2<T, B>
   {
     return {
       _1 : a._1,
       _2 : f(a._2),
     }
-  }  
+  }
 }
 
 interface Mappable<M,T> {
@@ -251,7 +222,7 @@ class MyList<T> implements FlatMappable<MyList<In>, T> {
   public function new (a:List<T>) {
     this.a = a;
   }
-  
+
   public function map <B>(f:T->B):MyList<B> {
     return new MyList(this.a.map(f));
   }
@@ -264,23 +235,23 @@ class MyList<T> implements FlatMappable<MyList<In>, T> {
 }
 
 typedef Filterable<M, T> = {
-  public function filter (f:T->Bool):M<T>;  
+  public function filter (f:T->Bool):M<T>;
 }
 
 
 typedef BetterFilterable<M:BetterFilterable<M,In>, T> = {
-  public function filter (f:T->Bool):M<T>;  
+  public function filter (f:T->Bool):M<T>;
 }
 
 
-interface Category<Cat:Category<Cat, In, In>, A, B> 
+interface Category<Cat:Category<Cat, In, In>, A, B>
 {
   public function create<A,B> (f:A->B):Cat<A,B>;
 
   public function run (a:A):B;
 
   public function dot <C>(f:Cat<C, A>):Cat<C, B>;
-  
+
   public function next <C>(f:Cat<B, C>):Cat<A, C>;
 
 
@@ -289,7 +260,7 @@ interface Category<Cat:Category<Cat, In, In>, A, B>
 interface Arrow<Arr:Arrow<Arr, In, In>,A,B> extends Category<Arr, A, B>
 {
 
-  
+
 
   public function first  <C>():Arr<Tup2<A,C>, Tup2<B,C>>;
   public function second <C>():Arr<Tup2<C,A>, Tup2<C,B>>;
@@ -310,7 +281,7 @@ class FunctionArrow<A,B> implements Arrow<FunctionArrow<In,In>, A, B>
     return new FunctionArrow(f);
   }
 
-  public function run (a:A):B 
+  public function run (a:A):B
   {
     return this.a(a);
   }
@@ -330,7 +301,7 @@ class FunctionArrow<A,B> implements Arrow<FunctionArrow<In,In>, A, B>
   public function dot <C>(f:FunctionArrow<C, A>):FunctionArrow<C, B> {
     return create(function (c:C) return a(f.a(c)));
   }
-  
+
   public function next <C>(f:FunctionArrow<B, C>):FunctionArrow<A, C> {
     return create(function (c:A) return f.a(a(c)));
   }

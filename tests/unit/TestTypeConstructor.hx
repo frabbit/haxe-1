@@ -46,21 +46,7 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	public function testLeftInType()
-	{
-		var x : Of<Either<In, Int>, String> = Left("hello");
-
-		//$type(x.fmap);
-
-		var r = x.fmap(function (x) return x+" world", new EitherLeftMonad());
-
-		t(r.match(Left("hello world")));
-
-		var r = x.flatMap(function (x) return Left(x+" world"), new EitherLeftMonad());
-
-		t(r.match(Left("hello world")));
-	}
-
+	/*
 	public function testReversedTypedef()
 	{
 		var x : Of<ReversedEitherAlias<Int, In>, String> = Left("hello");
@@ -74,17 +60,11 @@ class TestTypeConstructor extends Test {
 		t(r.match(Left("hello world")));
 
 	}
+	*/
 
+	/*
 	public function testStructure()
 	{
-		// explicit left lifted Of type
-
-		var z:Of<Tup2<In,Int>, String> = { _1 : "hey", _2 : 20};
-
-		var r = z.fmap(function (x) return x + " foo", new Tup2LeftFunctor());
-
-		t(r._1 == "hey foo" && r._2 == 20);
-
 		// explicit right lifted Of type
 
 		var z:Of<Tup2<String,In>, Int> = { _1 : "hey", _2 : 20};
@@ -104,6 +84,7 @@ class TestTypeConstructor extends Test {
 
 
 	}
+	*/
 
 	public function testReversedAbstract()
 	{
@@ -342,31 +323,27 @@ class TestTypeConstructor extends Test {
 		var x1  : FourTypeParameters<Int, String, Float, Array<Int>> = null;
 		var x2  : Of<Of<Of<Of<FourTypeParameters<In, In, In, In>, Int>, String>, Float>, Array<Int>> = null;
 		var x3  : Of<Of<Of<FourTypeParameters<Int, In, In, In>, String>, Float>, Array<Int>> = null;
-		var x4  : Of<Of<Of<FourTypeParameters<In, String, In, In>, Int>, Float>, Array<Int>> = null;
-		var x5  : Of<Of<Of<FourTypeParameters<In, In, Float, In>, Int>, String>, Array<Int>> = null;
-		var x6  : Of<Of<Of<FourTypeParameters<In, In, In, Array<Int>>, Int>, String>, Float> = null;
-		var x7  : Of<Of<FourTypeParameters<In, In, Float, Array<Int>>, Int>, String> = null;
-		var x8  : Of<Of<FourTypeParameters<In, String, In, Array<Int>>, Int>, Float> = null;
-		var x9  : Of<Of<FourTypeParameters<Int, In, In, Array<Int>>, String>, Float> = null;
+		//var x4  : Of<Of<Of<FourTypeParameters<In, String, In, In>, Int>, Float>, Array<Int>> = null;
+		//var x5  : Of<Of<Of<FourTypeParameters<In, In, Float, In>, Int>, String>, Array<Int>> = null;
+		var x6  : Of<Of<FourTypeParameters<Int, String, In, In>, Float>, Array<Int>> = null;
+		var x7  : Of<FourTypeParameters<Int, String, Float, In>, Array<Int>> = null;
+		//var x8  : Of<Of<FourTypeParameters<In, String, In, Array<Int>>, Int>, Float> = null;
+		//var x9  : Of<Of<FourTypeParameters<Int, In, In, Array<Int>>, String>, Float> = null;
 		var x10 : Of4<FourTypeParameters<In, In, In, In>, Int, String, Float, Array<Int>> = null;
 
 
 
-		x1  = x2; x1  = x3; x1  = x4; x1  = x5; x1  = x6; x1  = x7; x1  = x8; x1  = x9; x1  = x10;
-		x2  = x1; x2  = x3; x2  = x4; x2  = x5; x2  = x6; x2  = x7; x2  = x8; x2  = x9; x2  = x10;
-		x3  = x1; x3  = x2; x3  = x4; x3  = x5; x3  = x6; x3  = x7; x3  = x8; x3  = x9; x3  = x10;
-		x4  = x1; x4  = x2; x4  = x3; x4  = x5; x4  = x6; x4  = x7; x4  = x8; x4  = x9; x4  = x10;
-		x5  = x1; x5  = x2; x5  = x3; x5  = x4; x5  = x6; x5  = x7; x5  = x8; x5  = x9; x5  = x10;
-		x6  = x1; x6  = x2; x6  = x3; x6  = x4; x6  = x5; x6  = x7; x6  = x8; x6  = x9; x6  = x10;
-		x7  = x1; x7  = x2; x7  = x3; x7  = x4; x7  = x5; x7  = x6; x7  = x8; x7  = x9; x7  = x10;
-		x8  = x1; x8  = x2; x8  = x3; x8  = x4; x8  = x5; x8  = x6; x8  = x7; x8  = x9; x8  = x10;
-		x9  = x1; x9  = x2; x9  = x3; x9  = x4; x9  = x5; x9  = x6; x9  = x7; x9  = x8; x9  = x10;
-		x10 = x1; x10 = x2; x10 = x3; x10 = x4; x10 = x5; x10 = x6; x10 = x7; x10 = x8; x10 = x9;
+		x1  = x2; x1  = x3; x1  = x6; x1  = x7; x1  = x10;
+		x2  = x1; x2  = x3; x2  = x6; x2  = x7; x2  = x10;
+		x3  = x1; x3  = x2; x3  = x6; x3  = x7; x3  = x10;
+		x6  = x1; x6  = x2; x6  = x3; x6  = x7; x6  = x10;
+		x7  = x1; x7  = x2; x7  = x3; x7  = x6; x7  = x10;
+		x10 = x1; x10 = x2; x10 = x3; x10 = x6; x10 = x7;
 
 
 		// variance unification
-		var a1 = [x1,x2,x3,x4,x5,x6,x7,x8,x9,x10];
-		var a2 = [x2,x3,x4,x5,x6,x7,x8,x9,x10];
+		var a1 = [x1,x2,x3,x6,x7,x10];
+		var a2 = [x2,x3,x6,x7,x10];
 		var a3 = a1.concat(a2);
 		var a3:Array<FourTypeParameters<Int, String, Float, Array<Int>>> = a2;
 
