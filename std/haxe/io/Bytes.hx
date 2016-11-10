@@ -73,7 +73,9 @@ class Bytes {
 	**/
 	
 	public inline function getDouble( pos : Int ) : Float {
+		#if cpp
 		if( pos < 0 || pos + 8 > length ) throw Error.OutsideBounds;
+		#end
 		return b.getDouble(pos);
 	}
 
@@ -82,7 +84,9 @@ class Bytes {
 		Result is unspecified if reading outside of the bounds
 	**/
 	public inline function getFloat( pos : Int ) : Float {
+		#if cpp
 		if( pos < 0 || pos + 4 > length ) throw Error.OutsideBounds;
+		#end
 		return b.getFloat(pos);
 	}
 
@@ -92,7 +96,9 @@ class Bytes {
 	**/
 
 	public inline function setDouble( pos : Int, v : Float ) : Void {
+		#if cpp
 		if( pos < 0 || pos + 8 > length ) throw Error.OutsideBounds;
+		#end
 		b.setDouble(pos, v);
 	}
 
@@ -102,7 +108,9 @@ class Bytes {
 	**/
 	
 	public inline function setFloat( pos : Int, v : Float ) : Void {
+		#if cpp
 		if( pos < 0 || pos + 4 > length ) throw Error.OutsideBounds;
+		#end
 		b.setFloat(pos, v);
 	}
 
@@ -148,7 +156,7 @@ class Bytes {
 		return b.setInt64(pos, v);
 	}
 
-	public inline function getString( pos : Int, len : Int ) : String {
+	public function getString( pos : Int, len : Int ) : String {
 		#if neko
 		return try b.getString(pos, len) catch( e : Dynamic ) throw Error.OutsideBounds;
 		#else
