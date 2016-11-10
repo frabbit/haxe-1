@@ -142,7 +142,7 @@ class Module {
 	**/
 	public static function read( i : haxe.io.Input, l : Loader ) : Module {
 		var m = _module_read(function(buf,pos,len) {
-			return i.readBytes(untyped new haxe.io.Bytes(len,buf),pos,len);
+			return i.readBytes(untyped haxe.io.Bytes.ofData(buf),pos,len);
 		},l.l);
 		return new Module(m);
 	}

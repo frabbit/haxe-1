@@ -268,7 +268,7 @@ class Web {
 	public static function parseMultipart( onPart : String -> String -> Void, onData : haxe.io.Bytes -> Int -> Int -> Void ) : Void {
 		_parse_multipart(
 			function(p,f) { onPart(new String(p),if( f == null ) null else new String(f)); },
-			function(buf,pos,len) { onData(untyped new haxe.io.Bytes(__dollar__ssize(buf),buf),pos,len); }
+			function(buf,pos,len) { onData(untyped haxe.io.Bytes.ofData(buf),pos,len); }
 		);
 	}
 

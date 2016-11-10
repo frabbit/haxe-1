@@ -277,7 +277,7 @@ class Output {
 	**/
 	public function writeString( s : String ) {
 		#if neko
-		var b = untyped new Bytes(s.length,s.__s);
+		var b = untyped Bytes.ofData(s.__s);
 		#else
 		var b = Bytes.ofString(s);
 		#end

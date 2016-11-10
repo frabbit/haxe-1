@@ -191,25 +191,25 @@ class BytesBuffer {
 	public function getBytes() : Bytes untyped {
 		#if neko
 		var str = StringBuf.__to_string(b);
-		var bytes = new Bytes(__dollar__ssize(str),str);
+		var bytes = new Bytes(ByteArray.ofData(str));
 		#elseif flash
 		var bytes = new Bytes(b.length,b);
 		b.position = 0;
 		#elseif php
-		var bytes = new Bytes(b.length, BytesData.ofString(b));
+		var bytes = new Bytes(ByteArray.ofData(BytesData.ofString(b)));
 		#elseif cs
-		var buf = b.GetBuffer();
-		var bytes = new Bytes(cast b.Length, buf);
+		var buf = b.ToArray();
+		var bytes = new Bytes(ByteArray.ofData(buf));
 		#elseif java
 		var buf = b.toByteArray();
-		var bytes = new Bytes(buf.length, buf);
+		var bytes = new Bytes(ByteArray.ofData(buf));
 		#elseif python
 		var buf = new python.Bytearray(b);
-		var bytes = new Bytes(buf.length, buf);
+		var bytes = new Bytes(ByteArray.ofData(buf));
 		#elseif js
 		var bytes = new Bytes(new js.html.Uint8Array(b).buffer);
 		#else
-		var bytes = new Bytes(b.length,b);
+		var bytes = new Bytes(ByteArray.ofData(b));
 		#end
 		b = null;
 		return bytes;

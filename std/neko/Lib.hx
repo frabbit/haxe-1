@@ -179,7 +179,7 @@ class Lib {
 		Returns bytes referencing the content of a string.
 	**/
 	public inline static function bytesReference( s : String ) : haxe.io.Bytes {
-		return untyped new haxe.io.Bytes( s.length, s.__s );
+		return untyped haxe.io.Bytes.ofData( s.__s );
 	}
 
 	static var __serialize = load("std","serialize",1);
