@@ -9,13 +9,8 @@ class TestByteArray extends Test {
 		// get-set
 		for( i in 0...10 )
 			eq(b.get(i),0);
-		unspec(function() b.get(-1));
-		unspec(function() b.get(11));
 		b.set(1,20);
 		eq(b.get(1),20);
-		unspec(function() b.set(-1,20));
-		unspec(function() b.set(11,20));
-		unspec(function() b.set(0,1000));
 		b.set(1,0xF756);
 		eq(b.get(1),0x56);
 		// ofString
@@ -36,12 +31,6 @@ class TestByteArray extends Test {
 		eq(b.get(4),"C".charCodeAt(0));
 		eq(b.get(5),"D".charCodeAt(0));
 		eq(b.get(6),0);
-		exc(function() b.blit(-1,b2,1,3));
-		exc(function() b.blit(0,b2,2,3));
-		exc(function() b.blit(9,b2,1,3));
-		exc(function() b.blit(0,b2,-1,3));
-		exc(function() b.blit(0,b2,1,-1));
-		exc(function() b.blit(0,b2,1,20));
 		// forward
 		b.blit(4,b,3,3);
 		eq(b.get(2),0);
@@ -64,8 +53,7 @@ class TestByteArray extends Test {
 		eq(bs.getString(0,3),"One");
 		eq(bs.getString(4,bs.length-4),"é accent");
 		eq(bs.getString(4,2),"é");
-		exc(function() bs.getString(-1,1));
-		exc(function() bs.getString(1,20));
+		
 		unspec(function() bs.getString(4,1)); // might not allow to cut UTF8 char
 		unspec(function() bs.getString(1,5)); // the handling of \0 might vary
 		/**
@@ -93,9 +81,7 @@ class TestByteArray extends Test {
 		// sub
 		var bs = haxe.io.ByteArray.ofString("ABCDEFGH");
 		eq( bs.sub(1,3).compare(haxe.io.ByteArray.ofString("BCD")), 0 );
-		exc(function() bs.sub(-1,3));
-		exc(function() bs.sub(1,-1));
-		exc(function() bs.sub(1,10));
+		
 	}
 
 
