@@ -193,7 +193,7 @@ class BytesBuffer {
 		var str = StringBuf.__to_string(b);
 		var bytes = new Bytes(ByteArray.ofData(str));
 		#elseif flash
-		var bytes = new Bytes(b.length,b);
+		var bytes = new Bytes(ByteArray.ofData(b));
 		b.position = 0;
 		#elseif php
 		var bytes = new Bytes(ByteArray.ofData(BytesData.ofString(b)));

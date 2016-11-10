@@ -132,7 +132,7 @@ class BytesOutput extends Output {
 		#if flash
 		var bytes = b;
 		b = null;
-		return untyped new Bytes(bytes.length,bytes);
+		return Bytes.ofData(bytes);
 		#else
 		return b.getBytes();
 		#end
