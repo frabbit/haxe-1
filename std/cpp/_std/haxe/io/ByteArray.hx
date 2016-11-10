@@ -26,88 +26,96 @@ using cpp.NativeArray;
 
 typedef ByteArrayImpl = Array< cpp.UInt8 >;
 
-abstract ByteArray({}) {
-	public var length(get,null) : Int;
+abstract ByteArray(ByteArrayImpl) {
+	public var length(get,never) : Int;
 
-	public function new (impl:ByteArrayImpl) {
+	inline function new (impl:ByteArrayImpl) {
 		this = impl;
 	}
 
-	inline function raw ():Array<cpp.UInt8> return impl;
+	public inline function getData ():BytesData {
+		return this;
+	}
+	
+	inline function raw () return this;
+
+	public static inline function ofData (data:BytesData) {
+		return mk(data);
+	}
 
 	inline function get_length ():Int {
 		return untyped this.length;
 	}
 
-	inline function mk (data:ByteArrayImpl):ByteArray {
+	static inline function mk (data:ByteArrayImpl):ByteArray {
 		return new ByteArray(data);
 	}
 
-	public function get( pos : Int ) : Int { 
+	public inline function get( pos : Int ) : Int { 
 		return untyped this[pos];
 	}
 
-	public function set( pos : Int, v : Int ) : Void { 
+	public inline function set( pos : Int, v : Int ) : Void { 
 		untyped this[pos] = v;
 	}
 
-	public function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void { 
+	public inline function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void { 
 		this.blit(pos, src.raw(), srcpos, len);
 	}
 
-	public function fill( pos : Int, len : Int, value : Int ):Void { 
+	public inline function fill( pos : Int, len : Int, value : Int ):Void { 
 		untyped __global__.__hxcpp_memory_memset(this,pos,len,value);
 	}
 
-	public function sub( pos : Int, len : Int ) : ByteArray { 
-		return mk(this.slice(pos,pos+len)));
+	public inline function sub( pos : Int, len : Int ) : ByteArray { 
+		return mk(this.slice(pos,pos+len));
 	}
 
-	public function compare( other : ByteArray ) : Int { 
+	public inline function compare( other : ByteArray ) : Int { 
 		return this.memcmp(other.raw());
 	}
 
-	public function getDouble( pos : Int ) : Float { 
+	public inline function getDouble( pos : Int ) : Float { 
 		return untyped __global__.__hxcpp_memory_get_double(this,pos);
 	}
 
-	public function getFloat( pos : Int ) : Float { 
+	public inline function getFloat( pos : Int ) : Float { 
 		return untyped __global__.__hxcpp_memory_get_float(this,pos);
 	}
 
-	public function setDouble( pos : Int, v : Float ) : Void { 
+	public inline function setDouble( pos : Int, v : Float ) : Void { 
 		untyped __global__.__hxcpp_memory_set_double(this,pos,v);
 	}
 
-	public function setFloat( pos : Int, v : Float ) : Void { 
+	public inline function setFloat( pos : Int, v : Float ) : Void { 
 		untyped __global__.__hxcpp_memory_set_float(this,pos,v);
 	}
 
-	public function getUInt16( pos : Int ) : Int { 
+	public inline function getUInt16( pos : Int ) : Int { 
 		return get(pos) | (get(pos + 1) << 8);
 	}
 
-	public function setUInt16( pos : Int, v : Int ) : Void { 
+	public inline function setUInt16( pos : Int, v : Int ) : Void { 
 		set(pos, v);
 		set(pos + 1, v >> 8);
 	}
 
-	public function getInt32( pos : Int ) : Int { 
+	public inline function getInt32( pos : Int ) : Int { 
 		return get(pos) | (get(pos + 1) << 8) | (get(pos + 2) << 16) | (get(pos+3) << 24);
 	}
 	
-	public function getInt64( pos : Int ) : haxe.Int64 { 
+	public inline function getInt64( pos : Int ) : haxe.Int64 { 
 		return haxe.Int64.make(getInt32(pos+4),getInt32(pos));
 	}
 	
-	public function setInt32( pos : Int, v : Int ) : Void { 
+	public inline function setInt32( pos : Int, v : Int ) : Void { 
 		set(pos, v);
 		set(pos + 1, v >> 8);
 		set(pos + 2, v >> 16);
 		set(pos + 3, v >>> 24);
 	}
 	
-	public function setInt64( pos : Int, v : haxe.Int64 ) : Void { 
+	public inline function setInt64( pos : Int, v : haxe.Int64 ) : Void { 
 		setInt32(pos, v.low);
 		setInt32(pos + 4, v.high);
 	}
@@ -118,12 +126,12 @@ abstract ByteArray({}) {
 		return result;
 	}
 
-	public function toString() : String { 
+	public inline function toString() : String { 
 		return getString(0,length);
 	}
 
-	public function fastGet( pos : Int ) : Int { 
-		return untyped b.unsafeGet(pos);
+	public inline function fastGet( pos : Int ) : Int { 
+		return untyped this.unsafeGet(pos);
 	}
 
 	public static function alloc( length : Int ) : ByteArray { 
