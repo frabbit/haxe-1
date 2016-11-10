@@ -49,23 +49,23 @@ public var length(get,never) : Int;
 		return new ByteArray(data);
 	}
 
-	public function get( pos : Int ) : Int { 
+	public inline function get( pos : Int ) : Int { 
 		return this.bytes[pos];
 	}
 
-	public function set( pos : Int, v : Int ) : Void { 
+	public inline function set( pos : Int, v : Int ) : Void { 
 		this.bytes[pos] = v;
 	}
 
-	public function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void { 
+	public inline function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void { 
 		this.bytes.blit(pos, src.raw().bytes, srcpos, len);
 	}
 
-	public function fill( pos : Int, len : Int, value : Int ):Void { 
+	public inline function fill( pos : Int, len : Int, value : Int ):Void { 
 		this.bytes.fill(pos, len, value);
 	}
 
-	public function sub( pos : Int, len : Int ) : ByteArray { 
+	public inline function sub( pos : Int, len : Int ) : ByteArray { 
 		var impl = new ByteArrayImpl(this.bytes.sub(pos, len), len);
 		return mk(impl);
 	}
@@ -78,43 +78,43 @@ public var length(get,never) : Int;
 		return r;
 	}
 
-	public function getDouble( pos : Int ) : Float { 
+	public inline function getDouble( pos : Int ) : Float { 
 		 return this.bytes.getF64(pos);
 	}
 
-	public function getFloat( pos : Int ) : Float { 
+	public inline function getFloat( pos : Int ) : Float { 
 		return this.bytes.getF32(pos);
 	}
 
-	public function setDouble( pos : Int, v : Float ) : Void { 
+	public inline function setDouble( pos : Int, v : Float ) : Void { 
 		this.bytes.setF64(pos, v);
 	}
 
-	public function setFloat( pos : Int, v : Float ) : Void { 
+	public inline function setFloat( pos : Int, v : Float ) : Void { 
 		this.bytes.setF32(pos, v);
 	}
 
-	public function getUInt16( pos : Int ) : Int { 
+	public inline function getUInt16( pos : Int ) : Int { 
 		return this.bytes.getUI16(pos);
 	}
 
-	public function setUInt16( pos : Int, v : Int ) : Void { 
+	public inline function setUInt16( pos : Int, v : Int ) : Void { 
 		this.bytes.setUI16(pos, v);
 	}
 
-	public function getInt32( pos : Int ) : Int { 
+	public inline function getInt32( pos : Int ) : Int { 
 		return this.bytes.getI32(pos);
 	}
 	
-	public function getInt64( pos : Int ) : haxe.Int64 { 
+	public inline function getInt64( pos : Int ) : haxe.Int64 { 
 		return haxe.Int64.make(this.bytes.getI32(pos+4), this.bytes.getI32(pos));
 	}
 	
-	public function setInt32( pos : Int, v : Int ) : Void { 
+	public inline function setInt32( pos : Int, v : Int ) : Void { 
 		return this.bytes.setI32(pos, v);
 	}
 	
-	public function setInt64( pos : Int, v : haxe.Int64 ) : Void { 
+	public inline function setInt64( pos : Int, v : haxe.Int64 ) : Void { 
 		setInt32(pos + 4, v.high);
 		setInt32(pos, v.low);
 	}
@@ -126,7 +126,7 @@ public var length(get,never) : Int;
 		return @:privateAccess String.fromUTF8(b);
 	}
 
-	public function toString() : String { 
+	public inline function toString() : String { 
 		return getString(0,length);
 	}
 
@@ -144,7 +144,7 @@ public var length(get,never) : Int;
 		return mk(impl);
 	}
 
-	public function fastGet( pos : Int ) : Int { 
+	public inline function fastGet( pos : Int ) : Int { 
 		return this.bytes[pos];
 	}
 
