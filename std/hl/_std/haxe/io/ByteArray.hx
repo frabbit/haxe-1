@@ -21,11 +21,11 @@
  */
 package haxe.io;
 
-typedef ByteArrayImpl = BytesDataImpl;
+typedef ByteArrayImpl = haxe.io.BytesData;
 
 //@:forward(bytes)
 abstract ByteArray(ByteArrayImpl) {
-public var length(get,null) : Int;
+public var length(get,never) : Int;
 
 	inline function new (impl:ByteArrayImpl) {
 		this = impl;
@@ -35,7 +35,17 @@ public var length(get,null) : Int;
 		return this.length;	
 	}
 
-	inline function mk (data:ByteArrayImpl):ByteArray {
+	public inline function getData ():BytesData {
+		return this;
+	}
+	
+	inline function raw () return this;
+
+	public static inline function ofData (data:BytesData) {
+		return mk(data);
+	}
+
+	static inline function mk (data:ByteArrayImpl):ByteArray {
 		return new ByteArray(data);
 	}
 
@@ -56,7 +66,7 @@ public var length(get,null) : Int;
 	}
 
 	public function sub( pos : Int, len : Int ) : ByteArray { 
-		var impl = new BytesArrayImpl(b.sub(pos, len), len);
+		var impl = new ByteArrayImpl(this.bytes.sub(pos, len), len);
 		return mk(impl);
 	}
 
@@ -85,7 +95,7 @@ public var length(get,null) : Int;
 	}
 
 	public function getUInt16( pos : Int ) : Int { 
-		this.bytes.getUI16(pos);
+		return this.bytes.getUI16(pos);
 	}
 
 	public function setUInt16( pos : Int, v : Int ) : Void { 
@@ -93,7 +103,7 @@ public var length(get,null) : Int;
 	}
 
 	public function getInt32( pos : Int ) : Int { 
-		this.bytes.getI32(pos);
+		return this.bytes.getI32(pos);
 	}
 	
 	public function getInt64( pos : Int ) : haxe.Int64 { 
@@ -123,14 +133,14 @@ public var length(get,null) : Int;
 	public static function alloc( length : Int ) : ByteArray { 
 		var b = new hl.types.Bytes(length);
 		b.fill(0, length, 0);
-		var impl = new BytesDataImpl(b, length);
+		var impl = new ByteArrayImpl(b, length);
 		return mk(impl);
 	}
 
 	public static function ofString( s : String ) : ByteArray @:privateAccess { 
 		var size = 0;
 		var b = s.bytes.utf16ToUtf8(0, size);
-		var impl = new BytesDataImpl(b, size);
+		var impl = new ByteArrayImpl(b, size);
 		return mk(impl);
 	}
 
