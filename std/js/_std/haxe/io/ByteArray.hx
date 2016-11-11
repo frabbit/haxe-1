@@ -77,51 +77,51 @@ class ByteHelper {
 		return getLength(b) - getLength(other);
 	}
 
-	static function getDouble( impl:ByteArrayImpl, pos : Int ) : Float { 
+	static inline function getDouble( impl:ByteArrayImpl, pos : Int ) : Float { 
 		initData(impl);
 		return impl.data.getFloat64(pos, true);
 	}
 
-	static function getFloat( impl:ByteArrayImpl, pos : Int ) : Float { 
+	static inline function getFloat( impl:ByteArrayImpl, pos : Int ) : Float { 
 		initData(impl);
 		return impl.data.getFloat32(pos, true);
 	}
 
-	static function setDouble( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
+	static inline function setDouble( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
 		initData(impl);
 		impl.data.setFloat64(pos, v, true);
 	}
 
-	static function setFloat( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
+	static inline function setFloat( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
 		initData(impl);
 		impl.data.setFloat32( pos, v, true);
 	}
 
-	static function getUInt16( impl:ByteArrayImpl, pos : Int ) : Int { 
+	static inline function getUInt16( impl:ByteArrayImpl, pos : Int ) : Int { 
 		initData(impl);
 		return impl.data.getUint16(pos, true);
 	}
 
-	static function setUInt16( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
+	static inline function setUInt16( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
 		initData(impl);
 		impl.data.setUint16(pos, v, true);
 	}
 
-	static function getInt32( impl:ByteArrayImpl, pos : Int ) : Int { 
+	static inline function getInt32( impl:ByteArrayImpl, pos : Int ) : Int { 
 		initData(impl);
 		return impl.data.getInt32(pos, true);
 	}
 	
-	static function getInt64( impl:ByteArrayImpl, pos : Int ) : haxe.Int64 { 
+	static inline function getInt64( impl:ByteArrayImpl, pos : Int ) : haxe.Int64 { 
 		return Int64.make(getInt32(impl, pos + 4),getInt32(impl, pos));
 	}
 	
-	static function setInt32( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
+	static inline function setInt32( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
 		initData(impl);
 		impl.data.setInt32(pos, v, true);
 	}
 	
-	static function setInt64( impl:ByteArrayImpl, pos : Int, v : haxe.Int64 ) : Void { 
+	static inline function setInt64( impl:ByteArrayImpl, pos : Int, v : haxe.Int64 ) : Void { 
 		setInt32(impl, pos, v.low);
 		setInt32(impl, pos + 4, v.high);
 	}
@@ -155,7 +155,7 @@ class ByteHelper {
 		return s;
 	}
 
-	static function toString(impl:ByteArrayImpl) : String { 
+	static inline function toString(impl:ByteArrayImpl) : String { 
 		return getString(impl, 0, getLength(impl));
 	}
 
@@ -187,12 +187,12 @@ class ByteHelper {
 		return new js.html.Uint8Array(a).buffer;
 	}
 
-	static function fastGet( data:BytesData, pos : Int ) : Int { 
+	static inline function fastGet( data:BytesData, pos : Int ) : Int { 
 		// this requires that we have wrapped it with haxe.io.Bytes beforehand
 		return untyped data.bytes[pos];
 	}
 
-	static function allocBuffer (length:Int) {
+	static inline function allocBuffer (length:Int) {
 		return new js.html.ArrayBuffer(length);
 	}
 
@@ -223,7 +223,7 @@ abstract ByteArray(ByteArrayImpl) {
 		untyped {
 			arr.bufferValue = buffer; // some impl does not return the same instance in .buffer
 			buffer.bytes = arr; // for fastGet of BytesData
-			buffer.hxByteArray = impl; // store the bytearray instance, so no new allocation is required when converting BytesData to ByteArray
+			buffer.hxByteArray = impl; // store the ByteArray instance, this way no new allocation is required when converting BytesData to ByteArray
 		}
 		
 		return new ByteArray(impl);
