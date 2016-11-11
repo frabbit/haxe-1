@@ -26,11 +26,12 @@ import js.html.compat.Uint8Array;
 import js.html.compat.DataView;
 #end
 
+@:allow(haxe.io)
 class ByteHelper {
-	public static function sub( impl:ByteArrayImpl, pos : Int, len : Int ) : js.html.ArrayBuffer {
+	static function sub( impl:ByteArrayImpl, pos : Int, len : Int ) : js.html.ArrayBuffer {
 		return impl.b.buffer.slice(pos+impl.b.byteOffset,pos+impl.b.byteOffset+len);
 	}
-	public static function subByteArray( impl:ByteArrayImpl, pos : Int, len : Int ) : ByteArray {
+	static function subByteArray( impl:ByteArrayImpl, pos : Int, len : Int ) : ByteArray {
 		return mkByteArray(sub(impl, pos, len));
 	}
 
@@ -38,26 +39,26 @@ class ByteHelper {
 		return ByteArray.fromBuffer(buffer);
 	}
 
-	public static inline function getLength (impl:ByteArrayImpl):Int {
+	static inline function getLength (impl:ByteArrayImpl):Int {
 		return impl.b.byteLength;
 	}
 
-	public static inline function get( impl:ByteArrayImpl, pos : Int ) : Int { 
+	static inline function get( impl:ByteArrayImpl, pos : Int ) : Int { 
 		return impl.b[pos];
 	}
 
-	public static inline function set( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
+	static inline function set( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
 		impl.b[pos] = v & 0xFF; // the &0xFF is necessary for js.html.compat support
 	}
 
-	public static inline function blit( impl:ByteArrayImpl, pos : Int, src : ByteArrayImpl, srcpos : Int, len : Int ) : Void { 
+	static inline function blit( impl:ByteArrayImpl, pos : Int, src : ByteArrayImpl, srcpos : Int, len : Int ) : Void { 
 		if( srcpos == 0 && len == src.b.byteLength )
 			impl.b.set(src.b,pos);
 		else
 			impl.b.set(src.b.subarray(srcpos,srcpos+len),pos);
 	}
 
-	public static inline function fill( impl: ByteArrayImpl, pos : Int, len : Int, value : Int ):Void { 
+	static inline function fill( impl: ByteArrayImpl, pos : Int, len : Int, value : Int ):Void { 
 		for( i in 0...len )
 			set(impl, pos++, value);
 	}
@@ -66,7 +67,7 @@ class ByteHelper {
 		if( impl.data == null ) impl.data = new js.html.DataView(impl.b.buffer, impl.b.byteOffset, impl.b.byteLength);
 	}
 
-	public static function compare( b:ByteArrayImpl, other : ByteArrayImpl ) : Int { 
+	static function compare( b:ByteArrayImpl, other : ByteArrayImpl ) : Int { 
 		var b1 = b.b;
 		var b2 = other.b;
 		var len = (getLength(b) < getLength(other)) ? getLength(b) : getLength(other);
@@ -76,56 +77,56 @@ class ByteHelper {
 		return getLength(b) - getLength(other);
 	}
 
-	public static function getDouble( impl:ByteArrayImpl, pos : Int ) : Float { 
+	static function getDouble( impl:ByteArrayImpl, pos : Int ) : Float { 
 		initData(impl);
 		return impl.data.getFloat64(pos, true);
 	}
 
-	public static function getFloat( impl:ByteArrayImpl, pos : Int ) : Float { 
+	static function getFloat( impl:ByteArrayImpl, pos : Int ) : Float { 
 		initData(impl);
 		return impl.data.getFloat32(pos, true);
 	}
 
-	public static function setDouble( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
+	static function setDouble( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
 		initData(impl);
 		impl.data.setFloat64(pos, v, true);
 	}
 
-	public static function setFloat( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
+	static function setFloat( impl:ByteArrayImpl, pos : Int, v : Float ) : Void { 
 		initData(impl);
 		impl.data.setFloat32( pos, v, true);
 	}
 
-	public static function getUInt16( impl:ByteArrayImpl, pos : Int ) : Int { 
+	static function getUInt16( impl:ByteArrayImpl, pos : Int ) : Int { 
 		initData(impl);
 		return impl.data.getUint16(pos, true);
 	}
 
-	public static function setUInt16( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
+	static function setUInt16( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
 		initData(impl);
 		impl.data.setUint16(pos, v, true);
 	}
 
-	public static function getInt32( impl:ByteArrayImpl, pos : Int ) : Int { 
+	static function getInt32( impl:ByteArrayImpl, pos : Int ) : Int { 
 		initData(impl);
 		return impl.data.getInt32(pos, true);
 	}
 	
-	public static function getInt64( impl:ByteArrayImpl, pos : Int ) : haxe.Int64 { 
+	static function getInt64( impl:ByteArrayImpl, pos : Int ) : haxe.Int64 { 
 		return Int64.make(getInt32(impl, pos + 4),getInt32(impl, pos));
 	}
 	
-	public static function setInt32( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
+	static function setInt32( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
 		initData(impl);
 		impl.data.setInt32(pos, v, true);
 	}
 	
-	public static function setInt64( impl:ByteArrayImpl, pos : Int, v : haxe.Int64 ) : Void { 
+	static function setInt64( impl:ByteArrayImpl, pos : Int, v : haxe.Int64 ) : Void { 
 		setInt32(impl, pos, v.low);
 		setInt32(impl, pos + 4, v.high);
 	}
 
-	public static function getString( impl:ByteArrayImpl, pos : Int, len : Int ) : String { 
+	static function getString( impl:ByteArrayImpl, pos : Int, len : Int ) : String { 
 		var s = "";
 		var b = impl.b;
 		var fcc = String.fromCharCode;
@@ -154,11 +155,11 @@ class ByteHelper {
 		return s;
 	}
 
-	public static function toString(impl:ByteArrayImpl) : String { 
+	static function toString(impl:ByteArrayImpl) : String { 
 		return getString(impl, 0, getLength(impl));
 	}
 
-	public static function ofString( s : String ) : js.html.ArrayBuffer { 
+	static function ofString( s : String ) : js.html.ArrayBuffer { 
 		var a = new Array();
 		// utf16-decode and utf8-encode
 		var i = 0;
@@ -186,16 +187,16 @@ class ByteHelper {
 		return new js.html.Uint8Array(a).buffer;
 	}
 
-	public static function fastGet( data:BytesData, pos : Int ) : Int { 
+	static function fastGet( data:BytesData, pos : Int ) : Int { 
 		// this requires that we have wrapped it with haxe.io.Bytes beforehand
 		return untyped data.bytes[pos];
 	}
 
-	public static function allocBuffer (length:Int) {
+	static function allocBuffer (length:Int) {
 		return new js.html.ArrayBuffer(length);
 	}
 
-	public static inline function getData(impl:ByteArrayImpl) : BytesData {
+	static inline function getData(impl:ByteArrayImpl) : BytesData {
 		return untyped impl.b.bufferValue;
 	}
 	
