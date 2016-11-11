@@ -225,7 +225,8 @@ abstract ByteArray(ByteArrayImpl) {
 	}
 
 	public static inline function ofData (b:BytesData) {
-		if ((untyped b).hxByteArray != null) return (untyped b).hxByteArray;
+		var hb:ByteArray = untyped b.hxByteArray;
+		if (hb != null) return hb;
 		return fromBuffer(b);
 	}
 
