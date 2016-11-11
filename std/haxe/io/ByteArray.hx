@@ -23,7 +23,7 @@ package haxe.io;
 
 
 
-abstract ByteArray({}) {
+@:coreType abstract ByteArray {
 	public var length(get,never) : Int;
 
 	public function new () {
@@ -34,52 +34,50 @@ abstract ByteArray({}) {
 		return throw "abstract";
 	}
 
-	public static function ofData (data:BytesData) {
-		return throw "abstract";
-	}
+	public static function ofData (data:BytesData):ByteArray;
 
-	function get_length() : Int return throw "abstract";
-	public function get( pos : Int ) : Int return throw "abstract";
+	function get_length() : Int;
+	public function get( pos : Int ) : Int;
 
-	public function set( pos : Int, v : Int ) : Void return throw "abstract";
+	public function set( pos : Int, v : Int ) : Void;
 
-	public function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void return throw "abstract";
+	public function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void;
 
-	public function fill( pos : Int, len : Int, value : Int ):Void return throw "abstract";
+	public function fill( pos : Int, len : Int, value : Int ):Void;
 
-	public function sub( pos : Int, len : Int ) : ByteArray return throw "abstract";
+	public function sub( pos : Int, len : Int ) : ByteArray;
 
-	public function compare( other : ByteArray ) : Int return throw "abstract";
+	public function compare( other : ByteArray ) : Int;
 
-	public function getDouble( pos : Int ) : Float return throw "abstract";
+	public function getDouble( pos : Int ) : Float;
 
-	public function getFloat( pos : Int ) : Float return throw "abstract";
+	public function getFloat( pos : Int ) : Float;
 
-	public function setDouble( pos : Int, v : Float ) : Void return throw "abstract";
+	public function setDouble( pos : Int, v : Float ) : Void;
 
-	public function setFloat( pos : Int, v : Float ) : Void return throw "abstract";
+	public function setFloat( pos : Int, v : Float ) : Void;
 
-	public function getUInt16( pos : Int ) : Int return throw "abstract";
+	public function getUInt16( pos : Int ) : Int;
 
-	public function setUInt16( pos : Int, v : Int ) : Void return throw "abstract";
+	public function setUInt16( pos : Int, v : Int ) : Void;
 
-	public function getInt32( pos : Int ) : Int return throw "abstract";
+	public function getInt32( pos : Int ) : Int;
 	
-	public function getInt64( pos : Int ) : haxe.Int64 return throw "abstract";
+	public function getInt64( pos : Int ) : haxe.Int64;
 	
-	public function setInt32( pos : Int, v : Int ) : Void return throw "abstract";
+	public function setInt32( pos : Int, v : Int ) : Void;
 	
-	public function setInt64( pos : Int, v : haxe.Int64 ) : Void return throw "abstract";
+	public function setInt64( pos : Int, v : haxe.Int64 ) : Void;
 
-	public function getString( pos : Int, len : Int ) : String return throw "abstract";
+	public function getString( pos : Int, len : Int ) : String;
 
-	public function toString() : String return throw "abstract";
+	public function toString() : String;
 
-	public function fastGet( pos : Int ) : Int return throw "abstract";
+	public function fastGet( pos : Int ) : Int;
 
-	public static function alloc( length : Int ) : ByteArray return throw "abstract";
+	public static function alloc( length : Int ) : ByteArray;
 
-	public static function ofString( s : String ) : ByteArray return throw "abstract";
+	public static function ofString( s : String ) : ByteArray;
 }
 
 /*
