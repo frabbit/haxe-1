@@ -27,6 +27,14 @@ using cpp.NativeArray;
 typedef ByteArrayImpl = Array< cpp.UInt8 >;
 
 abstract ByteArray(ByteArrayImpl) {
+	
+	public static inline var getIsChecked = false;
+	public static inline var setIsChecked = false;
+
+	public static inline var blitCanThrow = false;
+	public static inline var subCanThrow = false;
+	public static inline var getStringCanThrow = false;
+
 	public var length(get,never) : Int;
 
 	inline function new (impl:ByteArrayImpl) {
@@ -52,7 +60,7 @@ abstract ByteArray(ByteArrayImpl) {
 	}
 
 	public inline function get( pos : Int ) : Int { 
-		return untyped this[pos];
+		return untyped this.unsafeGet(pos);
 	}
 
 	public inline function set( pos : Int, v : Int ) : Void { 
@@ -99,7 +107,7 @@ abstract ByteArray(ByteArrayImpl) {
 		set(pos, v);
 		set(pos + 1, v >> 8);
 	}
-
+	
 	public inline function getInt32( pos : Int ) : Int { 
 		return get(pos) | (get(pos + 1) << 8) | (get(pos + 2) << 16) | (get(pos+3) << 24);
 	}
@@ -128,10 +136,6 @@ abstract ByteArray(ByteArrayImpl) {
 
 	public inline function toString() : String { 
 		return getString(0,length);
-	}
-
-	public inline function fastGet( pos : Int ) : Int { 
-		return untyped this.unsafeGet(pos);
 	}
 
 	public static function alloc( length : Int ) : ByteArray { 

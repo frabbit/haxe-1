@@ -24,6 +24,14 @@ package haxe.io;
 typedef ByteArrayImpl = python.Bytearray;
 
 abstract ByteArray(ByteArrayImpl) {
+
+	public static inline var getIsChecked = true;
+	public static inline var setIsChecked = false;
+	
+	public static inline var blitCanThrow = false;
+	public static inline var subCanThrow = false;
+	public static inline var getStringCanThrow = false;
+	
 	public var length(get,never) : Int;
 
 	inline function get_length ():Int {
@@ -143,9 +151,5 @@ abstract ByteArray(ByteArrayImpl) {
 
 	public static inline function ofString( s : String ) : ByteArray { 
 		return mk(new ByteArrayImpl(s, "UTF-8"));
-	}
-
-	public inline function fastGet( pos : Int ) : Int { 
-		return return this[pos];
 	}
 }

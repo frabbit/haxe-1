@@ -24,6 +24,14 @@ package haxe.io;
 typedef ByteArrayImpl = php.BytesData;
 
 abstract ByteArray(ByteArrayImpl) {
+
+	public static inline var getIsChecked = true;
+	public static inline var setIsChecked = true;
+
+	public static inline var blitCanThrow = false;
+	public static inline var subCanThrow = false;
+	public static inline var getStringCanThrow = false;
+
 	public var length(get,never) : Int;
 
 	inline function new (impl:ByteArrayImpl) {
@@ -136,9 +144,5 @@ abstract ByteArray(ByteArrayImpl) {
 
 	public static inline function ofString( s : String ) : ByteArray { 
 		return mk(BytesData.ofString(s));
-	}
-
-	public inline function fastGet( pos : Int ) : Int { 
-		return this.get(pos);
 	}
 }

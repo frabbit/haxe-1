@@ -178,8 +178,4 @@ abstract ByteArray(ByteArrayImpl) {
 		b.writeUTFBytes(s);
 		return mk(b);
 	}
-
-	public inline function fastGet( pos : Int ) : Int { 
-		return this[pos];
-	}
 }

@@ -148,7 +148,7 @@ class Bytes {
 		return new Bytes(ByteHelper.allocBuffer(length));
 	}
 
-	public static function ofString( s : String ) : Bytes {
+	public static inline function ofString( s : String ) : Bytes {
 		var buffer = ByteHelper.ofString(s);
 		return new Bytes(buffer);
 	}

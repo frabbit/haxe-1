@@ -22,6 +22,15 @@
 package haxe.io;
 
 @:coreType abstract ByteArray {
+
+	public static var getIsChecked:Bool;
+	public static var setIsChecked:Bool;
+	public static var blitCanThrow:Bool;
+	public static var subCanThrow:Bool;
+	public static var getStringCanThrow:Bool;
+
+	//public static var hasNativeBoundsCheck : Bool;
+
 	public var length(get,never) : Int;
 
 	public function new ():Void;
@@ -67,8 +76,6 @@ package haxe.io;
 	public function getString( pos : Int, len : Int ) : String;
 
 	public function toString() : String;
-
-	public function fastGet( pos : Int ) : Int;
 
 	public static function alloc( length : Int ) : ByteArray;
 

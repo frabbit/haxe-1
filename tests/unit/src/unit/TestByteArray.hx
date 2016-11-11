@@ -85,25 +85,25 @@ class TestByteArray extends Test {
 	}
 
 
-	function testFastGet() {
+	function testGet() {
 		var b = haxe.io.ByteArray.alloc(10);
 		
 		for( i in 0...10 )
-			eq(b.fastGet(i),0);
+			eq(b.get(i),0);
 		b.set(1,20);
-		eq(b.fastGet(1), 20);
+		eq(b.get(1), 20);
 		b.set(1,0xF756);
-		eq(b.fastGet(1), 0x56);
+		eq(b.get(1), 0x56);
 		var b2 = haxe.io.ByteArray.ofString("ABCD");
 		
-		eq(b2.fastGet(0), "A".code);
-		eq(b2.fastGet(1), "B".code);
-		eq(b2.fastGet(2), "C".code);
-		eq(b2.fastGet(3), "D".code);
+		eq(b2.get(0), "A".code);
+		eq(b2.get(1), "B".code);
+		eq(b2.get(2), "C".code);
+		eq(b2.get(3), "D".code);
 		var b3 = haxe.io.ByteArray.ofString("é");
 		
-		eq(b3.fastGet(0), 0xC3);
-		eq(b3.fastGet(1), 0xA9);
+		eq(b3.get(0), 0xC3);
+		eq(b3.get(1), 0xA9);
 	}
 
 	function testBytesDataEquality () {

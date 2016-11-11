@@ -32,34 +32,42 @@ class Bytes {
 		this.length = b.length;
 	}
 
+	inline function out(pos:Int) : Bool {
+		return (pos:UInt) >= (length:UInt);
+	}
+	
 	public inline function get( pos : Int ) : Int {
-		return b.get(pos);
+		return if (ByteArray.getIsChecked && out(pos)) 0 else b.get(pos);
+		
 	}
 
 	public inline function set( pos : Int, v : Int ) : Void {
+		if( ByteArray.setIsChecked && out(pos) ) throw Error.OutsideBounds;
 		b.set(pos, v);
 	}
 
 	public inline function blit( pos : Int, src : Bytes, srcpos : Int, len : Int ) : Void {
-		#if neko
-		try b.blit(pos, src.b, srcpos, len) catch (e:Dynamic) throw Error.OutsideBounds;
-		#else
-		if( pos < 0 || srcpos < 0 || len < 0 || pos + len > length || srcpos + len > src.length ) throw Error.OutsideBounds;
-		b.blit(pos, src.b, srcpos, len);
-		#end
+		return if (ByteArray.blitCanThrow) {
+			try b.blit(pos, src.b, srcpos, len) catch (e:Dynamic) throw Error.OutsideBounds;
+		} else {
+			if( (pos < 0 || srcpos < 0 || len < 0 || pos + len > length || srcpos + len > src.length) ) throw Error.OutsideBounds;
+			b.blit(pos, src.b, srcpos, len);
+		}
 	}
 
 	public inline function fill( pos : Int, len : Int, value : Int ) {
+		if( pos < 0 || len < 0 || pos + len > length ) throw Error.OutsideBounds;
 		b.fill(pos, len, value);
 	}
 
 	public inline function sub( pos : Int, len : Int ) : Bytes {
-		#if neko
-		return try new Bytes(b.sub(pos, len)) catch (e:Dynamic) throw Error.OutsideBounds;
-		#else
-		if( pos < 0 || len < 0 || pos + len > length ) throw Error.OutsideBounds;
-		return new Bytes(b.sub(pos, len));
-		#end
+		return if (ByteArray.subCanThrow) {
+			try new Bytes(b.sub(pos, len)) catch (e:Dynamic) throw Error.OutsideBounds;
+		} else {
+			if( (pos < 0 || len < 0 || pos + len > length) ) throw Error.OutsideBounds;
+			new Bytes(b.sub(pos, len));
+		}
+		
 	}
 
 	public inline function compare( other : Bytes ) : Int {
@@ -73,9 +81,7 @@ class Bytes {
 	**/
 	
 	public inline function getDouble( pos : Int ) : Float {
-		#if cpp
 		if( pos < 0 || pos + 8 > length ) throw Error.OutsideBounds;
-		#end
 		return b.getDouble(pos);
 	}
 
@@ -84,9 +90,7 @@ class Bytes {
 		Result is unspecified if reading outside of the bounds
 	**/
 	public inline function getFloat( pos : Int ) : Float {
-		#if cpp
 		if( pos < 0 || pos + 4 > length ) throw Error.OutsideBounds;
-		#end
 		return b.getFloat(pos);
 	}
 
@@ -96,9 +100,7 @@ class Bytes {
 	**/
 
 	public inline function setDouble( pos : Int, v : Float ) : Void {
-		#if cpp
 		if( pos < 0 || pos + 8 > length ) throw Error.OutsideBounds;
-		#end
 		b.setDouble(pos, v);
 	}
 
@@ -108,9 +110,7 @@ class Bytes {
 	**/
 	
 	public inline function setFloat( pos : Int, v : Float ) : Void {
-		#if cpp
 		if( pos < 0 || pos + 4 > length ) throw Error.OutsideBounds;
-		#end
 		b.setFloat(pos, v);
 	}
 
@@ -118,6 +118,7 @@ class Bytes {
 		Returns the 16 bit unsigned integer at given position (in low endian encoding).
 	**/
 	public inline function getUInt16( pos : Int ) : Int {
+		if( pos < 0 || pos + 2 > length ) throw Error.OutsideBounds;
 		return b.getUInt16(pos);
 	}
 
@@ -125,13 +126,16 @@ class Bytes {
 		Store the 16 bit unsigned integer at given position (in low endian encoding).
 	**/
 	public inline function setUInt16( pos : Int, v : Int ) : Void {
+		if( pos < 0 || pos + 2 > length ) throw Error.OutsideBounds;
 		b.setUInt16(pos, v);
+		
 	}
 
 	/**
 		Returns the 32 bit integer at given position (in low endian encoding).
 	**/
 	public inline function getInt32( pos : Int ) : Int {
+		if( pos < 0 || pos + 4 > length ) throw Error.OutsideBounds;
 		return b.getInt32(pos);
 	}
 
@@ -139,6 +143,7 @@ class Bytes {
 		Returns the 64 bit integer at given position (in low endian encoding).
 	**/
 	public inline function getInt64( pos : Int ) : haxe.Int64 {
+		if( pos < 0 || pos + 8 > length ) throw Error.OutsideBounds;
 		return b.getInt64(pos);
 	}
 
@@ -146,6 +151,7 @@ class Bytes {
 		Store the 32 bit integer at given position (in low endian encoding).
 	**/
 	public inline function setInt32( pos : Int, v : Int ) : Void {
+		if( pos < 0 || pos + 2 > length ) throw Error.OutsideBounds;
 		b.setInt32(pos, v);
 	}
 
@@ -153,16 +159,17 @@ class Bytes {
 		Store the 64 bit integer at given position (in low endian encoding).
 	**/
 	public inline function setInt64( pos : Int, v : haxe.Int64 ) : Void {
-		return b.setInt64(pos, v);
+		if( pos < 0 || pos + 8 > length ) throw Error.OutsideBounds;
+		b.setInt64(pos, v);
 	}
 
 	public function getString( pos : Int, len : Int ) : String {
-		#if neko
-		return try b.getString(pos, len) catch( e : Dynamic ) throw Error.OutsideBounds;
-		#else
-		if( pos < 0 || len < 0 || pos + len > length ) throw Error.OutsideBounds;
-		return b.getString(pos, len);
-		#end
+		return if (ByteArray.getStringCanThrow) {
+			try b.getString(pos, len) catch( e : Dynamic ) throw Error.OutsideBounds;
+		} else {
+			if( pos < 0 || len < 0 || pos + len > length ) throw Error.OutsideBounds;
+			b.getString(pos, len);
+		}
 	}
 
 	@:deprecated("readString is deprecated, use getString instead")
@@ -171,7 +178,7 @@ class Bytes {
 		return getString(pos, len);
 	}
 
-	public function toString() : String {
+	@:keep public inline function toString() : String {
 		return b.toString();
 	}
 
@@ -189,7 +196,7 @@ class Bytes {
 		return s.toString();
 	}
 
-	public inline function getData() : BytesData {
+	public function getData() : BytesData {
 		return b.getData();
 	}
 
@@ -211,7 +218,7 @@ class Bytes {
 		Behavior when reading outside of the available data is unspecified.
 	**/
 	public inline static function fastGet( b : BytesData, pos : Int ) : Int {
-		return ByteArray.ofData(b).fastGet(pos);
+		return ByteArray.ofData(b).get(pos);
 	}
 
 }

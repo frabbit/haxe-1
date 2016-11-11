@@ -24,6 +24,14 @@ package haxe.io;
 typedef ByteArrayImpl = java.NativeArray<java.StdTypes.Int8>;
 
 abstract ByteArray(ByteArrayImpl) {
+
+	public static inline var getIsChecked = true;
+	public static inline var setIsChecked = true;
+	
+	public static inline var blitCanThrow = false;
+	public static inline var subCanThrow = false;
+	public static inline var getStringCanThrow = false;
+
 	public var length(get,never) : Int;
 
 	inline function new (impl:ByteArrayImpl) {
@@ -141,10 +149,6 @@ abstract ByteArray(ByteArrayImpl) {
 			return new String(this, 0, length, "UTF-8");
 		}
 		catch (e:Dynamic) throw e;
-	}
-
-	public function fastGet( pos : Int ) : Int { 
-		return untyped this[pos] & 0xFF;
 	}
 
 	public static function alloc( length : Int ) : ByteArray { 

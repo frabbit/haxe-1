@@ -25,13 +25,18 @@ typedef ByteArrayImpl = neko.NativeString;
 
 
 abstract ByteArray(ByteArrayImpl) {
+
+	public static inline var getIsChecked = false;
+	public static inline var setIsChecked = false;
+	public static inline var blitCanThrow = true;
+	public static inline var subCanThrow = true;
+	public static inline var getStringCanThrow = true;
+
 	public var length(get,never) : Int;
 
 	inline function get_length ():Int {
 		return untyped __dollar__ssize(this);
 	}
-
-	
 
 	inline static function mk (impl:ByteArrayImpl) {
 		return new ByteArray(impl);
@@ -164,15 +169,11 @@ abstract ByteArray(ByteArrayImpl) {
 	}
 
 	public static function alloc( length : Int ) : ByteArray { 
-		var data = untyped __dollar__smake(length);
-		return mk(data);
+		return mk(untyped __dollar__smake(length));
 	}
 
 	public static inline function ofString( s : String ) : ByteArray {
 		return mk( untyped __dollar__ssub(s.__s,0,s.length));
 	}
 
-	public function fastGet( pos : Int ) : Int { 
-		return untyped __dollar__sget(this,pos);
-	}
 }
