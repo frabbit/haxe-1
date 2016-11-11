@@ -21,7 +21,7 @@
  */
 package haxe.io;
 
-typedef ByteArrayImpl = php.BytesData;
+private typedef ByteArrayImpl = BytesData;
 
 abstract ByteArray(ByteArrayImpl) {
 

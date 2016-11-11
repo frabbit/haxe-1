@@ -21,7 +21,7 @@
  */
 package haxe.io;
 
-typedef ByteArrayImpl = python.Bytearray;
+private typedef ByteArrayImpl = BytesData;
 
 abstract ByteArray(ByteArrayImpl) {
 
@@ -31,7 +31,7 @@ abstract ByteArray(ByteArrayImpl) {
 	public static inline var blitCanThrow = false;
 	public static inline var subCanThrow = false;
 	public static inline var getStringCanThrow = false;
-	
+
 	public var length(get,never) : Int;
 
 	inline function get_length ():Int {

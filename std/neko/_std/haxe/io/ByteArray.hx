@@ -21,7 +21,7 @@
  */
 package haxe.io;
 
-typedef ByteArrayImpl = neko.NativeString;
+private typedef ByteArrayImpl = BytesData;
 
 
 abstract ByteArray(ByteArrayImpl) {

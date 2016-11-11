@@ -197,7 +197,7 @@ class ByteHelper {
 	
 }
 
-typedef ByteArrayImpl = {
+private typedef ByteArrayImpl = {
 	private var b : js.html.Uint8Array;
 	private var data : js.html.DataView;
 }

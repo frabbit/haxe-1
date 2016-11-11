@@ -24,7 +24,7 @@ package haxe.io;
 
 using cpp.NativeArray;
 
-typedef ByteArrayImpl = Array< cpp.UInt8 >;
+private typedef ByteArrayImpl = BytesData;
 
 abstract ByteArray(ByteArrayImpl) {
 	

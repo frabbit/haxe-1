@@ -21,7 +21,7 @@
  */
 package haxe.io;
 
-typedef ByteArrayImpl = cs.NativeArray<cs.StdTypes.UInt8>;
+private typedef ByteArrayImpl = BytesData;
 
 abstract ByteArray(ByteArrayImpl) {
 
@@ -34,7 +34,7 @@ abstract ByteArray(ByteArrayImpl) {
 
 	public var length(get,never) : Int;
 
-	public inline function new (impl:ByteArrayImpl) {
+	inline function new (impl:ByteArrayImpl) {
 		this = impl;
 	}
 
