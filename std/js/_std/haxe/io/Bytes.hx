@@ -141,7 +141,7 @@ class Bytes {
 	}
 
 	public inline function getData() : BytesData {
-		return untyped b.bufferValue;
+		return ByteHelper.getData(this);
 	}
 
 	public static inline function alloc( length : Int ) : Bytes {

@@ -194,6 +194,10 @@ class ByteHelper {
 	public static function allocBuffer (length:Int) {
 		return new js.html.ArrayBuffer(length);
 	}
+
+	public static inline function getData(impl:ByteArrayImpl) : BytesData {
+		return untyped impl.b.bufferValue;
+	}
 	
 }
 
@@ -217,8 +221,8 @@ abstract ByteArray(ByteArrayImpl) {
 		}
 		untyped {
 			arr.bufferValue = buffer; // some impl does not return the same instance in .buffer
-			buffer.bytes = arr;
-			buffer.hxByteArray = impl;
+			buffer.bytes = arr; // for fastGet of BytesData
+			buffer.hxByteArray = impl; // store the bytearray instance, so no new allocation is required when converting BytesData to ByteArray
 		}
 		
 		return new ByteArray(impl);
@@ -231,7 +235,7 @@ abstract ByteArray(ByteArrayImpl) {
 	}
 
 	public inline function getData () {
-		return untyped this.b.bufferValue;
+		return ByteHelper.getData(this);
 	}
 
 	inline function raw ():ByteArrayImpl return this;
@@ -319,9 +323,5 @@ abstract ByteArray(ByteArrayImpl) {
 
 	public static inline function ofString( s : String ) : ByteArray { 
 		return fromBuffer(ByteHelper.ofString(s));
-	}
-
-	public inline function fastGet( pos : Int ) : Int { 
-		return ByteHelper.fastGet(untyped this.b.bufferValue, pos);
 	}
 }
