@@ -40,8 +40,8 @@ class Bytes {
 		this.b = new js.html.Uint8Array(data);
 		untyped {
 			b.bufferValue = data; // some impl does not return the same instance in .buffer
-			data.hxBytes = this;
-			data.bytes = this.b;
+			data.hxBytes = this; // store the Bytes instance, this way no new allocation is required when converting BytesData to Bytes
+			data.bytes = this.b; // for fastGet of BytesData
 		}
 	}
 
