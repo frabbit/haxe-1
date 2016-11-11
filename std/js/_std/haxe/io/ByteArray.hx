@@ -21,12 +21,17 @@
  */
 package haxe.io;
 
+#if !nodejs
+import js.html.compat.Uint8Array;
+import js.html.compat.DataView;
+#end
+
 class ByteHelper {
-	static function sub( impl:ByteArrayImpl, pos : Int, len : Int ) : js.html.ArrayBuffer {
-		return impl.arr.buffer.slice(pos+b.byteOffset,pos+b.byteOffset+len);
+	public static function sub( impl:ByteArrayImpl, pos : Int, len : Int ) : js.html.ArrayBuffer {
+		return impl.b.buffer.slice(pos+impl.b.byteOffset,pos+impl.b.byteOffset+len);
 	}
 	public static function subByteArray( impl:ByteArrayImpl, pos : Int, len : Int ) : ByteArray {
-		return mkByteArray(sub(impl, pos, len);
+		return mkByteArray(sub(impl, pos, len));
 	}
 
 	static inline function mkByteArray (buffer:js.html.ArrayBuffer):ByteArray {
@@ -34,22 +39,22 @@ class ByteHelper {
 	}
 
 	public static inline function getLength (impl:ByteArrayImpl):Int {
-		return impl.arr.byteLength;
+		return impl.b.byteLength;
 	}
 
 	public static inline function get( impl:ByteArrayImpl, pos : Int ) : Int { 
-		return impl.arr[pos];
+		return impl.b[pos];
 	}
 
 	public static inline function set( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
-		impl.arr[pos] = v & 0xFF; // the &0xFF is necessary for js.html.compat support
+		impl.b[pos] = v & 0xFF; // the &0xFF is necessary for js.html.compat support
 	}
 
 	public static inline function blit( impl:ByteArrayImpl, pos : Int, src : ByteArrayImpl, srcpos : Int, len : Int ) : Void { 
-		if( srcpos == 0 && len == src.arr.byteLength )
-			impl.arr.set(src.arr,pos);
+		if( srcpos == 0 && len == src.b.byteLength )
+			impl.b.set(src.b,pos);
 		else
-			impl.arr.set(src.arr.subarray(srcpos,srcpos+len),pos);
+			impl.b.set(src.b.subarray(srcpos,srcpos+len),pos);
 	}
 
 	public static inline function fill( impl: ByteArrayImpl, pos : Int, len : Int, value : Int ):Void { 
@@ -58,12 +63,12 @@ class ByteHelper {
 	}
 
 	inline static function initData(impl:ByteArrayImpl) : Void {
-		if( impl.data == null ) impl.data = new js.html.DataView(impl.arr.buffer, impl.arr.byteOffset, impl.arr.byteLength);
+		if( impl.data == null ) impl.data = new js.html.DataView(impl.b.buffer, impl.b.byteOffset, impl.b.byteLength);
 	}
 
 	public static function compare( b:ByteArrayImpl, other : ByteArrayImpl ) : Int { 
-		var b1 = b.arr;
-		var b2 = other.arr;
+		var b1 = b.b;
+		var b2 = other.b;
 		var len = (getLength(b) < getLength(other)) ? getLength(b) : getLength(other);
 		for( i in 0...len )
 			if( b1[i] != b2[i] )
@@ -93,17 +98,17 @@ class ByteHelper {
 
 	public static function getUInt16( impl:ByteArrayImpl, pos : Int ) : Int { 
 		initData(impl);
-		return getUint16(impl, pos, true);
+		return impl.data.getUint16(pos, true);
 	}
 
 	public static function setUInt16( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
 		initData(impl);
-		setUint16(impl, pos, v, true);
+		impl.data.setUint16(pos, v, true);
 	}
 
 	public static function getInt32( impl:ByteArrayImpl, pos : Int ) : Int { 
 		initData(impl);
-		return getInt32(impl, pos, true);
+		return impl.data.getInt32(pos, true);
 	}
 	
 	public static function getInt64( impl:ByteArrayImpl, pos : Int ) : haxe.Int64 { 
@@ -111,7 +116,7 @@ class ByteHelper {
 	}
 	
 	public static function setInt32( impl:ByteArrayImpl, pos : Int, v : Int ) : Void { 
-		initData();
+		initData(impl);
 		impl.data.setInt32(pos, v, true);
 	}
 	
@@ -122,7 +127,7 @@ class ByteHelper {
 
 	public static function getString( impl:ByteArrayImpl, pos : Int, len : Int ) : String { 
 		var s = "";
-		var b = impl;
+		var b = impl.b;
 		var fcc = String.fromCharCode;
 		var i = pos;
 		var max = pos+len;
@@ -181,9 +186,9 @@ class ByteHelper {
 		return new js.html.Uint8Array(a).buffer;
 	}
 
-	public static function fastGet( impl:ByteArrayImpl, pos : Int ) : Int { 
+	public static function fastGet( data:BytesData, pos : Int ) : Int { 
 		// this requires that we have wrapped it with haxe.io.Bytes beforehand
-		return untyped impl.arr.bytes[pos];
+		return untyped data.bytes[pos];
 	}
 
 	public static function allocBuffer (length:Int) {
@@ -193,11 +198,11 @@ class ByteHelper {
 }
 
 typedef ByteArrayImpl = {
-	arr : js.html.Uint8Array,
-	data : js.html.DataView,
+	private var b : js.html.Uint8Array;
+	private var data : js.html.DataView;
 }
 abstract ByteArray(ByteArrayImpl) {
-	public var length(get,null) : Int;
+	public var length(get,never) : Int;
 
 	inline function new (impl:ByteArrayImpl) {
 		this = impl;
@@ -205,16 +210,27 @@ abstract ByteArray(ByteArrayImpl) {
 
 	public static inline function fromBuffer (buffer:js.html.ArrayBuffer) {
 		var arr = new js.html.Uint8Array(buffer);
-		untyped {
-			arr.bufferValue = data; // some impl does not return the same instance in .buffer
-			buffer.bytes = this.arr;
-		}
+		
 		var impl = {
-			arr : arr,
+			b : arr,
 			data : null
+		}
+		untyped {
+			arr.bufferValue = buffer; // some impl does not return the same instance in .buffer
+			buffer.bytes = arr;
+			buffer.hxByteArray = impl;
 		}
 		
 		return new ByteArray(impl);
+	}
+
+	public static inline function ofData (b:BytesData) {
+		if ((untyped b).hxByteArray != null) return (untyped b).hxByteArray;
+		return fromBuffer(b);
+	}
+
+	public inline function getData () {
+		return untyped this.b.bufferValue;
 	}
 
 	inline function raw ():ByteArrayImpl return this;
@@ -223,88 +239,88 @@ abstract ByteArray(ByteArrayImpl) {
 		return ByteHelper.getLength(this);
 	}
 
-	public function get( pos : Int ) : Int { 
+	public inline function get( pos : Int ) : Int { 
 		return ByteHelper.get(this, pos);
 	}
 
-	public function set( pos : Int, v : Int ) : Void { 
+	public inline function set( pos : Int, v : Int ) : Void { 
 		ByteHelper.set(this, pos, v);
 	}
 
-	public function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void { 
+	public inline function blit( pos : Int, src : ByteArray, srcpos : Int, len : Int ) : Void { 
 		return ByteHelper.blit(this, pos, src.raw(), srcpos, len);
 	}
 
-	public function fill( pos : Int, len : Int, value : Int ):Void { 
-		ByteHelper.fill(pos, len, value);
+	public inline function fill( pos : Int, len : Int, value : Int ):Void { 
+		ByteHelper.fill(this, pos, len, value);
 	}
 
-	public function sub( pos : Int, len : Int ) : ByteArray {
+	public inline function sub( pos : Int, len : Int ) : ByteArray {
 		return ByteHelper.subByteArray(this, pos, len);
 	}
 
-	public function compare( other : ByteArray ) : Int { 
+	public inline function compare( other : ByteArray ) : Int { 
 		return ByteHelper.compare(this, other.raw());
 	}
 
-	public function getDouble( pos : Int ) : Float { 
+	public inline function getDouble( pos : Int ) : Float { 
 		return ByteHelper.getDouble(this, pos);
 	}
 
-	public function getFloat( pos : Int ) : Float {
+	public inline function getFloat( pos : Int ) : Float {
 		return ByteHelper.getFloat(this, pos); 
 	}
 
-	public function setDouble( pos : Int, v : Float ) : Void {
+	public inline function setDouble( pos : Int, v : Float ) : Void {
 		ByteHelper.setDouble(this, pos, v); 
 	}
 
-	public function setFloat( pos : Int, v : Float ) : Void {
+	public inline function setFloat( pos : Int, v : Float ) : Void {
 		ByteHelper.setFloat(this, pos, v); 
 	}
 
-	public function getUInt16( pos : Int ) : Int { 
+	public inline function getUInt16( pos : Int ) : Int { 
 		return ByteHelper.getUInt16(this, pos);
 	}
 
-	public function setUInt16( pos : Int, v : Int ) : Void {
+	public inline function setUInt16( pos : Int, v : Int ) : Void {
 		ByteHelper.setUInt16(this, pos, v); 
 	}
 
-	public function getInt32( pos : Int ) : Int {
+	public inline function getInt32( pos : Int ) : Int {
 		return ByteHelper.getInt32(this, pos); 
 	}
 	
-	public function getInt64( pos : Int ) : haxe.Int64 {
+	public inline function getInt64( pos : Int ) : haxe.Int64 {
 		return ByteHelper.getInt64(this, pos); 
 	}
 	
-	public function setInt32( pos : Int, v : Int ) : Void {
+	public inline function setInt32( pos : Int, v : Int ) : Void {
 		ByteHelper.setInt32(this, pos, v);
 	}
 	
-	public function setInt64( pos : Int, v : haxe.Int64 ) : Void { 
+	public inline function setInt64( pos : Int, v : haxe.Int64 ) : Void { 
 		ByteHelper.setInt64(this, pos, v);
 	}
 
-	public function getString( pos : Int, len : Int ) : String { 
+	public inline function getString( pos : Int, len : Int ) : String { 
 		return ByteHelper.getString(this, pos, len);
 	}
 
-	public function toString() : String { 
+	public inline function toString() : String { 
 		return ByteHelper.toString(this);
 	}
 
-	public static function alloc( length : Int ) : ByteArray { 
+	public static inline function alloc( length : Int ) : ByteArray { 
 		var buffer = ByteHelper.allocBuffer(length);
 		return fromBuffer(buffer);
 	}
 
-	public static function ofString( s : String ) : ByteArray { 
+	public static inline function ofString( s : String ) : ByteArray { 
 		return fromBuffer(ByteHelper.ofString(s));
 	}
 
-	public function fastGet( pos : Int ) : Int { 
-		return ByteHelper.fastGet(this, pos);
+	public inline function fastGet( pos : Int ) : Int { 
+		return ByteHelper.fastGet(untyped this.b.bufferValue, pos);
 	}
 }
