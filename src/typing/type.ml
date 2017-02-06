@@ -819,6 +819,9 @@ and unapply_in_constraints tm ta =
 
 and reduce_of t =
 	match t with
+	| TAbstract( ({a_path=[],"-Of"} as a),[tm;(TAbstract({a_path=[],"-Of"}, [tb; tx]))]) ->
+		let tm1 = TAbstract(a, [tm; tb]) in
+		reduce_of (TAbstract(a, [tm1; tx]))
 	| TAbstract({a_path=[],"-Of"},[tm;tr]) ->
 		let x, applied = unapply_in tm (reduce_of tr) in
 		if applied then x else t
