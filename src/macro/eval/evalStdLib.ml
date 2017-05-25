@@ -48,10 +48,6 @@ let encode_i64_direct i64 =
 	encode_i64 low high
 
 module StdLib = struct
-	let get_array value = match value with
-		| VArray va -> va
-		| v -> unexpected_value v "array"
-
 	let arrayAlloc = vfun1 (fun size ->
 		let i = decode_int size in
 		let avalues = Array.make i vnull in
