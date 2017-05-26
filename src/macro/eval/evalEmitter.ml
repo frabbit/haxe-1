@@ -868,6 +868,20 @@ let emit_array_read exec1 exec2 env =
 	if i < 0 then vnull
 	else EvalArray.get (decode_varray va) i
 
+let emit_vector_local_read i exec2 env =
+	let vv = env.env_locals.(i) in
+	let vi = exec2 env in
+	let i = decode_int vi in
+	if i < 0 then vnull
+	else (decode_vector vv).(i)
+
+let emit_vector_read exec1 exec2 env =
+	let vv = exec1 env in
+	let vi = exec2 env in
+	let i = decode_int vi in
+	if i < 0 then vnull
+	else (decode_vector vv).(i)
+
 let emit_enum_index exec env = match exec env with
 	| VEnumValue ev -> vint ev.eindex
 	| v -> unexpected_value v "enum value"
@@ -948,6 +962,24 @@ let emit_array_write exec1 exec2 exec3 p env =
 	let i = decode_int vi in
 	if i < 0 then throw_string (Printf.sprintf "Negative array index: %i" i) p;
 	EvalArray.set (decode_varray va) i v3;
+	v3
+
+let emit_vector_local_write i exec2 exec3 p env =
+	let vv = env.env_locals.(i) in
+	let vi = exec2 env in
+	let v3 = exec3 env in
+	let i = decode_int vi in
+	if i < 0 then throw_string (Printf.sprintf "Negative array index: %i" i) p;
+	(decode_vector vv).(i) <- v3;
+	v3
+
+let emit_vector_write exec1 exec2 exec3 p env =
+	let vv = exec1 env in
+	let vi = exec2 env in
+	let v3 = exec3 env in
+	let i = decode_int vi in
+	if i < 0 then throw_string (Printf.sprintf "Negative array index: %i" i) p;
+	(decode_vector vv).(i) <- v3;
 	v3
 
 (* Read + write *)
