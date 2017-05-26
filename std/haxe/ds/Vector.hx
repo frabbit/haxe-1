@@ -96,7 +96,7 @@ abstract Vector<T>(VectorData<T>) {
 		#elseif python
 		return python.internal.ArrayImpl.unsafeGet(this, index);
 		#elseif eval
-		return this.get(index);
+		return this[index];
 		#else
 		return this[index];
 		#end
@@ -114,7 +114,7 @@ abstract Vector<T>(VectorData<T>) {
 		#elseif python
 		return python.internal.ArrayImpl.unsafeSet(this, index, val);
 		#elseif eval
-		return this.set(index, val);
+		return this[index] = val;
 		#else
 		return this[index] = val;
 		#end

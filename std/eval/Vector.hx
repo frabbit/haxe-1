@@ -21,7 +21,8 @@
  */
 package eval;
 
-extern class Vector<T> {
+
+extern class Vector<T> implements ArrayAccess<T> {
 
 	public function new(size:Int) : Void;
 	public var length(get, never):Int;

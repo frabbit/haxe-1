@@ -101,17 +101,33 @@ let rec op_assign ctx jit e1 e2 = match e1.eexpr with
 				emit_field_write exec1 name exec2
 		end
 	| TArray(ea1,ea2) ->
-		begin match ea1.eexpr with
-		| TLocal var when not var.v_capture ->
-			let exec2 = jit_expr jit false ea2 in
-			let exec3 = jit_expr jit false e2 in
-			emit_array_local_write (get_slot jit var.v_id ea1.epos) exec2 exec3 ea2.epos
-		| _ ->
-			let exec1 = jit_expr jit false ea1 in
-			let exec2 = jit_expr jit false ea2 in
-			let exec3 = jit_expr jit false e2 in
-			emit_array_write exec1 exec2 exec3 ea2.epos
+		begin match (follow ea1.etype) with
+			| TInst({cl_path=(["eval"],"Vector")}, _) ->
+				begin match ea1.eexpr with
+					| TLocal var when not var.v_capture ->
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_vector_local_write (get_slot jit var.v_id ea1.epos) exec2 exec3 ea2.epos
+					| _ ->
+						let exec1 = jit_expr jit false ea1 in
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_vector_write exec1 exec2 exec3 ea2.epos
+				end
+			| _ ->
+				begin match ea1.eexpr with
+					| TLocal var when not var.v_capture ->
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_array_local_write (get_slot jit var.v_id ea1.epos) exec2 exec3 ea2.epos
+					| _ ->
+						let exec1 = jit_expr jit false ea1 in
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_array_write exec1 exec2 exec3 ea2.epos
+				end
 		end
+
 	| _ ->
 		assert false
 
@@ -136,16 +152,31 @@ and op_assign_op jit op e1 e2 prefix = match e1.eexpr with
 				emit_field_read_write exec1 name exec2 op prefix
 		end
 	| TArray(ea1,ea2) ->
-		begin match ea1.eexpr with
-			| TLocal var when not var.v_capture ->
-				let exec2 = jit_expr jit false ea2 in
-				let exec3 = jit_expr jit false e2 in
-				emit_array_local_read_write (get_slot jit var.v_id ea1.epos) exec2 exec3 op prefix ea2.epos
+		begin match (follow ea1.etype) with
+			| TInst({cl_path=(["eval"],"Vector")}, _) ->
+				begin match ea1.eexpr with
+					| TLocal var when not var.v_capture ->
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_vector_local_read_write (get_slot jit var.v_id ea1.epos) exec2 exec3 op prefix ea2.epos
+					| _ ->
+						let exec1 = jit_expr jit false ea1 in
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_vector_read_write exec1 exec2 exec3 op prefix ea2.epos
+				end
 			| _ ->
-				let exec1 = jit_expr jit false ea1 in
-				let exec2 = jit_expr jit false ea2 in
-				let exec3 = jit_expr jit false e2 in
-				emit_array_read_write exec1 exec2 exec3 op prefix ea2.epos
+				begin match ea1.eexpr with
+					| TLocal var when not var.v_capture ->
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_array_local_read_write (get_slot jit var.v_id ea1.epos) exec2 exec3 op prefix ea2.epos
+					| _ ->
+						let exec1 = jit_expr jit false ea1 in
+						let exec2 = jit_expr jit false ea2 in
+						let exec3 = jit_expr jit false e2 in
+						emit_array_read_write exec1 exec2 exec3 op prefix ea2.epos
+				end
 		end
 	| _ ->
 		assert false
@@ -696,13 +727,25 @@ and jit_expr jit return e =
 				emit_field_read exec name e1.epos
 		end
 	| TArray(e1,e2) ->
-		begin match e1.eexpr with
-			| TLocal var when not var.v_capture ->
-				emit_array_local_read (get_slot jit var.v_id e1.epos) (jit_expr jit false e2)
+		begin match (follow e1.etype) with
+			| TInst({cl_path=(["eval"],"Vector")}, _) ->
+				begin match e1.eexpr with
+					| TLocal var when not var.v_capture ->
+						emit_vector_local_read (get_slot jit var.v_id e1.epos) (jit_expr jit false e2)
+					| _ ->
+						let exec1 = jit_expr jit false e1 in
+						let exec2 = jit_expr jit false e2 in
+						emit_vector_read exec1 exec2
+				end
 			| _ ->
-				let exec1 = jit_expr jit false e1 in
-				let exec2 = jit_expr jit false e2 in
-				emit_array_read exec1 exec2
+				begin match e1.eexpr with
+					| TLocal var when not var.v_capture ->
+						emit_array_local_read (get_slot jit var.v_id e1.epos) (jit_expr jit false e2)
+					| _ ->
+						let exec1 = jit_expr jit false e1 in
+						let exec2 = jit_expr jit false e2 in
+						emit_array_read exec1 exec2
+				end
 		end
 	| TEnumParameter(e1,_,i) ->
 		let exec = jit_expr jit false e1 in
