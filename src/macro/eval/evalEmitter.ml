@@ -70,6 +70,12 @@ let emit_const v _ = v
 let emit_new_array env =
 	encode_array_instance (EvalArray.create [||])
 
+let emit_new_vector_int i env =
+	encode_vector_instance (Array.make i vnull)
+
+let emit_new_vector exec env =
+	encode_vector_instance (Array.make (decode_int (exec env)) vnull)
+
 let emit_special_instance f execs env =
 	let vl = List.map (apply env) execs in
 	f vl

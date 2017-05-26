@@ -637,6 +637,14 @@ and jit_expr jit return e =
 		end
 	| TNew({cl_path=[],"Array"},_,_) ->
 		emit_new_array
+	| TNew({cl_path=["eval"],"Vector"},_,[e1]) ->
+		begin match e1.eexpr with
+			| TConst (TInt i32) ->
+				emit_new_vector_int (Int32.to_int i32)
+			| _ ->
+				let exec1 = jit_expr jit false e1 in
+				emit_new_vector exec1
+		end
 	| TNew(c,_,el) ->
 		let execs = List.map (jit_expr jit false) el in
 		let key = path_hash c.cl_path in
