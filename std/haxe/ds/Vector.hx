@@ -319,6 +319,9 @@ abstract Vector<T>(VectorData<T>) {
 		If `f` is null, the result is unspecified.
 	**/
 	#if cs @:extern #end public inline function map<S>(f:T->S):Vector<S> {
+		#if eval
+		return cast this.map(f);
+		#else
 		var length = length;
 		var r = new Vector<S>(length);
 		var i = 0;
@@ -328,6 +331,7 @@ abstract Vector<T>(VectorData<T>) {
 			r.set(i, v);
 		}
 		return r;
+		#end
 	}
 
 	/**
