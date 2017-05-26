@@ -91,7 +91,21 @@ module StdEvalVector = struct
 
 	let map = vifun1 (fun vthis f ->
 		let this = this vthis in
-		let a = Array.map (fun v -> call_value_on vthis f [v]) this in
+		let a = match f with
+			| VFunction(f,_) ->
+				begin match f with
+					| Fun1 f -> Array.map (fun v -> f v) this
+					| FunN f -> Array.map (fun v -> f [v]) this
+					| _ -> invalid_call_arg_number 1 (num_args f)
+				end
+			| VFieldClosure(v1,f) ->
+				begin match f with
+					| Fun2 f -> Array.map (fun v -> f v1 v) this
+					| FunN f -> Array.map (fun v -> f [v1;v]) this
+					| _ -> invalid_call_arg_number 2 (num_args f)
+				end
+			| _ -> exc_string ("Cannot call " ^ (value_string f))
+		in
 		encode_vector_instance a
 	)
 end
@@ -163,7 +177,21 @@ module StdArray = struct
 
 	let map = vifun1 (fun vthis f ->
 		let this = this vthis in
-		let a = EvalArray.map this (fun v -> call_value_on vthis f [v]) in
+		let a = match f with
+			| VFunction(f,_) ->
+				begin match f with
+					| Fun1 f -> EvalArray.map this (fun v -> f v)
+					| FunN f -> EvalArray.map this (fun v -> f [v])
+					| _ -> invalid_call_arg_number 1 (num_args f)
+				end
+			| VFieldClosure(v1,f) ->
+				begin match f with
+					| Fun2 f -> EvalArray.map this (fun v -> f v1 v)
+					| FunN f -> EvalArray.map this (fun v -> f [v1;v])
+					| _ -> invalid_call_arg_number 2 (num_args f)
+				end
+			| _ -> exc_string ("Cannot call " ^ (value_string f))
+		in
 		encode_array_instance a
 	)
 
