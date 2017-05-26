@@ -295,7 +295,7 @@ abstract Vector<T>(VectorData<T>) {
 		If `sep` is null, the result is unspecified.
 	**/
 	#if cs @:extern #end public inline function join<T>(sep:String):String {
-		#if (flash10||cpp)
+		#if (flash10||cpp||eval)
 		return this.join(sep);
 		#else
 		var b = new StringBuf();
@@ -320,7 +320,7 @@ abstract Vector<T>(VectorData<T>) {
 	**/
 	#if cs @:extern #end public inline function map<S>(f:T->S):Vector<S> {
 		#if eval
-		return cast this.map(f);
+			return fromData(this.map(f));
 		#else
 		var length = length;
 		var r = new Vector<S>(length);
