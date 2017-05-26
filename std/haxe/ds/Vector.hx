@@ -295,7 +295,7 @@ abstract Vector<T>(VectorData<T>) {
 		If `sep` is null, the result is unspecified.
 	**/
 	#if cs @:extern #end public inline function join<T>(sep:String):String {
-		#if (flash10||cpp||eval)
+		#if (flash10 || cpp || eval)
 		return this.join(sep);
 		#else
 		var b = new StringBuf();

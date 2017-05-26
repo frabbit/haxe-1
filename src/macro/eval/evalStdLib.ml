@@ -75,6 +75,7 @@ module StdEvalVector = struct
 		let copy = Array.copy (this vthis) in
 		encode_array_instance (EvalArray.create copy)
 	)
+
 	let fromArrayCopy = vfun1 (fun arr ->
 		encode_vector_instance (Array.copy (decode_varray arr).avalues)
 	)
@@ -84,9 +85,9 @@ module StdEvalVector = struct
 	)
 
 	let join = vifun1 (fun vthis sep ->
+		let this = this vthis in
 		let sep = decode_rope sep in
-		let s = EvalArray.join (EvalArray.create (this vthis)) (s_value 0) sep in
-		encode_rope s
+		encode_rope (EvalArray.array_join this (s_value 0) sep)
 	)
 
 	let map = vifun1 (fun vthis f ->
