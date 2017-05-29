@@ -1543,6 +1543,7 @@ module StdReflect = struct
 		}
 		| VString _ -> o
 		| VArray va -> VArray { va with avalues = Array.copy va.avalues }
+		| VVector vv -> VVector (Array.copy vv)
 		| _ -> unexpected_value o "object"
 	)
 
@@ -1575,7 +1576,7 @@ module StdReflect = struct
 			| VInstance vi -> IntMap.fold (fun name _ acc -> name :: acc) vi.iproto.pinstance_names []
 			| VPrototype proto -> proto_fields proto
 			| VNull -> []
-			| VString _ | VArray _ -> [key_length]
+			| VString _ | VArray _ | VVector _ -> [key_length]
 			| _ -> unexpected_value o "object"
 		in
 		encode_array (List.map (fun i -> encode_rope (rev_hash i)) fields)
@@ -1611,7 +1612,7 @@ module StdReflect = struct
 	)
 
 	let isObject = vfun1 (fun v -> match v with
-		| VObject _ | VString _ | VArray _ | VInstance _ | VPrototype _ -> vtrue
+		| VObject _ | VString _ | VArray _ | VVector _ | VInstance _ | VPrototype _ -> vtrue
 		| _ -> vfalse
 	)
 
