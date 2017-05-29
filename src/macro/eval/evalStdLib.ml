@@ -53,15 +53,6 @@ module StdEvalVector = struct
 		| VVector vv -> vv
 		| v -> unexpected_value v "vector"
 
-	let set = vifun2 (fun vthis index value ->
-		Array.set (this vthis) (decode_int index) value;
-		vnull
-	)
-
-	let get = vifun1 (fun vthis index ->
-		Array.get (this vthis) (decode_int index)
-	)
-
 	let blit = vifun4 (fun vthis srcPos dest destPos len ->
 		Array.blit (this vthis) (decode_int srcPos) (decode_vector dest) (decode_int destPos) (decode_int len);
 		vnull
@@ -2713,8 +2704,6 @@ let init_standard_library builtins =
 	init_fields builtins (["eval"],"Vector") [
 		"fromArrayCopy",StdEvalVector.fromArrayCopy;
 	] [
-		"set",StdEvalVector.set;
-		"get",StdEvalVector.get;
 		"blit",StdEvalVector.blit;
 		"toArray",StdEvalVector.toArray;
 		"copy",StdEvalVector.copy;
