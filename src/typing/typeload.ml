@@ -2903,8 +2903,8 @@ module ClassInitializer = struct
 		let cl_req = check_require c.cl_meta in
 		let rec handle_field f =
 			try
-				let epath,el = match Meta.get Meta.Build f.cff_meta with
-					| _, [ECall (epath,el),p],_ -> epath,el
+				let epath,el,args,m = match Meta.get Meta.Build f.cff_meta with
+					| (_, ([ECall (epath,el),p] as args),_) as m -> epath,el,args,m
 					| _ -> error "Invalid build parameters" p
 				in
 				let mt = TClassDecl c in
@@ -2918,7 +2918,7 @@ module ClassInitializer = struct
 					| None -> error "Build failure" p
 					| Some (EVars [_,Some (CTAnonymous fl,p),None],_) ->
 						List.iter (fun f' ->
-							if f'.cff_name = f.cff_name then f'.cff_meta <- List.filter (fun (m,_,_) -> m <> Meta.Build) f'.cff_meta;
+							if f'.cff_name = f.cff_name then f'.cff_meta <- List.filter (fun m1 -> m1 <> m) f'.cff_meta;
 							handle_field f'
 						) fl
 					| _ -> error "Build failure" p
