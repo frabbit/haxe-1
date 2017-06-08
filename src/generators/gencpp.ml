@@ -56,7 +56,7 @@ let class_text path =
 (* The internal classes are implemented by the core hxcpp system, so the cpp
    classes should not be generated *)
 let is_internal_class = function
-   |  ([],"Int") | ([],"Void") |  ([],"String") | ([], "Null") | ([], "Float")
+   |  ([],"Int") | ([],"Void") |  ([],"String") | ([], "OldNull") | ([], "Float")
    |  ([],"Array") | ([], "Class") | ([], "Enum") | ([], "Bool")
    |  ([], "Dynamic") | ([], "ArrayAccess") | (["cpp"], "FastIterator")
    |  (["cpp"],"Pointer") | (["cpp"],"ConstPointer")
@@ -720,7 +720,7 @@ let rec class_string klass suffix params remap =
    |  (["cpp"],"UInt8") -> "unsigned char"
    |  ([],"Class") -> "hx::Class"
    |  ([],"EnumValue") -> "Dynamic"
-   |  ([],"Null") -> (match params with
+   |  ([],"OldNull") -> (match params with
          | [t] ->
             (match follow t with
             | TAbstract ({ a_path = [],"Int" },_)
@@ -764,7 +764,7 @@ and type_string_suff suffix haxe_type remap =
    | TInst (klass,params) ->  (class_string klass suffix params remap)
    | TType (type_def,params) ->
       (match type_def.t_path with
-      | [] , "Null" ->
+      | [] , "OldNull" ->
          (match params with
          | [t] ->
             (match follow t with
@@ -1892,7 +1892,7 @@ let rec cpp_type_of ctx haxe_type =
               TCppScalarArray(arrayOf)
          )
 
-      | ([],"Null"), [p] ->
+      | ([],"OldNull"), [p] ->
             cpp_type_of_null ctx p
 
       | _ -> default ()
@@ -2338,7 +2338,7 @@ let is_gc_element ctx member_type =
    | TCppWrapped _
    | TCppScalarArray _
    | TCppInst _
-   | TCppInterface _ 
+   | TCppInterface _
    | TCppClass
        -> true
    | _ -> false
@@ -3162,7 +3162,7 @@ let retype_expression ctx request_type function_args function_type expression_tr
             Using the 'typedef hack', where we use typedef X<T> = T, allows the
             haxe compiler to use these types interchangeably. We then work
             out the correct way to convert between them when one is expected, but another provided.
- 
+
             TCppFunction: these do not really interact with the haxe function type, T
             Since they are implemented with cpp::Function, conversion to/from Dynamic should happen automatically
                CallableData<T> = T;
@@ -5327,7 +5327,7 @@ let script_type t optional = if optional then begin
    | "int" -> "Int"
    | "Float" -> "Float"
    | "::String" -> "String"
-   | "Null" -> "Void"
+   | "OldNull" -> "Void"
    | "Void" -> "Void"
    | _ -> "Object"
 ;;
@@ -6228,7 +6228,7 @@ let generate_class_files baseCtx super_deps constructor_deps class_def inScripta
          List.iter dump_script_static class_def.cl_ordered_statics;
 
          output_cpp "static hx::ScriptNamedFunction __scriptableFunctions[] = {\n";
-         let dump_func f isStaticFlag = 
+         let dump_func f isStaticFlag =
             let s = try Hashtbl.find sigs f.cf_name with Not_found -> "v" in
             output_cpp ("  hx::ScriptNamedFunction(\"" ^ f.cf_name ^ "\",__s_" ^ f.cf_name ^ ",\"" ^ s ^ "\", " ^ isStaticFlag ^ " ),\n" )
          in
@@ -6755,13 +6755,13 @@ let is_assign_op op =
 
 let rec script_type_string haxe_type =
    match haxe_type with
-   | TType ({ t_path = ([],"Null") },[t]) ->
+   | TType ({ t_path = ([],"OldNull") },[t]) ->
       (match follow t with
       | TAbstract ({ a_path = [],"Int" },_)
       | TAbstract ({ a_path = [],"Float" },_)
       | TAbstract ({ a_path = [],"Bool" },_) -> "Dynamic"
       | _ -> script_type_string t)
-   | TInst ({cl_path=[],"Null"},[t]) ->
+   | TInst ({cl_path=[],"OldNull"},[t]) ->
       (match follow t with
       | TAbstract ({ a_path = [],"Int" },_)
       | TAbstract ({ a_path = [],"Float" },_)
@@ -7738,7 +7738,7 @@ class script_writer ctx filename asciiOut =
             gen_expression e;
 
          | CppCompare(_, left, right, op) ->
-            this#writeOpLine (IaBinOp op); 
+            this#writeOpLine (IaBinOp op);
             gen_expression left;
             gen_expression right;
 
@@ -7865,7 +7865,7 @@ class script_writer ctx filename asciiOut =
          | CppCastScalar(expr,_) -> match_expr expr
          | CppCastVariant(expr) -> match_expr expr
          | CppCastStatic(expr,_) -> match_expr expr
-         | CppNullAccess -> 
+         | CppNullAccess ->
             this#writeOpLine IaThrow;
             this#begin_expr;
             this#writeCppPos expression;
@@ -8132,13 +8132,13 @@ let generate_source ctx =
                let id = gen_hash32 seed class_name in
                (* reserve first 100 ids for runtime *)
                if id < Int32.of_int 100 || Hashtbl.mem existingIds id then
-                  makeId class_name (seed+100) 
+                  makeId class_name (seed+100)
                else begin
                   Hashtbl.add existingIds id true;
                   Hashtbl.add ctx.ctx_type_ids class_name id;
                end in
             makeId name 0;
- 
+
             build_xml := !build_xml ^ (get_class_code class_def Meta.BuildXml);
             if (has_init_field class_def) then
                init_classes := class_def.cl_path ::  !init_classes;

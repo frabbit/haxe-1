@@ -647,7 +647,7 @@ let rec follow t =
 let rec is_nullable = function
 	| TMono r ->
 		(match !r with None -> false | Some t -> is_nullable t)
-	| TType ({ t_path = ([],"Null") },[_]) ->
+	| TType ({ t_path = ([],"OldNull") },[_]) ->
 		true
 	| TLazy f ->
 		is_nullable (!f())
@@ -674,7 +674,7 @@ let rec is_nullable = function
 let rec is_null ?(no_lazy=false) = function
 	| TMono r ->
 		(match !r with None -> false | Some t -> is_null t)
-	| TType ({ t_path = ([],"Null") },[t]) ->
+	| TType ({ t_path = ([],"OldNull") },[t]) ->
 		not (is_nullable (follow t))
 	| TLazy f ->
 		if no_lazy then raise Exit else is_null (!f())
@@ -687,7 +687,7 @@ let rec is_null ?(no_lazy=false) = function
 let rec is_explicit_null = function
 	| TMono r ->
 		(match !r with None -> false | Some t -> is_null t)
-	| TType ({ t_path = ([],"Null") },[t]) ->
+	| TType ({ t_path = ([],"OldNull") },[t]) ->
 		true
 	| TLazy f ->
 		is_null (!f())

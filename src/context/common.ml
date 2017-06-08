@@ -456,6 +456,7 @@ module Define = struct
 		| AnnotateSource
 		(* | Analyzer *)
 		| As3
+		| NullSafety
 		| CheckXmlProxy
 		| CoreApi
 		| CoreApiSerialize
@@ -552,6 +553,7 @@ module Define = struct
 
 	let infos = function
 		| AbsolutePath -> ("absolute_path","Print absolute file path in trace output")
+		| NullSafety -> ("null_safety", "Enable Null Safety")
 		| AdvancedTelemetry -> ("advanced-telemetry","Allow the SWF to be measured with Monocle tool")
 		| AnnotateSource -> ("annotate_source","Add additional comments to generated source code")
 		(* | Analyzer -> ("analyzer","Use static analyzer for optimization (experimental)") *)
@@ -924,6 +926,9 @@ let raw_defined ctx v =
 
 let defined ctx v =
 	raw_defined ctx (fst (Define.infos v))
+
+let null_safety ctx =
+	defined ctx Define.NullSafety
 
 let raw_defined_value ctx k =
 	PMap.find k ctx.defines

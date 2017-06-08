@@ -72,7 +72,28 @@
 
 	@see https://haxe.org/manual/types-nullability.html
 **/
-typedef Null<T> = T
+
+@:coreType @:runtimeValue typedef OldNull<T> = T;
+
+#if null_safety
+abstract NewNull<T>(OldNull<T>) from OldNull<T> {
+	public inline function isNull () return this == cast null;
+
+	public inline function isSome () return !isNull();
+
+	public inline function getOrElse (val:T):T return isNull() ? val : unsafeGet();
+
+	public inline function unsafeGet ():T return (this:T);
+
+	public inline function match () {
+		return isNull() ? haxe.ds.Option.None : haxe.ds.Option.Some( unsafeGet() );
+	}
+}
+typedef Null<T> = NewNull<T>;
+#else
+typedef Null<T> = OldNull<T>;
+#end
+
 
 /**
 	The standard Boolean type, which can either be `true` or `false`.

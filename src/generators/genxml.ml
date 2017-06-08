@@ -75,7 +75,7 @@ let rec follow_param t =
 		(match !r with
 		| Some t -> follow_param t
 		| _ -> t)
-	| TType ({ t_path = [],"Null" } as t,tl) ->
+	| TType ({ t_path = [],"OldNull" } as t,tl) ->
 		follow_param (apply_params t.t_params tl t.t_type)
 	| _ ->
 		t
@@ -356,7 +356,7 @@ let generate_type com t =
 			| Some t -> notnull t)
 		| TLazy f ->
 			notnull ((!f)())
-		| TType ({ t_path = [],"Null" },[t]) ->
+		| TType ({ t_path = [],"OldNull" },[t]) ->
 			t
 		| _ ->
 			t

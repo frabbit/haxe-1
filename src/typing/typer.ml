@@ -3336,6 +3336,19 @@ and type_expr ctx (e,p) (with_type:with_type) =
 		mk (TConst (TInt (Int32.of_int (UChar.code (UTF8.get s 0))))) ctx.t.tint p
 	| EField(_,n) when n.[0] = '$' ->
 		error "Field names starting with $ are not allowed" p
+	| EConst (Ident "null") when (Common.null_safety ctx.com) && (match with_type with WithType _ -> true | _ -> false) ->
+		let acc = match with_type with
+		| WithType t -> (match follow t with
+			| TMono t -> (match !t with
+				| None -> AKExpr (null (ctx.t.tnull (mk_mono())) p)
+				| Some t -> assert false
+			)
+			| TAbstract({a_path=[],"NewNull"}, _) -> AKExpr (null t p)
+			| _ -> error ("cannot unify null with " ^ (s_type (print_context()) t)) p)
+		| _ -> assert false
+		in
+		let e = maybe_type_against_enum ctx (fun () -> acc) with_type p in
+		acc_get ctx e p
 	| EConst (Ident s) ->
 		if s = "super" && with_type <> NoValue && not ctx.in_display then error "Cannot use super as value" p;
 		let e = maybe_type_against_enum ctx (fun () -> type_ident ctx s p MGet) with_type p in
