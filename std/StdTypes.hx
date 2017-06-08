@@ -73,10 +73,10 @@
 	@see https://haxe.org/manual/types-nullability.html
 **/
 
-@:coreType @:runtimeValue typedef OldNull<T> = T;
+typedef OldNull<T> = T;
 
 #if null_safety
-abstract NewNull<T>(OldNull<T>) from OldNull<T> {
+abstract NewNull<T>(OldNull<T>) from T {
 	public inline function isNull () return this == cast null;
 
 	public inline function isSome () return !isNull();
