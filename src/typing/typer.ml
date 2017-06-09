@@ -432,13 +432,13 @@ let rec unify_min_raise ctx (el:texpr list) : t =
 			| [] ->
 				false, t
 			| e :: el ->
-				let t = if chk_null e then ctx.t.tnull t else t in
+				let t = if chk_null e then Typeload.mk_tnull ctx.com t else t in
 				try
 					unify_raise ctx e.etype t e.epos;
 					loop t el
 				with Error (Unify _,_) -> try
 					unify_raise ctx t e.etype e.epos;
-					loop (if is_null t then ctx.t.tnull e.etype else e.etype) el
+					loop (if is_null t then Typeload.mk_tnull ctx.com e.etype else e.etype) el
 				with Error (Unify _,_) ->
 					true, t
 		in
@@ -532,7 +532,7 @@ let rec unify_call_args' ctx el args r callp inline force_inline =
 		if is_pos_infos t then
 			mk_pos_infos t
 		else
-			null (ctx.t.tnull t) callp
+			null (Typeload.mk_tnull ctx.com t) callp
 	in
 	let skipped = ref [] in
 	let invalid_skips = ref [] in
@@ -889,7 +889,7 @@ let rec acc_get ctx g p =
 			let twrap = TFun ([("_e",false,e.etype)],tcallb) in
 			(* arguments might not have names in case of variable fields of function types, so we generate one (issue #2495) *)
 			let args = List.map (fun (n,o,t) ->
-				let t = if o then ctx.t.tnull t else t in
+				let t = if o then Typeload.mk_tnull ctx.com t else t in
 				o,if n = "" then gen_local ctx t e.epos else alloc_var n t e.epos (* TODO: var pos *)
 			) args in
 			let ve = alloc_var "_e" e.etype e.epos in
@@ -1303,6 +1303,7 @@ let rec type_ident_raise ctx i p mode =
 		let e = type_module_type ctx t None p in
 		type_field ctx e name p mode
 
+
 and type_field ?(resume=false) ctx e i p mode =
 	let no_field() =
 		if resume then raise Not_found;
@@ -1575,7 +1576,9 @@ and type_field ?(resume=false) ctx e i p mode =
 	| _ ->
 		try using_field ctx mode e i p with Not_found -> no_field()
 
-let type_bind ctx (e : texpr) (args,ret) params p =
+
+
+and type_bind ctx (e : texpr) (args,ret) params p =
 	let vexpr v = mk (TLocal v) v.v_type p in
 	let acount = ref 0 in
 	let alloc_name n =
@@ -1602,7 +1605,7 @@ let type_bind ctx (e : texpr) (args,ret) params p =
 			error "Usage of _ is not supported for optional non-nullable arguments" p
 		| (n,o,t) :: args , ([] as params)
 		| (n,o,t) :: args , (EConst(Ident "_"),_) :: params ->
-			let v = alloc_var (alloc_name n) (if o then ctx.t.tnull t else t) p in
+			let v = alloc_var (alloc_name n) (if o then Typeload.mk_tnull ctx.com t else t) p in
 			loop args params given_args (missing_args @ [v,o]) (ordered_args @ [vexpr v])
 		| (n,o,t) :: args , param :: params ->
 			let e = type_expr ctx param (WithType t) in
@@ -1647,7 +1650,7 @@ let type_bind ctx (e : texpr) (args,ret) params p =
 	from a Dynamic relaxation, we will instead unify with float since
 	we don't want to accidentaly truncate the value
 *)
-let unify_int ctx e k =
+and unify_int ctx e k =
 	let is_dynamic t =
 		match follow t with
 		| TDynamic _ -> true
@@ -1699,7 +1702,7 @@ let unify_int ctx e k =
 		unify ctx e.etype ctx.t.tint e.epos;
 		true
 
- let type_generic_function ctx (e,fa) el ?(using_param=None) with_type p =
+ and type_generic_function ctx (e,fa) el ?(using_param=None) with_type p =
 	let c,tl,cf,stat = match fa with
 		| FInstance(c,tl,cf) -> c,tl,cf,false
 		| FStatic(c,cf) -> c,[],cf,true
@@ -1800,14 +1803,14 @@ let unify_int ctx e k =
 	with Typeload.Generic_Exception (msg,p) ->
 		error msg p)
 
-let call_to_string ctx ?(resume=false) e =
+and call_to_string ctx ?(resume=false) e =
 	(* Ignore visibility of the toString field. *)
 	ctx.meta <- (Meta.PrivateAccess,[],e.epos) :: ctx.meta;
 	let acc = type_field ~resume ctx e "toString" e.epos MCall in
 	ctx.meta <- List.tl ctx.meta;
 	!build_call_ref ctx acc [] (WithType ctx.t.tstring) e.epos
 
-let rec type_binop ctx op e1 e2 is_assign_op with_type p =
+and type_binop ctx op e1 e2 is_assign_op with_type p =
 	match op with
 	| OpAssign ->
 		let e1 = type_access ctx (fst e1) (snd e1) MSet in
@@ -2682,9 +2685,12 @@ and type_access ctx e p mode =
 	| _ ->
 		AKExpr (type_expr ctx (e,p) Value)
 
+
+
 and type_vars ctx vl p =
 	let vl = List.map (fun ((v,pv),t,e) ->
 		try
+
 			let t = Typeload.load_type_hint ctx p t in
 			let e = (match e with
 				| None -> None
@@ -3336,18 +3342,21 @@ and type_expr ctx (e,p) (with_type:with_type) =
 		mk (TConst (TInt (Int32.of_int (UChar.code (UTF8.get s 0))))) ctx.t.tint p
 	| EField(_,n) when n.[0] = '$' ->
 		error "Field names starting with $ are not allowed" p
-	| EConst (Ident "null") when (Common.null_safety ctx.com) && (match with_type with WithType _ -> true | _ -> false) ->
+	| EConst (Ident "null") when (not (Typeload.is_std_type ctx.m.curmod.m_path)) && (Common.null_safety ctx.com) && (match with_type with WithType _ -> true | _ -> false) ->
 		let acc = match with_type with
 		| WithType t -> (match follow t with
 			| TMono t -> (match !t with
-				| None -> AKExpr (null (ctx.t.tnull (mk_mono())) p)
+				| None -> fun () -> AKExpr (null (ctx.t.tnull (mk_mono())) p)
 				| Some t -> assert false
 			)
-			| TAbstract({a_path=[],"NewNull"}, _) -> AKExpr (null t p)
+			| TAbstract({a_path=[],"SafeNull"}, _) -> fun () -> AKExpr (null t p)
+			| TType({t_path=[],"Null"}, _) -> fun () -> type_ident ctx "null" p MGet
+			| _ when is_nullable t ->
+				fun () -> type_ident ctx "null" p MGet
 			| _ -> error ("cannot unify null with " ^ (s_type (print_context()) t)) p)
 		| _ -> assert false
 		in
-		let e = maybe_type_against_enum ctx (fun () -> acc) with_type p in
+		let e = maybe_type_against_enum ctx (acc) with_type p in
 		acc_get ctx e p
 	| EConst (Ident s) ->
 		if s = "super" && with_type <> NoValue && not ctx.in_display then error "Cannot use super as value" p;
@@ -4530,6 +4539,8 @@ let rec create com =
 			| "Int" -> ctx.t.tint <- TAbstract (a,[])
 			| "Bool" -> ctx.t.tbool <- TAbstract (a,[])
 			| "Dynamic" -> t_dynamic_def := TAbstract(a,List.map snd a.a_params);
+			| "SafeNull" when Common.null_safety ctx.com ->
+				ctx.t.t_safe_null <- fun t -> TAbstract (a,[t]);
 			| _ -> ());
 		| TEnumDecl e ->
 			()
@@ -4537,6 +4548,7 @@ let rec create com =
 			()
 		| TTypeDecl td ->
 			(match snd td.t_path with
+
 			| "Null" ->
 				let mk_null t =
 					try

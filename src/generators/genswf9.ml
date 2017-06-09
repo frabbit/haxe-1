@@ -189,7 +189,7 @@ let rec follow_basic t =
 		| _ -> t)
 	| TLazy f ->
 		follow_basic (!f())
-	| TType ({ t_path = [],"OldNull" },[tp]) ->
+	| TType ({ t_path = [],"Null" },[tp]) ->
 		(match follow_basic tp with
 		| TMono _
 		| TFun _

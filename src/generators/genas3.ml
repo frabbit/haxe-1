@@ -291,7 +291,7 @@ let rec type_str ctx t p =
 	| TType (t,args) ->
 		(match t.t_path with
 		| [], "UInt" -> "uint"
-		| [] , "OldNull" ->
+		| [] , "Null" ->
 			(match args with
 			| [t] ->
 				(match follow t with

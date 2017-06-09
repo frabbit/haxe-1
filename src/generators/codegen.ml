@@ -72,7 +72,7 @@ module ExprBuilder = struct
 		| TInt i -> mk (TConst (TInt i)) com.basic.tint p
 		| TFloat f -> mk (TConst (TFloat f)) com.basic.tfloat p
 		| TBool b -> mk (TConst (TBool b)) com.basic.tbool p
-		| TNull -> mk (TConst TNull) (com.basic.tnull (mk_mono())) p
+		| TNull -> mk (TConst TNull) (Typeload.mk_tnull com (mk_mono())) p
 		| _ -> error "Unsupported constant" p
 end
 
@@ -113,7 +113,7 @@ let type_constant com c p =
 	| String s -> mk (TConst (TString s)) t.tstring p
 	| Ident "true" -> mk (TConst (TBool true)) t.tbool p
 	| Ident "false" -> mk (TConst (TBool false)) t.tbool p
-	| Ident "null" -> mk (TConst TNull) (t.tnull (mk_mono())) p
+	| Ident "null" -> mk (TConst TNull) (Typeload.mk_tnull com (mk_mono())) p
 	| Ident t -> error ("Invalid constant :  " ^ t) p
 	| Regexp _ -> error "Invalid constant" p
 

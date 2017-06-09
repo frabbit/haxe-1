@@ -34,6 +34,7 @@ type basic_types = {
 	mutable tfloat : t;
 	mutable tbool : t;
 	mutable tnull : t -> t;
+	mutable t_safe_null : t -> t;
 	mutable tstring : t;
 	mutable tarray : t -> t;
 }
@@ -300,6 +301,7 @@ type context = {
 	mutable js_gen : (unit -> unit) option;
 	(* typing *)
 	mutable basic : basic_types;
+	mutable cur_typer_mod : module_def;
 	memory_marker : float array;
 }
 
@@ -859,9 +861,11 @@ let create version s_version args =
 			tfloat = m;
 			tbool = m;
 			tnull = (fun _ -> assert false);
+			t_safe_null = (fun _ -> assert false);
 			tstring = m;
 			tarray = (fun _ -> assert false);
 		};
+		cur_typer_mod = null_module;
 		file_lookup_cache = Hashtbl.create 0;
 		stored_typed_exprs = PMap.empty;
 		cached_macros = Hashtbl.create 0;

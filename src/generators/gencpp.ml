@@ -56,7 +56,7 @@ let class_text path =
 (* The internal classes are implemented by the core hxcpp system, so the cpp
    classes should not be generated *)
 let is_internal_class = function
-   |  ([],"Int") | ([],"Void") |  ([],"String") | ([], "OldNull") | ([], "Float")
+   |  ([],"Int") | ([],"Void") |  ([],"String") | ([], "Null") | ([], "Float")
    |  ([],"Array") | ([], "Class") | ([], "Enum") | ([], "Bool")
    |  ([], "Dynamic") | ([], "ArrayAccess") | (["cpp"], "FastIterator")
    |  (["cpp"],"Pointer") | (["cpp"],"ConstPointer")
@@ -720,7 +720,7 @@ let rec class_string klass suffix params remap =
    |  (["cpp"],"UInt8") -> "unsigned char"
    |  ([],"Class") -> "hx::Class"
    |  ([],"EnumValue") -> "Dynamic"
-   |  ([],"OldNull") -> (match params with
+   |  ([],"Null") -> (match params with
          | [t] ->
             (match follow t with
             | TAbstract ({ a_path = [],"Int" },_)
@@ -764,7 +764,7 @@ and type_string_suff suffix haxe_type remap =
    | TInst (klass,params) ->  (class_string klass suffix params remap)
    | TType (type_def,params) ->
       (match type_def.t_path with
-      | [] , "OldNull" ->
+      | [] , "Null" ->
          (match params with
          | [t] ->
             (match follow t with
@@ -1892,7 +1892,7 @@ let rec cpp_type_of ctx haxe_type =
               TCppScalarArray(arrayOf)
          )
 
-      | ([],"OldNull"), [p] ->
+      | ([],"Null"), [p] ->
             cpp_type_of_null ctx p
 
       | _ -> default ()
@@ -5327,7 +5327,7 @@ let script_type t optional = if optional then begin
    | "int" -> "Int"
    | "Float" -> "Float"
    | "::String" -> "String"
-   | "OldNull" -> "Void"
+   | "Null" -> "Void"
    | "Void" -> "Void"
    | _ -> "Object"
 ;;
@@ -6755,13 +6755,13 @@ let is_assign_op op =
 
 let rec script_type_string haxe_type =
    match haxe_type with
-   | TType ({ t_path = ([],"OldNull") },[t]) ->
+   | TType ({ t_path = ([],"Null") },[t]) ->
       (match follow t with
       | TAbstract ({ a_path = [],"Int" },_)
       | TAbstract ({ a_path = [],"Float" },_)
       | TAbstract ({ a_path = [],"Bool" },_) -> "Dynamic"
       | _ -> script_type_string t)
-   | TInst ({cl_path=[],"OldNull"},[t]) ->
+   | TInst ({cl_path=[],"Null"},[t]) ->
       (match follow t with
       | TAbstract ({ a_path = [],"Int" },_)
       | TAbstract ({ a_path = [],"Float" },_)

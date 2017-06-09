@@ -29,7 +29,7 @@ open Codegen.ExprBuilder
 
 let gen_check basic t nullable_var const pos =
 	let needs_cast t1 t2 =
-		let is_null t = match t with TType ({t_path = ([],"OldNull")}, _) -> true | _ -> false in
+		let is_null t = match t with TType ({t_path = ([],"Null")}, _) -> true | _ -> false in
 		(is_null t1) <> (is_null t2)
 	in
 
@@ -43,7 +43,7 @@ let gen_check basic t nullable_var const pos =
 	let check = binop Ast.OpEq (make_local nullable_var pos) (null nullable_var.v_type pos) basic.tbool pos in
 	mk (TIf (check, const, Some arg)) t pos
 
-let add_opt com block pos (var,opt) =
+let add_opt com cl block pos (var,opt) =
 	match opt with
 	| None | Some TNull ->
 		(var,opt)
@@ -52,7 +52,7 @@ let add_opt com block pos (var,opt) =
 		(var, opt)
 	| Some const ->
 		let basic = com.basic in
-		let nullable_var = alloc_var var.v_name (basic.tnull var.v_type) pos in
+		let nullable_var = alloc_var var.v_name (Typeload.mk_tnull2 cl com var.v_type) pos in
 		(* var v = (temp_var == null) ? const : cast temp_var; *)
 		let evar = mk (TVar(var, Some(gen_check basic var.v_type nullable_var const pos))) basic.tvoid pos in
 		block := evar :: !block;
@@ -71,13 +71,13 @@ let rec change_func com cl cf =
 		let found = ref false in
 
 		let args = ref (List.map (fun (n,opt,t) ->
-			(n,opt, if opt then (found := true; basic.tnull t) else t)
+			(n,opt, if opt then (found := true; Typeload.mk_tnull2 cl com t) else t)
 		) args) in
 
 		(match !found, cf.cf_expr with
 		| true, Some ({ eexpr = TFunction tf } as texpr) ->
 			let block = ref [] in
-			let tf_args = List.map (add_opt com block tf.tf_expr.epos) tf.tf_args in
+			let tf_args = List.map (add_opt com cl block tf.tf_expr.epos) tf.tf_args in
 			let arg_assoc = List.map2 (fun (v,o) (v2,_) -> v,(v2,o) ) tf.tf_args tf_args in
 			let rec extract_super e = match e.eexpr with
 				| TBlock (({ eexpr = TCall ({ eexpr = TConst TSuper }, _) } as e2) :: tl) ->

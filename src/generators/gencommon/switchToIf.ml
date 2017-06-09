@@ -41,9 +41,9 @@ let configure gen (should_convert:texpr->bool) =
 		match e.eexpr with
 			| TSwitch(cond,cases,default) when should_convert e ->
 				let cond_etype, should_cache = match gen.gfollow#run_f cond.etype with
-					| TType({ t_path = ([], "OldNull") }, [t]) ->
+					| TType({ t_path = ([], "Null") }, [t]) ->
 						let rec take_off_nullable t = match gen.gfollow#run_f t with
-							| TType({ t_path = ([], "OldNull") }, [t]) -> take_off_nullable t
+							| TType({ t_path = ([], "Null") }, [t]) -> take_off_nullable t
 							| _ -> t
 						in
 

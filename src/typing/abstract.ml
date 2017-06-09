@@ -30,7 +30,7 @@ let rec get_underlying_type a pl =
 				| _ -> t)
 			| TLazy f ->
 				loop (!f())
-			| TType({t_path=([],"OldNull")} as tn,[t1]) ->
+			| TType({t_path=([],"Null")} as tn,[t1]) ->
 				TType(tn,[loop t1])
 			| TType (t,tl) ->
 				loop (apply_params t.t_params tl t.t_type)

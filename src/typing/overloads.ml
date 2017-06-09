@@ -15,7 +15,7 @@ let same_overload_args ?(get_vmtype) t1 t2 f1 f2 =
 			| _ -> t)
 		| TLazy f ->
 			follow_skip_null (!f())
-		| TType ({ t_path = [],"OldNull" } as t, [p]) ->
+		| TType ({ t_path = [],"Null" } as t, [p]) ->
 			TType(t,[follow p])
 		| TType (t,tl) ->
 			follow_skip_null (apply_params t.t_params tl t.t_type)
@@ -74,7 +74,7 @@ struct
 		| TInst _ | TEnum _ ->
 			t
 		| TAbstract(a,tl) -> simplify_t (Abstract.get_underlying_type a tl)
-		| TType(({ t_path = [],"OldNull" } as t), [t2]) -> (match simplify_t t2 with
+		| TType(({ t_path = [],"Null" } as t), [t2]) -> (match simplify_t t2 with
 			| (TAbstract(a,_) as t2) when Meta.has Meta.CoreType a.a_meta ->
 				TType(t, [simplify_t t2])
 			| (TEnum _ as t2) ->
@@ -169,11 +169,11 @@ struct
 					Option.get !ret
 			else
 				raise Not_found)
-		| TType({ t_path = [], "OldNull" }, [tf]), TType({ t_path = [], "OldNull" }, [ta]) ->
+		| TType({ t_path = [], "Null" }, [tf]), TType({ t_path = [], "Null" }, [ta]) ->
 			rate_conv (cacc+0) tf ta
-		| TType({ t_path = [], "OldNull" }, [tf]), ta ->
+		| TType({ t_path = [], "Null" }, [tf]), ta ->
 			rate_conv (cacc+1) tf ta
-		| tf, TType({ t_path = [], "OldNull" }, [ta]) ->
+		| tf, TType({ t_path = [], "Null" }, [ta]) ->
 			rate_conv (cacc+1) tf ta
 		| TFun _, TFun _ -> (* unify will make sure they are compatible *)
 			cacc,0

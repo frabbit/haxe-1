@@ -30,6 +30,63 @@ exception Build_canceled of build_state
 let locate_macro_error = ref true
 let build_count = ref 0
 
+let is_std_type tpath =
+	let path = fst tpath in
+	let cl = snd tpath in
+
+	let pathlen = List.length path in
+	let suffix = if pathlen > 0 then "." ^ cl else cl in
+	let name = (String.concat "." path) ^ suffix in
+	let sw = ExtString.String.starts_with name in
+	let r =
+		sw "haxe" ||
+		sw "unit." ||
+		sw "StringTools" ||
+		sw "Sys" ||
+		sw "List" ||
+		sw "Lambda" ||
+		sw "StringBuf" ||
+		sw "EReg" ||
+		sw "String" ||
+		sw "Array" ||
+		sw "Date" ||
+		sw "Reflect" ||
+		sw "Type" ||
+		sw "Map" ||
+		sw "Math" ||
+		sw "Std" ||
+		sw "Xml" ||
+		sw "UInt" ||
+		sw "IntIterator" ||
+		sw "eval." ||
+		sw "cpp." ||
+		sw "neko." ||
+		sw "flash." ||
+		sw "js." ||
+		sw "cs." ||
+		sw "java." ||
+		sw "python." ||
+		sw "sys." ||
+		name = ""
+	in
+	if (not r) then
+		Printf.printf "%s\n" (name);
+	r
+
+let mk_tnull_from_path com tp t =
+	let tnull = if (Common.null_safety com) then
+		(if (is_std_type tp) then
+			com.basic.tnull
+		else com.basic.t_safe_null)
+	else com.basic.tnull in
+	tnull t
+
+let mk_tnull com t =
+	mk_tnull_from_path com com.cur_typer_mod.m_path t
+
+let mk_tnull2 cl com t =
+	mk_tnull_from_path com cl.cl_path t
+
 let transform_abstract_field com this_t a_t a f =
 	let stat = List.mem AStatic f.cff_access in
 	let p = f.cff_pos in
@@ -295,9 +352,9 @@ let return_partial_type = ref false
 let type_function_arg ctx t e opt p =
 	if opt then
 		let e = (match e with None -> Some (EConst (Ident "null"),p) | _ -> e) in
-		ctx.t.tnull t, e
+		mk_tnull ctx.com t, e
 	else
-		let t = match e with Some (EConst (Ident "null"),p) -> ctx.t.tnull t | _ -> t in
+		let t = match e with Some (EConst (Ident "null"),p) -> mk_tnull ctx.com t | _ -> t in
 		t, e
 
 let type_var_field ctx t e stat do_display p =
@@ -541,7 +598,17 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 (*
 	build an instance from a complex type
 *)
+
+and handle_std_null_safety ctx ct =
+	if (Common.null_safety ctx.com && not (is_std_type ctx.m.curmod.m_path)) then (match ct with
+		| CTPath { tpackage = []; tname = "Null"; tparams = tparams; tsub = tsub } ->
+			CTPath { tpackage = []; tname = "SafeNull"; tparams = tparams; tsub = tsub }
+		| _ ->
+			ct)
+	else ct
+
 and load_complex_type ctx allow_display p (t,pn) =
+	let t = handle_std_null_safety ctx t in
 	let p = pselect pn p in
 	match t with
 	| CTParent t -> load_complex_type ctx allow_display p t
@@ -657,7 +724,7 @@ and load_complex_type ctx allow_display p (t,pn) =
 					let t = (match t with None -> error "Type required for structure property" p | Some t -> t) in
 					load_complex_type ctx allow_display p t, Var { v_read = access i1 true; v_write = access i2 false }
 			) in
-			let t = if Meta.has Meta.Optional f.cff_meta then ctx.t.tnull t else t in
+			let t = if Meta.has Meta.Optional f.cff_meta then mk_tnull ctx.com t else t in
 			let cf = {
 				cf_name = n;
 				cf_type = t;
@@ -742,6 +809,7 @@ let hide_params ctx =
 		wildcard_packages = [];
 		module_imports = [];
 	};
+	ctx.com.cur_typer_mod <- ctx.g.std;
 	ctx.type_params <- [];
 	(fun() ->
 		ctx.m <- old_m;
@@ -791,7 +859,7 @@ let load_type_hint ?(opt=false) ctx pcur t =
 				(* Default to Dynamic in display mode *)
 				if ctx.com.display.dms_display then t_dynamic else raise exc
 	in
-	if opt then ctx.t.tnull t else t
+	if opt then mk_tnull ctx.com t else t
 
 (* ---------------------------------------------------------------------- *)
 (* Structure check *)
@@ -1251,7 +1319,7 @@ let add_constructor ctx c force_constructor p =
 					| TFun (args,_) ->
 						List.map (fun (n,o,t) ->
 							let def = try type_function_arg_value ctx t (Some (PMap.find n values)) false with Not_found -> if o then Some TNull else None in
-							map_arg (alloc_var n (if o then ctx.t.tnull t else t) p,def) (* TODO: var pos *)
+							map_arg (alloc_var n (if o then mk_tnull ctx.com t else t) p,def) (* TODO: var pos *)
 						) args
 					| _ -> assert false
 			) in
@@ -1296,7 +1364,7 @@ let check_struct_init_constructor ctx c p = match c.cl_constructor with
 		let args,el,tl = List.fold_left (fun (args,el,tl) cf -> match cf.cf_kind with
 			| Var _ ->
 				let opt = Meta.has Meta.Optional cf.cf_meta in
-				let t = if opt then ctx.t.tnull cf.cf_type else cf.cf_type in
+				let t = if opt then mk_tnull ctx.com cf.cf_type else cf.cf_type in
 				let v = alloc_var cf.cf_name t p in
 				let ef = mk (TField(ethis,FInstance(c,params,cf))) t p in
 				let ev = mk (TLocal v) v.v_type p in
@@ -1682,6 +1750,7 @@ let load_core_class ctx c =
 			Common.define com2 Define.CoreApi;
 			Common.define com2 Define.Sys;
 			if ctx.in_macro then Common.define com2 Define.Macro;
+			if Common.null_safety ctx.com then Common.define com2 Define.NullSafety;
 			com2.class_path <- ctx.com.std_path;
 			let ctx2 = ctx.g.do_create com2 in
 			ctx.g.core_api <- Some ctx2;
@@ -3460,6 +3529,7 @@ let type_types_into_module ctx m tdecls p =
 	List.iter (check_module_types ctx m p) types;
 	m.m_types <- m.m_types @ types;
 	(* define the per-module context for the next pass *)
+	ctx.com.cur_typer_mod <- m;
 	let ctx = {
 		com = ctx.com;
 		g = ctx.g;

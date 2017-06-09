@@ -73,10 +73,10 @@
 	@see https://haxe.org/manual/types-nullability.html
 **/
 
-typedef OldNull<T> = T;
-
+typedef Null<T> = T;
+typedef UnsafeNull<T> = Null<T>;
 #if null_safety
-abstract NewNull<T>(OldNull<T>) from T {
+abstract SafeNull<T>(Null<T>) from T {
 	public inline function isNull () return this == cast null;
 
 	public inline function isSome () return !isNull();
@@ -89,9 +89,9 @@ abstract NewNull<T>(OldNull<T>) from T {
 		return isNull() ? haxe.ds.Option.None : haxe.ds.Option.Some( unsafeGet() );
 	}
 }
-typedef Null<T> = NewNull<T>;
+
 #else
-typedef Null<T> = OldNull<T>;
+typedef SafeNull<T> = Null<T>
 #end
 
 

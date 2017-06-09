@@ -353,7 +353,7 @@ let rec to_type ?tref ctx t =
 			t
 		) in
 		(match td.t_path with
-		| [], "OldNull" when not (is_nullable t) -> HNull t
+		| [], "Null" when not (is_nullable t) -> HNull t
 		| ["haxe";"macro"], name -> Hashtbl.replace ctx.macro_typedefs name t; t
 		| _ -> t)
 	| TLazy f ->

@@ -513,6 +513,7 @@ let load_macro ctx display cpath f p =
 			wildcard_packages = [];
 			module_imports = [];
 		};
+		ctx.com.cur_typer_mod <- mloaded;
 		add_dependency ctx.m.curmod mloaded;
 		let mt = Typeload.load_type_def mctx p { tpackage = fst cpath; tname = snd cpath; tparams = []; tsub = sub } in
 		let cl, meth = (match mt with
@@ -535,6 +536,7 @@ let load_macro ctx display cpath f p =
 			wildcard_packages = [];
 			module_imports = [];
 		};
+		ctx.com.cur_typer_mod <- null_module;
 		t();
 		meth
 	in

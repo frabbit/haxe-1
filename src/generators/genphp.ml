@@ -108,7 +108,7 @@ let rec class_string klass suffix params =
 	|  ([],"#Int") -> "/* # */int"
 	|  (["haxe";"io"],"Unsigned_char__") -> "unsigned char"
 	|  ([],"Class") -> "Class"
-	|  ([],"OldNull") -> (match params with
+	|  ([],"Null") -> (match params with
 			| [t] ->
 				(match follow t with
 				| TInst ({ cl_path = [],"Int" },_)
@@ -131,7 +131,7 @@ and type_string_suff suffix haxe_type =
 	| TAbstract (abs,params) ->  (join_class_path abs.a_path "::") ^ suffix
 	| TType (type_def,params) ->
 		(match type_def.t_path with
-		| [] , "OldNull" ->
+		| [] , "Null" ->
 			(match params with
 			| [t] ->
 				(match follow t with

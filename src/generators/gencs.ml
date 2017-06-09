@@ -94,7 +94,7 @@ let is_pointer gen t =
 let rec is_null t =
 	match t with
 		| TInst( { cl_path = (["haxe"; "lang"], "Null") }, _ )
-		| TType( { t_path = ([], "OldNull") }, _ ) -> true
+		| TType( { t_path = ([], "Null") }, _ ) -> true
 		| TType( t, tl ) -> is_null (apply_params t.t_params tl t.t_type)
 		| TMono r ->
 			(match !r with
@@ -786,7 +786,7 @@ let generate con =
 				| TAbstract ({ a_path = ["cs"],"Out" },_)
 				| TType ({ t_path = [],"Single" },[])
 				| TAbstract ({ a_path = [],"Single" },[]) -> Some t
-				| TType (({ t_path = [],"OldNull" } as tdef),[t2]) ->
+				| TType (({ t_path = [],"Null" } as tdef),[t2]) ->
 						Some (TType(tdef,[follow (gen.gfollow#run_f t2)]))
 				| TAbstract({ a_path = ["cs"],"PointerAccess" },[t]) ->
 						Some (TAbstract(ptr,[t]))
@@ -801,7 +801,7 @@ let generate con =
 			let path = (t_infos md).mt_path in
 			match path with
 				| ([], "String") -> "string", params
-				| ([], "OldNull") -> s_type_path (change_ns md ["haxe"; "lang"], change_clname "Null"), params
+				| ([], "Null") -> s_type_path (change_ns md ["haxe"; "lang"], change_clname "Null"), params
 				| (ns,clname) ->
 					let ns, params = change_ns_params md params ns in
 					s_type_path (ns, change_clname clname), params
@@ -854,7 +854,7 @@ let generate con =
 				| TInst(cl, params) when Meta.has Meta.Enum cl.cl_meta ->
 					TInst(cl, List.map (fun _ -> t_dynamic) params)
 				| TInst(cl, params) -> TInst(cl, change_param_type (TClassDecl cl) params)
-				| TType({ t_path = ([], "OldNull") }, [t]) ->
+				| TType({ t_path = ([], "Null") }, [t]) ->
 					(*
 						Null<> handling is a little tricky.
 						It will only change to haxe.lang.Null<> when the actual type is non-nullable or a type parameter
@@ -2920,7 +2920,7 @@ let generate con =
 		in
 
 		let may_nullable t = match gen.gfollow#run_f t with
-			| TType({ t_path = ([], "OldNull") }, [t]) ->
+			| TType({ t_path = ([], "Null") }, [t]) ->
 				(match follow t with
 					| TInst({ cl_path = ([], "String") }, [])
 					| TAbstract ({ a_path = ([], "Float") },[])
