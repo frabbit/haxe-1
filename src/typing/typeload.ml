@@ -70,8 +70,8 @@ let is_std_type tpath =
 		sw "sys." ||
 		name = ""
 	in
-	if (not r) then
-		Printf.printf "%s\n" (name);
+	(*if (not r) then
+		Printf.printf "%s\n" (name);*)
 	r
 
 let mk_tnull_from_path com tp t =
