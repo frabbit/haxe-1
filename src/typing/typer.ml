@@ -3617,6 +3617,10 @@ and type_expr ctx (e,p) (with_type:with_type) =
 		let e = type_expr ctx e (WithType t) in
 		let e = AbstractCast.cast_or_unify ctx t e p in
 		if e.etype == t then e else mk (TCast (e,None)) t p
+	| EMeta ((Meta.ForceNotNull,_,_), ((_,pos) as e) ) when Common.null_safety ctx.com ->
+		let efield = EField (e,"unsafeGet"),pos in
+		let ecall = ECall (efield,[]),pos in
+		type_expr ctx ecall with_type
 	| EMeta (m,e1) ->
 		if ctx.is_display_file then Display.DisplayEmitter.check_display_metadata ctx [m];
 		let old = ctx.meta in

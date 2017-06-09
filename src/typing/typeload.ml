@@ -56,6 +56,7 @@ let is_std_type tpath =
 		sw "Math" ||
 		sw "Std" ||
 		sw "Xml" ||
+		sw "Any" ||
 		sw "UInt" ||
 		sw "IntIterator" ||
 		sw "eval." ||
@@ -74,12 +75,13 @@ let is_std_type tpath =
 	r
 
 let mk_tnull_from_path com tp t =
-	let tnull = if (Common.null_safety com) then
+	if (Common.null_safety com) then
 		(if (is_std_type tp) then
-			com.basic.tnull
-		else com.basic.t_safe_null)
-	else com.basic.tnull in
-	tnull t
+			(match t with
+			| TAbstract({ a_path=[],"SafeNull"},_) -> t
+			| _ -> com.basic.tnull t)
+		else com.basic.t_safe_null t)
+	else com.basic.tnull t
 
 let mk_tnull com t =
 	mk_tnull_from_path com com.cur_typer_mod.m_path t
