@@ -177,6 +177,9 @@ install_osx: &install_osx
     fi
   - cp -prf ./_build/* ~/_hxbuild/
   - travis_retry brew install awscli
+  # check size of brew folder
+  - du -h $HOME/Library/Caches/Homebrew
+
 
 matrix:
   include:
