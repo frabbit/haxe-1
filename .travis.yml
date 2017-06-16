@@ -114,6 +114,7 @@ install_linux: &install_linux
         mkdir ~/_hxbuild;
     fi
   - cp -prf ./_build/* ~/_hxbuild/
+  - du -h $HOME/apt-cache
 
 install_osx: &install_osx
   - if [ ! -d "$HOME/neko" ]; then
