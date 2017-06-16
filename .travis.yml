@@ -131,8 +131,8 @@ install_osx: &install_osx
       ninja
       mysql
       awscli
-      zlib;
-  - brew upgrade cmake pcre # we need a recent cmake to use CMAKE_OSX_DEPLOYMENT_TARGET
+      zlib || true
+  - brew upgrade cmake pcre || true # we need a recent cmake to use CMAKE_OSX_DEPLOYMENT_TARGET
   - export OPAMYES=1
   - opam init
   - opam install camlp4 sedlex ocamlfind xml-light extlib rope ptmap
