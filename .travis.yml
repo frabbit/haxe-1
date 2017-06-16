@@ -143,7 +143,6 @@ install_osx: &install_osx
         git clone https://github.com/HaxeFoundation/neko.git .;
       else
         echo "do nothing";
-        #git fetch --all; git reset --hard origin/master;
       fi;
       git submodule update --init --recursive;
     fi
