@@ -126,13 +126,19 @@ install_osx: &install_osx
   # Install dependencies
   - brew uninstall --force brew-cask # https://github.com/caskroom/homebrew-cask/pull/15381
   - travis_retry brew update
-  - travis_retry brew install opam ninja;
+  - travis_retry brew install
+      opam
+      ninja
+      mysql
+      awscli
+      zlib
+      pcre;
+  - brew upgrade cmake # we need a recent cmake to use CMAKE_OSX_DEPLOYMENT_TARGET
   - export OPAMYES=1
   - opam init
   - opam install camlp4 sedlex ocamlfind xml-light extlib rope ptmap
   - eval `opam config env`
   # Install neko
-  - brew upgrade cmake # we need a recent cmake to use CMAKE_OSX_DEPLOYMENT_TARGET
   - if [ ! -d "$HOME/neko" ]; then
       mkdir $HOME/neko;
       pushd $HOME/neko;
@@ -153,13 +159,11 @@ install_osx: &install_osx
   - sudo ninja install
   - popd
   # Setup database
-  - travis_retry brew install mysql
   - mysql.server start
   - mysql -u root -e "create user if not exists travis@localhost identified by '';"
   - mysql -u root -e "create database haxe_test;"
   - mysql -u root -e "grant all on haxe_test.* to travis@localhost;"
   # Build haxe
-  - travis_retry brew install zlib pcre
   - if [ -d "$HOME/_hxbuild" ]; then
       echo "$HOME/_hxbuild exists";
       cp -pr ~/_hxbuild ./_build;
@@ -176,7 +180,6 @@ install_osx: &install_osx
         mkdir ~/_hxbuild;
     fi
   - cp -prf ./_build/* ~/_hxbuild/
-  - travis_retry brew install awscli
 
 matrix:
   include:
