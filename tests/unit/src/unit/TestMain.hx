@@ -46,6 +46,7 @@ class TestMain {
 			new TestOps(),
 			new TestBasetypes(),
 			new TestTypeConstructor(),
+			new TestTypeConstructor2(),
 			new TestBytes(),
 			new TestIO(),
 			new TestLocals(),

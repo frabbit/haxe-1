@@ -744,6 +744,16 @@ and unapply_in t ta =
 			(match unapply_left tl with
 			| true, x -> TType(tt,x), true
 			| _ -> t, false)
+		(* Allow G<F<A>> to unify with T<A> for implementations *)
+		| TAbstract({a_path=[],"-Of"} as a,[tm1 ;(TAbstract({a_path=[],"-Of"},[c1;inner]) as tm2)]) ->
+			if is_in_type inner then
+				reduce_of (TAbstract(a, [tm1; reduce_of (TAbstract(a, [c1; ta]))])), true
+			else
+				(match unapply_in inner ta with
+				| t, true ->
+					reduce_of (TAbstract(a, [tm1; reduce_of (TAbstract(a, [c1; t]))])), true
+				| _, false -> t, false)
+		(* End Allow G<F<A>> *)
 		| TAbstract({a_path=[],"-Of"},[tm;tx]) ->
 			(* unapply In types in nested Ofs like Of<Of<In->In>, A, B> *)
 			(match unapply_in tm (reduce_of tx) with
@@ -820,7 +830,10 @@ and unapply_in_constraints tm ta =
 and reduce_of t =
 	match t with
 	| TAbstract( ({a_path=[],"-Of"} as a),[tm;(TAbstract({a_path=[],"-Of"}, [tb; tx]))]) ->
-		let tm1 = TAbstract(a, [tm; tb]) in
+		let tm1 = reduce_of (TAbstract(a, [tm; tb])) in
+		reduce_of (TAbstract(a, [tm1; tx]))
+	| TAbstract( ({a_path=[],"-Of"} as a),[tm;(TAbstract({a_path=[],"-Of"}, [tb; tx]))]) ->
+		let tm1 = reduce_of (TAbstract(a, [tm; tb])) in
 		reduce_of (TAbstract(a, [tm1; tx]))
 	| TAbstract({a_path=[],"-Of"},[tm;tr]) ->
 		let x, applied = unapply_in tm (reduce_of tr) in
@@ -2002,7 +2015,7 @@ let print_stacks() =
 	print_endline "abstract_cast_stack";
 	List.iter (fun (a,b) -> Printf.printf "\t%s , %s\n" (st a) (st b)) !abstract_cast_stack
 
-let rec unify_of tm ta b =
+let rec unify_of tm ta b b_is_left tfull =
 	let err str =
 		let params = [tm; ta] in
 		let of_t = TAbstract(of_type, params) in
@@ -2018,7 +2031,11 @@ let rec unify_of tm ta b =
 				else
 					t,!t_in :: tl
 			| [] ->
-				err "Invalid Of-unification"
+				let st = s_type (print_context ()) in
+				let a = if b_is_left then b else tfull in
+				let b = if b_is_left then tfull else b in
+				(*Printf.printf "Invalid Of-unification 2 from %s to %s\n" (st a) (st b);*)
+				err ("Invalid Of-unification 2 from " ^ (st a) ^ " to " ^ (st b))
 		in
 		let t, tl = loop (tl) in
 		t, tl
@@ -2028,18 +2045,25 @@ let rec unify_of tm ta b =
 		t, List.rev tl
 	in
 	let rec loop t = match t with
+		(*| _ when isKTypeParameter t ->
+			if b_is_left then
+				()
+			else
+				();
+
+			None*)
 		| TInst(c,tl) ->
 			let t,tl = apply_right tl in
-			TInst(c,tl),t
+			Some(TInst(c,tl),t)
 		| TEnum(en,tl) ->
 			let t,tl = apply_right tl in
-			TEnum(en,tl),t
+			Some(TEnum(en,tl),t)
 		| TType(tt,tl) ->
 			let t,tl = apply_right tl in
-			TType(tt,tl),t
+			Some(TType(tt,tl),t)
 		| TAbstract(a,tl) ->
 			let t,tl = apply_right tl in
-			TAbstract(a,tl),t
+			Some(TAbstract(a,tl),t)
 		| TFun(t1,t2) ->
 			(* concat all types, call apply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
 			let p_type (a,b,t) = t in
@@ -2050,26 +2074,40 @@ let rec unify_of tm ta b =
 					TFun(tl,tret),t
 				| [] -> assert false
 			in
-			t
+			Some(t)
 		| TMono r ->
 			(match !r with
 			| Some t -> loop t
-			| _ -> t, t)
+			| _ -> Some(t, t))
 		| TDynamic _ ->
-			t_dynamic,t_dynamic
+			(*Printf.printf "it's dynamic\n";*)
+			None
 		| TAnon _ ->
 			err "Invalid Of-unification cannot unify structures with Of types"
 		| _ ->
-			err "Invalid Of-unification"
+			err "Invalid Of-unification 1"
 	in
-	let tl,tr = loop b in
-	unify tm tl;
-	unify ta tr
+	let st = s_type (print_context ()) in
+	match loop b with
+		| Some(tl, tr) ->
+			(unify tm tl;
+			(*Printf.printf "1 %s => %s\n" (st tm) (st tl);
+
+			Printf.printf "2 %s => %s\n" (st ta) (st tr);*)
+			unify ta tr)
+		| None -> ()
+
+
+and isKTypeParameter t =
+	match t with
+	| TInst ({ cl_kind = KTypeParameter ctl } as c,pl) -> true
+	| _ -> false
 
 and unify a b =
 	if a == b then
 		()
 	else match a, b with
+	| a, b when is_in_type a -> ()
 	| TLazy f , _ -> unify (!f()) b
 	| _ , TLazy f -> unify a (!f())
 	| TMono t , _ ->
@@ -2096,9 +2134,15 @@ and unify a b =
 			unify Of<B->In, A>, B->A becomes unify B->A, B->A
 		*)
 
-		(* let st = s_type (print_context ()) in
-		Printf.printf "unify %s => %s\n" (st a) (st b); *)
+		let st = s_type (print_context ()) in
+
+		(*Printf.printf "unify red %s => %s\n" (st (reduce_of a)) (st (reduce_of b));*)
 		(match reduce_of a, reduce_of b with
+			| TAbstract({a_path = [],"-Of"},[tm1;ta1]), TAbstract({a_path = [],"-Of"},[tm2;ta2]) ->
+				(*Printf.printf "unify %s => %s\n" (st tm1) (st tm2);
+				Printf.printf "unify %s => %s\n" (st a) (st b);*)
+				unify tm1 tm2;
+				unify ta1 ta2;
 			| _, TAbstract({a_path = [],"-Of"},[_;_])
 			| TAbstract({a_path = [],"-Of"},[_;_]), _ ->
 				unify tm1 tm2;
@@ -2109,16 +2153,45 @@ and unify a b =
 			try to unify with the reduced Of type first, example:
 			unify Of<A->In, B>, A->B becomes unify A->B, A->B
 		*)
+		let st = s_type (print_context ()) in
 		(* let st = s_type (print_context ()) in
 		Printf.printf "unify %s => %s\n" (st a) (st b); *)
 		let t = reduce_of a in
-		if is_of_type t then unify_of tm ta b else unify t b
+		(match t with
+			| TAbstract({a_path = [],"-Of"},[tm;ta]) ->
+				(*Printf.printf "do it unify %s => %s => %s (%b)\n" (st a) (st b) (st tm) (isKTypeParameter b);*)
+				if (isKTypeParameter b) && (tm = b) then
+					()
+				else
+					unify_of tm ta b false a
+
+
+			| _ -> unify t b)
+	(*
+	| (TInst ({ cl_kind = KTypeParameter ctl } as c,pl) as a), (TAbstract( ({a_path = [],"-Of"} as bb),([tm;ta] as tl)) as b) ->
+		(* one of the constraints must satisfy the abstract *)
+		(*let st = s_type (print_context ()) in
+		Printf.printf "ktyepe param unify %s => %s\n" (st a) (st b);*)
+		unify a tm
+
+		(*let st = s_type (print_context ()) in
+		Printf.printf "ktyepe param unify %s => %s\n" (st a) (st b);
+		error [cannot_unify a b];*)*)
 	| a,(TAbstract({a_path = [],"-Of"},[tm;ta]) as b) ->
 		(* first reduce the Of type, same as in the case above. *)
-		(* let st = s_type (print_context ()) in
-		Printf.printf "unify %s => %s\n" (st a) (st b); *)
+		let st = s_type (print_context ()) in
+		(*Printf.printf "unify %s => %s => %s\n" (st a) (st b) (st (reduce_of b));*)
 		let t = reduce_of b in
-		if is_of_type t then unify_of tm ta a else unify a t
+		(match t with
+			| TAbstract({a_path = [],"-Of"},[tm;ta]) ->
+				(if (isKTypeParameter a) && (tm = a) then
+					(*(Printf.printf "do it unify %s => %s => %s\n" (st a) (st b) (st tm);*)
+					()
+				else
+					unify_of tm ta a true b)
+
+				(*Printf.printf "do it done unify %s => %s => %s\n" (st a) (st b) (st (reduce_of b))*)
+			| _ -> unify a t)
 	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
 		if ea != eb then error [cannot_unify a b];
 		unify_type_params a b tl1 tl2
@@ -2157,7 +2230,8 @@ and unify a b =
 				loop cs (List.map (apply_params c.cl_params tl) tls)
 			) c.cl_implements
 			|| (match c.cl_kind with
-			| KTypeParameter pl -> List.exists (fun t ->
+			| KTypeParameter pl ->
+				List.exists (fun t ->
 				match follow t with
 				| TInst (cs,tls) -> loop cs (List.map (apply_params c.cl_params tl) tls)
 				| TAbstract(aa,tl) -> List.exists (unify_to aa tl b) aa.a_to
@@ -2507,7 +2581,10 @@ and unify_type_params a b tl1 tl2 =
 		with Unify_error l ->
 			try
 				if is_of_type t1 || is_of_type t2 then
-					with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2)
+					(match t1, t2 with
+						| (TInst({cl_kind = KTypeParameter c }, pl)), (TAbstract({ a_path = [], "-Of"},[tm;_])) ->
+							unify t1 tm
+						| _ -> with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2))
 				else
 					try
 						(* try to reduce nested Of types like in Array<Void->Of<Promise<_>, T> *)

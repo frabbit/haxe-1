@@ -260,8 +260,6 @@ interface Category<Cat:Category<Cat, _, _>, A, B>
 interface Arrow<Arr:Arrow<Arr, _, _>,A,B> extends Category<Arr, A, B>
 {
 
-
-
   public function first  <C>():Arr<Tup2<A,C>, Tup2<B,C>>;
   public function second <C>():Arr<Tup2<C,A>, Tup2<C,B>>;
 
@@ -306,3 +304,50 @@ class FunctionArrow<A,B> implements Arrow<FunctionArrow<_,_>, A, B>
     return create(function (c:A) return f.a(a(c)));
   }
 }
+
+
+
+
+
+private enum Node<Id> {
+	CNode<X>(id:Id<X>);
+}
+
+private enum Node2<Id> {
+	CNode2(id:Id);
+}
+
+private enum Node3<Id,X> {
+	CNode3(id:Id<X>);
+}
+
+class UnifyTests {
+
+  public static function getId2 <Y:Y<_>>(a:Node2<Y>) {
+    return switch a {
+			case CNode2(id): null;
+		}
+  }
+  public static function getId3 <Y, X>(a:Node3<Y, X>):Y<X> {
+    return switch a {
+			case CNode3(id): id;
+		}
+  }
+	public static function getId <Y>(a:Node<Y>) {
+
+		return switch a {
+			case CNode(id): null;
+		}
+	}
+  static function test () {
+
+		var n = CNode([1]);
+		getId(n);
+    //var n = CNode2(1);
+		//getId2(n);
+    var n = CNode3([1]);
+		getId3(n);
+
+	}
+}
+
