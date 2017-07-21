@@ -112,7 +112,10 @@ class OptionAsApplicative<A> extends OptionAsFunctor<A> implements Applicative<O
 	}
 
 	public function map2<A,B,C>(fa:Option<A>, fb:Option<B>, f:A->B->C):Option<C> {
-		return null;
+		return switch [fa, fb] {
+			case [Some(a), Some(b)]: Some(f(a,b));
+			case _ : None;
+		}
 	}
 
 	public function traverse<A,B>(as:List<A>, f:A->Option<B>):Option<List<B>> {

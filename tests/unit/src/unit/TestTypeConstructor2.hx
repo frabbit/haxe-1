@@ -12,6 +12,7 @@ class TestTypeConstructor2 extends Test {
 		var opt2 = optionAp.pure(Lazy.mk(() -> 1));
 		$type(opt);
 		t(opt.match(Some(Some(1))));
+		t(optionOptionAp.map2(Some(Some(1)), Some(Some(1)), (a,b) -> a+b).match(Some(Some(2))));
 		//var isEq = (:Option<Option<Int>>).match(Some(Some(1)));
 		//t(false);
 	}
