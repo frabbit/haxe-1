@@ -332,6 +332,10 @@ and build_state =
 	| Building of tclass list
 	| BuildMacro of (unit -> unit) list ref
 
+and lifted_type =
+	| LTNested of t * (lifted_type list)
+	| LTLeaf of t
+
 (* ======= General utility ======= *)
 
 let alloc_var =
@@ -643,9 +647,9 @@ let rec follow t =
 		(match !r with
 		| Some t -> follow t
 		| _ -> t)
-	| TAbstract({a_path=[],"-Of"},[_;_]) ->
+	(*| TAbstract({a_path=[],"-Of"},[_;_]) ->
 		let t = reduce_of t in
-		if is_of_type t then t else follow t
+		if is_of_type t then t else follow t*)
 	| TLazy f ->
 		follow (!f())
 	| TType (t,tl) ->
@@ -749,6 +753,9 @@ and unapply_in t ta =
 			if is_in_type inner then
 				reduce_of (TAbstract(a, [tm1; reduce_of (TAbstract(a, [c1; ta]))])), true
 			else
+				(*(let inner = reduce_of (TAbstract(a, [c1; inner])) in
+				let t = reduce_of (TAbstract(a, [tm1; inner])) in
+				loop(t))*)
 				(match unapply_in inner ta with
 				| t, true ->
 					reduce_of (TAbstract(a, [tm1; reduce_of (TAbstract(a, [c1; t]))])), true
@@ -831,13 +838,10 @@ and reduce_of t =
 	match t with
 	| TAbstract( ({a_path=[],"-Of"} as a),[tm;(TAbstract({a_path=[],"-Of"}, [tb; tx]))]) ->
 		let tm1 = reduce_of (TAbstract(a, [tm; tb])) in
-		reduce_of (TAbstract(a, [tm1; tx]))
-	| TAbstract( ({a_path=[],"-Of"} as a),[tm;(TAbstract({a_path=[],"-Of"}, [tb; tx]))]) ->
-		let tm1 = reduce_of (TAbstract(a, [tm; tb])) in
-		reduce_of (TAbstract(a, [tm1; tx]))
+		reduce_of (TAbstract(a, [tm1; reduce_of tx]))
 	| TAbstract({a_path=[],"-Of"},[tm;tr]) ->
 		let x, applied = unapply_in tm (reduce_of tr) in
-		if applied then x else t
+		if applied then reduce_of x else t
 	| TMono r ->
 		(match !r with
 		| Some t -> reduce_of t
@@ -2160,10 +2164,10 @@ and unify a b =
 		(match t with
 			| TAbstract({a_path = [],"-Of"},[tm;ta]) ->
 				(*Printf.printf "do it unify %s => %s => %s (%b)\n" (st a) (st b) (st tm) (isKTypeParameter b);*)
-				if (isKTypeParameter b) && (tm = b) then
+				(*if (isKTypeParameter b) && (tm = b) then
 					()
-				else
-					unify_of tm ta b false a
+				else*)
+				unify_of tm ta b false a
 
 
 			| _ -> unify t b)
@@ -2184,11 +2188,11 @@ and unify a b =
 		let t = reduce_of b in
 		(match t with
 			| TAbstract({a_path = [],"-Of"},[tm;ta]) ->
-				(if (isKTypeParameter a) && (tm = a) then
+				(*(if (isKTypeParameter a) && (tm = a) then
 					(*(Printf.printf "do it unify %s => %s => %s\n" (st a) (st b) (st tm);*)
 					()
-				else
-					unify_of tm ta a true b)
+				else*)
+				unify_of tm ta a true b
 
 				(*Printf.printf "do it done unify %s => %s => %s\n" (st a) (st b) (st (reduce_of b))*)
 			| _ -> unify a t)

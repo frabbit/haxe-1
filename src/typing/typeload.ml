@@ -454,11 +454,11 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 				let t = { t with tparams = [p1] } in
 				load_instance ctx (t,p) allow_no_params ctpos
 			| tps ->
-				let mk_of tm ta = 
+				let mk_of tm ta =
 					let path = CTPath tm in
 					let tp = TPType (path,p) in
 					let params = [tp; ta] in
-					{ tpackage=[]; tname="-Of"; tsub=Some("-Of"); tparams = params} 
+					{ tpackage=[]; tname="-Of"; tsub=Some("-Of"); tparams = params}
 				in
 				let rec loop tps =
 					match tps with
