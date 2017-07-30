@@ -1,0 +1,1 @@
+@:coreType abstract HKOf<M,A> {}
