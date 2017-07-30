@@ -725,8 +725,11 @@ and follow1 t =
 		| _ -> t)
 	| TLazy f ->
 		follow1 (!f())
-	| TType (t,tl) ->
-		follow1 (apply_params t.t_params tl t.t_type)
+	| TType (t,tl) as t1 ->
+		begin match (apply_params t.t_params tl t.t_type) with
+		| TAnon(_) -> t1
+		| t -> follow1 t
+		end
 	| TAbstract({a_path = [],"Null"},[t]) ->
 		follow1 t
 	| _ -> t
@@ -1044,6 +1047,8 @@ and reduce_lifted_type (t : lifted_type) : t =
 				TInst(c, params)
 			| TEnum(e,_), _ ->
 				TEnum(e, params)
+			| TType(t,_), _ ->
+				TType(t, params)
 			| TAbstract(e,_), _ ->
 				TAbstract(e, params)
 			| TMono _ as t, [p] ->
@@ -2591,6 +2596,12 @@ let rec unify a b =
 		(match !t with
 		| None -> if not (link t b a) then error [cannot_unify a b]
 		| Some t -> unify a t)
+	| TAbstract({a_path = [],"-Of"},_),TAbstract({a_path = [],"-Of"},_) ->
+		unify_of a b
+	| TAbstract({a_path = [],"-Of"},_),b ->
+		unify_of a b
+	| a,TAbstract({a_path = [],"-Of"},_) ->
+		unify_of a b
 	| TType (t,tl) , _ ->
 		rec_stack unify_stack (a,b)
 			(fun(a2,b2) -> fast_eq a a2 && fast_eq b b2)
@@ -2601,12 +2612,7 @@ let rec unify a b =
 			(fun(a2,b2) -> fast_eq a a2 && fast_eq b b2)
 			(fun() -> unify a (apply_params t.t_params tl t.t_type))
 			(fun l -> error (cannot_unify a b :: l))
-	| TAbstract({a_path = [],"-Of"},_),TAbstract({a_path = [],"-Of"},_) ->
-		unify_of a b
-	| TAbstract({a_path = [],"-Of"},_),b ->
-		unify_of a b
-	| a,TAbstract({a_path = [],"-Of"},_) ->
-		unify_of a b
+
 	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
 		if ea != eb then error [cannot_unify a b];
 		unify_type_params a b tl1 tl2
