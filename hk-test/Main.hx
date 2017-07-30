@@ -1,6 +1,7 @@
 import typing.TypeBasic;
 import typing.TypeConstraints;
 import typing.TypeTypedef;
+import typing.TypeTypedef2;
 import typing.TypeArrayT;
 import typing.TypeEitherT;
 import typing.TypeFuncT;
