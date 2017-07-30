@@ -2467,10 +2467,10 @@ let rec type_eq param a b =
 			(fun (a2,b2) -> fast_eq a a2 && fast_eq b b2)
 			(fun() -> type_eq param a (apply_params t.t_params tl t.t_type))
 			(fun l -> error (cannot_unify a b :: l))
-	| TAbstract({a_path=[],"-In"},_), b when (param = EqLeftBoth) ->
+	(*| TAbstract({a_path=[],"-In"},_), b when (param = EqLeftBoth) ->
 		()
 	| a, TInst({cl_path=[],"-In"},_) when (param = EqLeftBoth) ->
-		()
+		()*)
 	| TEnum (e1,tl1) , TEnum (e2,tl2) ->
 		if e1 != e2 && not (param = EqCoreType && e1.e_path = e2.e_path) then error [cannot_unify a b];
 		List.iter2 (type_eq param) tl1 tl2
@@ -2571,98 +2571,12 @@ let print_stacks() =
 	end
 
 
-
-
-
-let rec unify_of_old tm ta b b_is_left tfull =
-	let err str =
-		let params = [tm; ta] in
-		let of_t = TAbstract(of_type, params) in
-		let st = s_type (print_context ()) in
-		error [Unify_custom (str ^ "\ncannot unify " ^ (st b) ^ " with " ^ (st of_t)) ]
-	in
-	let rec apply_left tl =
-		let rec loop tl = match tl with
-			| t :: tl ->
-				if is_in_type(t) then
-					let x,xl = loop tl in
-					x,t::xl
-				else
-					t,!t_in :: tl
-			| [] ->
-				let st = s_type (print_context ()) in
-				let a = if b_is_left then b else tfull in
-				let b = if b_is_left then tfull else b in
-				(*Printf.printf "Invalid Of-unification 2 from %s to %s\n" (st a) (st b);*)
-				err ("Invalid Of-unification 2 from " ^ (st a) ^ " to " ^ (st b))
-		in
-		let t, tl = loop (tl) in
-		t, tl
-	in
-	let apply_right tl =
-		let t, tl = apply_left (List.rev tl) in
-		t, List.rev tl
-	in
-	let rec loop t = match t with
-		(*| _ when isKTypeParameter t ->
-			if b_is_left then
-				()
-			else
-				();
-
-			None*)
-		| TInst(c,tl) ->
-			let t,tl = apply_right tl in
-			Some(TInst(c,tl),t)
-		| TEnum(en,tl) ->
-			let t,tl = apply_right tl in
-			Some(TEnum(en,tl),t)
-		| TType(tt,tl) ->
-			let t,tl = apply_right tl in
-			Some(TType(tt,tl),t)
-		| TAbstract(a,tl) ->
-			let t,tl = apply_right tl in
-			Some(TAbstract(a,tl),t)
-		| TFun(t1,t2) ->
-			(* concat all types, call apply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
-			let p_type (a,b,t) = t in
-			let t,tl = apply_left (t2 :: (List.rev (List.map p_type t1)  )) in
-			let t = match tl with
-				| tret :: tparams ->
-					let tl = List.map2 (fun (a,b,_) t -> a,b,t) t1 (List.rev tparams) in
-					TFun(tl,tret),t
-				| [] -> assert false
-			in
-			Some(t)
-		| TMono r ->
-			(match !r with
-			| Some t -> loop t
-			| _ -> Some(t, t))
-		| TDynamic _ ->
-			(*Printf.printf "it's dynamic\n";*)
-			None
-		| TAnon _ ->
-			err "Invalid Of-unification cannot unify structures with Of types"
-		| _ ->
-			err "Invalid Of-unification 1"
-	in
-	let st = s_type (print_context ()) in
-	match loop b with
-		| Some(tl, tr) ->
-			(unify tm tl;
-			(*Printf.printf "1 %s => %s\n" (st tm) (st tl);
-
-			Printf.printf "2 %s => %s\n" (st ta) (st tr);*)
-			unify ta tr)
-		| None -> ()
-
-
-and isKTypeParameter t =
+let isKTypeParameter t =
 	match follow1 t with
 	| TInst ({ cl_kind = KTypeParameter ctl } as c,pl) -> true
 	| _ -> false
 
-and unify a b =
+let rec unify a b =
 	if a == b then
 		()
 	else match a, b with
@@ -3398,11 +3312,11 @@ and unify_type_params a b tl1 tl2 =
 		with Unify_error l ->
 			try
 				match follow1 t1, follow1 t2 with
-				| TInst( { cl_kind = KTypeParameter kt1} as c1, p1), TInst( { cl_kind = KTypeParameter kt2} as c2, p2) ->
+				(*| TInst( { cl_kind = KTypeParameter kt1} as c1, p1), TInst( { cl_kind = KTypeParameter kt2} as c2, p2) ->
 					if kt1 == kt2 && c1.cl_path == c2.cl_path && p1 == p2 && c1.cl_module == c2.cl_module then
 						()
 					else
-						raise (Unify_error l)
+						raise (Unify_error l)*)
 				| _ ->
 					begin
 					if (is_in_type (follow1 t1)) || (is_in_type (follow1 t2)) then
@@ -3413,15 +3327,13 @@ and unify_type_params a b tl1 tl2 =
 						with Unify_error l ->
 							with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2))
 					else
-						begin try
-							unify_of t1 t2
-						with Unify_error l ->
+
 							begin try
 								with_variance (type_eq EqRightDynamic) (reduce_of_rec t1) (reduce_of_rec t2)
 							with Unify_error l ->
 								raise (Unify_error l)
 							end
-						end
+
 					end
 			with Unify_error l ->
 				let st = s_type (print_context()) in

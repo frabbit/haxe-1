@@ -64,7 +64,6 @@ type enum_type =
 	| ICType
 	| IField
 	| IType
-	| ILiftedType
 	| IFieldKind
 	| IMethodKind
 	| IVarAccess
@@ -201,7 +200,6 @@ let enum_name = function
 	| ICType -> "ComplexType"
 	| IField -> "FieldType"
 	| IType -> "Type"
-	| ILiftedType -> "LiftedType"
 	| IFieldKind -> "FieldKind"
 	| IMethodKind -> "MethodKind"
 	| IVarAccess -> "VarAccess"
@@ -1028,16 +1026,6 @@ and encode_cfref cf =
 and encode_abref ab =
 	encode_ref ab encode_tabstract (fun() -> s_type_path ab.a_path)
 
-and encode_lifted_type lt =
-	let rec loop = function
-	| LTNested(t, params) -> 0, [encode_type t; encode_array (List.map encode_lifted_type params) ]
-	(*| LTFunc(t, params, Some r) -> 1, [encode_type t; encode_array (List.map encode_lifted_type params); encode_lifted_type r ]*)
-	| LTLeaf(t) -> 2, [encode_type t]
-	| _ -> assert false
-	in
-	let tag, pl = loop lt in
-	encode_enum ILiftedType tag pl
-
 and encode_type t =
 	let rec loop = function
 		| TMono r ->
@@ -1099,14 +1087,6 @@ and decode_type t =
 	| 7, [f] -> TLazy (decode_lazytype f)
 	| 8, [a; pl] -> TAbstract (decode_ref a, List.map decode_type (decode_array pl))
 	| _ -> raise Invalid_expr
-
-and decode_lifted_type t =
-	match decode_enum t with
-	| 0, [t; pl] -> LTNested( decode_type t, List.map decode_lifted_type (decode_array pl) )
-	(*| 1, [t; pl; r] -> LTFunc( decode_type t, List.map decode_lifted_type (decode_array pl), decode_lifted_type r )*)
-	| 2, [t] -> LTLeaf( decode_type t)
-	| _ -> raise Invalid_expr
-
 
 and decode_type_decl t =
 	decode_tdecl (field t "__t")
@@ -1493,148 +1473,6 @@ let rec make_const e =
 
 **)
 
-
-
-(*
-and mk_of tm tp =
-	TAbstract(of_type, [tm; tp])
-
-and unapply_in1 t ta =
-
-	(* replaces/unnapplies the leftmost In type and returns the unapplied list and a flag which
-	   indicates if an In type was really replaced
-	 *)
-	let unapply_left tl =
-		let rec loop r = match r with
-			| t :: [] when is_in_type t -> ta::[]
-			| t :: tl when is_in_type t ->
-				if not (List.for_all is_in_type tl) then
-					assert false
-				else
-					ta::tl
-			| t :: tl when not (is_in_type t) ->
-				let tl = loop tl in
-				t::tl
-			| [] ->
-				(* maybe we have to create an of type here *)
-				assert false
-			| _ -> assert false
-		in
-		let r = loop ( tl) in
-		r
-	in
-	let rec loop t = match t with
-		| TInst(c,tl) ->
-			TInst(c, unapply_left tl)
-		| TEnum(en,tl) ->
-			TEnum(en,unapply_left tl)
-		| TType(tt,tl) ->
-			TType(tt,unapply_left tl)
-		| TAbstract({a_path=[],"-Of"},[tm;tx]) when is_in_type tx ->
-			mk_of tm ta
-		(*| TAbstract({a_path=[],"-Of"},[tm;tx]) ->
-			unapply_in1 tm tx*)
-		| TAbstract(a,tl) ->
-			TAbstract(a,unapply_left tl)
-		| TFun(t1,t2) ->
-			(* concat all types, call unapply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
-			let p_type (a,b,t) = t in
-			let tl = unapply_left ((List.map p_type t1)@[t2]) in
-			begin match List.rev tl with
-				| tret :: tparams ->
-					let tl = List.map2 (fun (a,b,_) t -> a,b,t) t1 (List.rev tparams) in
-					TFun(tl,tret)
-				| [] -> assert false
-			end
-
-		| TMono r ->
-			begin match !r with
-				| Some t -> loop t
-				| _ -> assert false
-			end
-		| TLazy f ->
-			loop (!f())
-		| TDynamic _ | TAnon _ ->
-			assert false
-	in
-	loop t
-
-and reduce_lifted_type (t : lifted_type) : t =
-	match t with
-	| LTNested(t, params) ->
-		let params = List.map reduce_lifted_type params in
-		begin match t, params with
-			| TInst(_, []), _ ->
-				List.fold_left (fun acc p -> mk_of acc p) t params
-
-			| _ ->
-				let rparams = List.rev params in
-				let t = List.fold_left (fun acc p -> unapply_in1 acc p) t rparams in
-				t
-		end
-	| LTLeaf(t) ->
-		t
-
-and lift_type (t : t) : lifted_type =
-	let t_in = !t_in in
-	match (follow t) with
-	| TAbstract({a_path=[],"-Of"}, [tm; tp]) ->
-		(*let st = s_type (print_context()) in
-		Printf.printf "%s\n" (st (follow tm));*)
-		begin match (follow tm) with
-			| TInst(_, []) ->
-				LTNested(tm, [lift_type tp])
-			| _ when not (is_in_type tp) ->
-				begin
-				let rec loop t tp =
-					match t with
-						| TAbstract({a_path=[],"-Of"}, [tm; tp1]) ->
-							loop tm (tp1::tp)
-						| TInst(_, []) ->
-							let params = List.rev tp in
-							LTNested( t, List.map lift_type params )
-						| _ ->
-							let st = s_type (print_context()) in
-							Printf.printf "%s\n" (st t);
-							assert false
-				in loop tm (tp ::[])
-				end
-			| _ (*when is_in_type tp*) ->
-				lift_type tm
-		end
-	(*| TAbstract({a_path=[],"-Of"}, [tma; TAbstract({a_path=[],"-Of"}, [tmb; tp])]) ->
-		LTNested(tma, )*)
-		(*try
-			let t = unapply_in1 tm tp in
-		with _ ->
-			loop tm []
-			lift_type t*)
-
-	(* of type tm is type parameter *)
-
-	| TEnum (_,[]) | TInst (_,[]) | TAbstract (_,[]) -> LTLeaf(t)
-
-	| TAbstract (t1,tl) ->
-		let t1 = TAbstract(t1, List.map (fun _ -> t_in) tl ) in
-		LTNested(t1, List.map lift_type tl)
-
-	| TEnum (t1,tl) ->
-		let t1 = TEnum(t1, List.map (fun _ -> t_in) tl ) in
-		LTNested(t1, List.map lift_type tl)
-
-	| TInst (t1,tl) ->
-		let t1 = TInst(t1, List.map (fun _ -> t_in) tl ) in
-		LTNested(t1, List.map lift_type tl)
-
-	| TFun (tl,r) ->
-		let t1 = TFun( (List.map (fun (s, o, _) -> s, o, t_in) tl ), t_in) in
-		LTNested(t1, List.map (fun (_,_,t) -> lift_type t) tl)
-
-	| _ ->
-		LTLeaf(t)
-*)
-
-
 let macro_api ccom get_api =
 	[
 		"current_pos", vfun0 (fun() ->
@@ -1820,43 +1658,13 @@ let macro_api ccom get_api =
 			let p = decode_pos p in
 			encode_obj OContext_getPosInfos ["min",vint p.Globals.pmin;"max",vint p.Globals.pmax;"file",encode_string p.Globals.pfile]
 		);
-		"lift_type", vfun1 (fun t ->
-			let t = decode_type t in
-			let t2 = lift_type t in
-			encode_lifted_type t2
-		);
-		"reduce_lifted_type", vfun1 (fun t ->
-			let t = decode_lifted_type t in
-			let t2 = reduce_lifted_type t in
-			encode_type t2
-		);
 		"enable_type_log", vfun1 (fun b ->
 			enable_type_log (decode_bool b);
 			vnull
 		);
-		"unify_lifted_types", vfun2 (fun t1 t2 ->
-			let t1 = decode_lifted_type t1 in
-			let t2 = decode_lifted_type t2 in
-			vbool (
-				try (unify_lifted_types t1 t2; true)
-				with Unify_error e ->
-					let st = s_type (print_context()) in
-					let rec loop e = match e with
-						| Cannot_unify(a,b)::tail -> "Cannot unify " ^ (st a) ^ " with " ^ (st b) ^ "\n" ^ (loop tail)
-						| [] -> ""
-						| _ -> "Other error"
-					in
-					let s = loop e in
-					Printf.printf "failed to unify: %s" s;
-					false)
-		);
-		"mk_of", vfun2 (fun t1 t2 ->
-			let t1 = decode_type t1 in
-			let t2 = decode_type t2 in
-			encode_type (mk_of t1 t2)
-		);
-		"mk_in", vfun0 (fun() ->
-			encode_type (!t_in)
+		"normalize_of", vfun1 (fun t ->
+			let t = decode_type t in
+			encode_type (normalize_of_type t)
 		);
 		"reduce_of", vfun1 (fun t ->
 			let t = decode_type t in

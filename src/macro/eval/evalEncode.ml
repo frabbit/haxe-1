@@ -74,7 +74,6 @@ let encode_enum i pos index pl =
 		| ICType -> key_haxe_macro_ComplexType
 		| IField -> key_haxe_macro_FieldType
 		| IType -> key_haxe_macro_Type
-		| ILiftedType -> key_haxe_macro_LiftedType
 		| IFieldKind -> key_haxe_macro_FieldKind
 		| IMethodKind -> key_haxe_macro_MethodKind
 		| IVarAccess -> key_haxe_macro_VarAccess
