@@ -1,13 +1,58 @@
 package unit;
 
-
+import haxe.ds.Option;
 using unit.MyTypeConstructor.ArrayT;
 using unit.MyTypeConstructor.EitherT;
+
 
 enum Either<L,R> {
   Left(l:L);
   Right(r:R);
 }
+
+
+abstract ArrayT<M, A>(M<Array<A>>)
+{
+  public function new (x:M<Array<A>>) {
+    this = x;
+  }
+  public function unwrap ():M<Array<A>> {
+    return this;
+  }
+
+  public static function runT <M1,A1>(a:ArrayT<M1,A1>):M1<Array<A1>>
+  {
+    return a.unwrap();
+  }
+  public static function arrayT <M1,A1>(a:M1<Array<A1>>):ArrayT<M1,A1>
+  {
+    return new ArrayT(a);
+  }
+}
+
+
+abstract EitherT<M,L,A>(M<Either<L,A>>)
+{
+
+  public function new (x:M<Either<L,A>>) {
+    this = x;
+  }
+
+  public function unwrap ():M<Either<L,A>> {
+    return this;
+  }
+
+  public static function runT <M1,L,A1>(a:EitherT<M1,L,A1>):M1<Either<L,A1>>
+  {
+    return a.unwrap();
+  }
+  public static function eitherT <M,L,A>(a:M<Either<L, A>>):EitherT<M,L,A>
+  {
+    return new EitherT(a);
+  }
+
+}
+
 
 
 interface Functor<F> {
@@ -59,6 +104,7 @@ class ReversedEitherMonad<R> implements Monad<ReversedEither<R, _>>
 
 
 
+
 class ArrayMonad implements Monad<Array<_>> {
   public function new () {}
   public inline function fmap<S,T>(a:Array<S>, f:S->T):Array<T> {
@@ -68,45 +114,36 @@ class ArrayMonad implements Monad<Array<_>> {
     return [for (x in a) for (y in f(x)) y];
   }
 }
-
-
-abstract ArrayT<M, A>(M<Array<A>>)
-{
-  public function new (x:M<Array<A>>) {
-    this = x;
+class OptionMonad implements Monad<Option<_>> {
+  public function new () {}
+  public inline function fmap<S,T>(a:Option<S>, f:S->T):Option<T> {
+    return switch a {
+      case Some(a): Some(f(a));
+      case None: None;
+    }
   }
-  public function unwrap ():M<Array<A>> {
-    return this;
-  }
-
-  public static function runT <M1,A1>(a:ArrayT<M1,A1>):M1<Array<A1>>
-  {
-    return a.unwrap();
-  }
-  public static function arrayT <M1,A1>(a:M1<Array<A1>>):ArrayT<M1,A1>
-  {
-    return new ArrayT(a);
+  public inline function flatMap<S,T>(a:Option<S>, f:S->Option<T>):Option<T> {
+    return switch a {
+      case Some(a): f(a);
+      case None: None;
+    }
   }
 }
 
-abstract EitherT<M,L,A>(M<Either<L,A>>)
+
+
+
+typedef ReversedEitherAlias<B,A> = Either<A,B>;
+
+abstract ReversedEither<R,L>(Either<L,R>)
 {
-  public function new (x:M<Either<L,A>>) {
-    this = x;
-  }
-  public function unwrap ():M<Either<L,A>> {
+  public function new (x:Either<L,R>) this = x;
+
+  public function toEither ():Either<L,R> {
     return this;
   }
-
-  public static function runT <M1,L,A1>(a:EitherT<M1,L,A1>):M1<Either<L,A1>>
-  {
-    return a.unwrap();
-  }
-  public static function eitherT <M,L,A>(a:M<Either<L, A>>):EitherT<M,L,A>
-  {
-    return new EitherT(a);
-  }
 }
+
 
 
 class ArrayTFunctor<M> implements Functor<ArrayT<M,_>>
@@ -164,29 +201,28 @@ class MonadSyntax {
 }
 
 
-typedef ReversedEitherAlias<B,A> = Either<A,B>;
 
-abstract ReversedEither<R,L>(Either<L,R>)
-{
-  public function new (x:Either<L,R>) this = x;
+class Tup2<A,B> {
+  public var _1 : A;
+  public var _2 : B;
 
-  public function toEither ():Either<L,R> {
-    return this;
+  public function new (_1:A, _2:B) {
+    this._1 = _1;
+    this._2 = _2;
   }
 }
-
-typedef Tup2<A,B> = { var _1 : A; var _2 : B; }
 
 class Tup2RightFunctor<T> implements Functor<Tup2<T, _>> {
   public function new () {}
   public inline function fmap<A,B>(a:Tup2<T, A>, f:A->B):Tup2<T, B>
   {
-    return {
-      _1 : a._1,
-      _2 : f(a._2),
-    }
+    return new Tup2(
+      a._1,
+      f(a._2)
+    );
   }
 }
+
 
 interface Mappable<M,T> {
   public function map <B>(f:T->B):M<B>;
@@ -285,11 +321,11 @@ class FunctionArrow<A,B> implements Arrow<FunctionArrow<_,_>, A, B>
   }
 
   public function first  <C>():FunctionArrow<Tup2<A,C>,Tup2<B,C>> {
-    return create(function (t:Tup2<A,C>) return { _1 : this.a(t._1), _2 : t._2 });
+    return create(function (t:Tup2<A,C>) return new Tup2(this.a(t._1), t._2));
 
   }
   public function second <C>():FunctionArrow<Tup2<C,A>, Tup2<C,B>> {
-    return create(function (t:Tup2<C,A>) return { _1 : t._1, _2 : this.a(t._2) });
+    return create(function (t:Tup2<C,A>) return new Tup2(t._1, this.a(t._2)));
   }
 
   public function split <A1,B1>(g:FunctionArrow<A1, B1>):FunctionArrow<Tup2<A,A1>, Tup2<B,B1>> {

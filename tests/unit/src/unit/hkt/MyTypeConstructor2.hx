@@ -102,31 +102,6 @@ class OptionAsFunctor<A> implements Functor<Option<_>> {
 	}
 }
 
-class OptionAsApplicative<A> extends OptionAsFunctor<A> implements Applicative<Option<_>> {
-	public function new () {}
-
-
-	public function pure<A>(a:Lazy<A>):Option<A> {
-		var x:A = a.get();
-		return haxe.ds.Option.Some(x);
-	}
-
-	public function map2<A,B,C>(fa:Option<A>, fb:Option<B>, f:A->B->C):Option<C> {
-		return switch [fa, fb] {
-			case [Some(a), Some(b)]: Some(f(a,b));
-			case _ : None;
-		}
-	}
-
-	public function traverse<A,B>(as:List<A>, f:A->Option<B>):Option<List<B>> {
-		return Applicatives.defaultTraverse(this, as, f);
-	}
-	// derived
-	public function apply<A, B>(fab:Option<A->B>, fa:Option<A>):Option<B> {
-		return Applicatives.defaultApply(this, fab, fa);
-	}
-
-}
 
 class EndoMonoid<A> implements Monoid<A->A> {
 	var monoidA:Monoid<A>;
@@ -201,6 +176,7 @@ interface Foldable<F> {
 }
 
 
+
 interface Applicative<F> extends Functor<F> {
 	function map2<A,B,C>(fa:F<A>, fb:F<B>, f:A->B->C):F<C>;
 
@@ -212,6 +188,34 @@ interface Applicative<F> extends Functor<F> {
 }
 
 
+
+
+class OptionAsApplicative<A> extends OptionAsFunctor<A> implements Applicative<Option<_>> {
+	public function new () {}
+
+
+	public function pure<A>(a:Lazy<A>):Option<A> {
+		var x:A = a.get();
+		return haxe.ds.Option.Some(x);
+	}
+
+	public function map2<A,B,C>(fa:Option<A>, fb:Option<B>, f:A->B->C):Option<C> {
+		return switch [fa, fb] {
+			case [Some(a), Some(b)]: Some(f(a,b));
+			case _ : None;
+		}
+	}
+
+	public function traverse<A,B>(as:List<A>, f:A->Option<B>):Option<List<B>> {
+		return null; //Applicatives.defaultTraverse(this, as, f);
+	}
+	// derived
+	public function apply<A, B>(fab:Option<A->B>, fa:Option<A>):Option<B> {
+		return null; //Applicatives.defaultApply(this, fab, fa);
+	}
+
+}
+
 class ApplicativeComposition<F, G> implements Applicative<F<G<_>>> {
 	var appF:Applicative<F>;
 	var appG:Applicative<G>;
@@ -221,32 +225,24 @@ class ApplicativeComposition<F, G> implements Applicative<F<G<_>>> {
 		this.appG = appG;
 	}
 
-	public function map<A,B>(f:F<G<A>>, b:A->B):F<G<B>> {
-		var this1:Applicative<F<G<_>>> = this;
-		var res = Applicatives.defaultMap(
-			this1,
-			f,
-			b
-		);
-
-		return res;
-	}
-
 	public function map2<A,B,C>(fa:F<G<A>>, fb:F<G<B>>, f:A->B->C):F<G<C>> {
 		return appF.map2( fa, fb, (ga, gb) -> appG.map2(ga, gb, (a, b) -> f(a,b) ) );
 	}
 
+	public function map<A,B>(f:F<G<A>>, b:A->B):F<G<B>> {
+
+		return null; // Applicatives.defaultMap(this,f,b);
+	}
+
+
+
 	public function pure<A>(a:Lazy<A>):F<G<A>> return appF.pure(Lazy.mk(() -> appG.pure(a)));
 
 	public function traverse<A,B>(as:List<A>, f:A->F<G<B>>):F<G<List<B>>> {
-		return Applicatives.defaultTraverse(
-			this,
-			as,
-			f
-		);
+		return null; //return Applicatives.defaultTraverse(this,as,f);
 	}
 	//derived
-	public function apply<A, B>(fab:F<G<A->B>>, fa:F<G<A>>):F<G<B>> return Applicatives.defaultApply(this, fab, fa);
+	public function apply<A, B>(fab:F<G<A->B>>, fa:F<G<A>>):F<G<B>> return null; //Applicatives.defaultApply(this, fab, fa);
 
 }
 
@@ -293,9 +289,60 @@ class Applicatives {
 	}
 
 
+
 	public static function compose <F, G>(F:Applicative<F>, G:Applicative<G> ):Applicative<F<G<_>>>
 	{
 		return new ApplicativeComposition(F, G);
 	}
 
+
+
 }
+/*
+
+class ApplicativeComposition3<F, G, H> implements Applicative<F<G<H<_>>>> {
+	var appF:Applicative<F>;
+	var appG:Applicative<G>;
+	var appH:Applicative<H>;
+
+	public function new (appF:Applicative<F>, appG:Applicative<G>, appH:Applicative<H>) {
+		this.appF = appF;
+		this.appG = appG;
+		this.appH = appH;
+	}
+
+
+
+	public function map2<A,B,C>(fa:F<G<H<A>>>, fb:F<G<H<B>>>, f:A->B->C):F<G<H<C>>> {
+		return appF.map2( fa, fb,
+			(ga, gb) -> appG.map2(ga, gb,
+				(ha, hb) -> appH.map2(ha, hb,
+					 (a, b) -> f(a,b)
+				)
+			)
+		);
+	}
+
+	public function map<A,B>(f:F<G<H<A>>>, b:A->B):F<G<H<B>>> {
+		return Applicatives.defaultMap(
+			this,
+			f,
+			b
+		);
+	}
+
+	public function pure<A>(a:Lazy<A>):F<G<H<A>>> return appF.pure(Lazy.mk(() -> appG.pure(Lazy.mk(() -> appH.pure(a)))));
+
+	public function traverse<A,B>(as:List<A>, f:A->F<G<H<B>>>):F<G<H<List<B>>>> {
+		return Applicatives.defaultTraverse(
+			this,
+			as,
+			f
+		);
+	}
+	//derived
+	public function apply<A, B>(fab:F<G<H<A->B>>>, fa:F<G<H<A>>>):F<G<H<B>>> return Applicatives.defaultApply(this, fab, fa);
+
+}
+
+*/

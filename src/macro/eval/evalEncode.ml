@@ -74,6 +74,7 @@ let encode_enum i pos index pl =
 		| ICType -> key_haxe_macro_ComplexType
 		| IField -> key_haxe_macro_FieldType
 		| IType -> key_haxe_macro_Type
+		| ILiftedType -> key_haxe_macro_LiftedType
 		| IFieldKind -> key_haxe_macro_FieldKind
 		| IMethodKind -> key_haxe_macro_MethodKind
 		| IVarAccess -> key_haxe_macro_VarAccess
@@ -128,10 +129,10 @@ let encode_bytes s =
 
 let encode_int_map_direct h =
 	encode_instance key_haxe_ds_IntMap ~kind:(IIntMap h)
-	
+
 let encode_string_map_direct h =
 	encode_instance key_haxe_ds_StringMap ~kind:(IStringMap h)
-	
+
 let encode_object_map_direct h =
 	encode_instance key_haxe_ds_ObjectMap ~kind:(IObjectMap (Obj.magic h))
 

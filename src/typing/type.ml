@@ -334,9 +334,66 @@ and build_state =
 
 and lifted_type =
 	| LTNested of t * (lifted_type list)
+	| LTFunc of t * (lifted_type list) * (lifted_type option)
 	| LTLeaf of t
+	| LTNestedMono of t * (lifted_type list)
 
 (* ======= General utility ======= *)
+
+let log_enabled = ref false
+
+let log_type_ref = ref (fun t -> "")
+
+let log_lifted_type_ref = ref (fun t -> "")
+
+let log_normalized_type_ref = ref (fun t -> "")
+
+let log_pad s =
+	(let r = ref s in
+	(while String.length (!r) < 20 do
+		r := (!r) ^ " ";
+	done;
+	(!r)))
+
+let log_code_red = "\027[31m"
+let log_code_light_red = "\027[91m"
+let log_code_light_green = "\027[92m"
+let log_code_light_blue = "\027[94m"
+let log_code_green = "\027[32m"
+let log_code_blue = "\027[34m"
+let log_code_cyan = "\027[36m"
+let log_code_reset = "\027[39m"
+
+let log_code_inverse = "\027[7"
+let log_code_inverse_reset = "\027[27"
+
+let log_type prefix t =
+	let enabled = !log_enabled in
+	let st = !log_type_ref in
+	if enabled then
+		Printf.printf ("%s: %s%s%s\n")
+		(log_pad prefix)
+		log_code_green (st t) log_code_reset;
+	()
+
+let log_normalized_type prefix t =
+	let enabled = !log_enabled in
+	let st = !log_normalized_type_ref in
+	if enabled then
+		Printf.printf ("%s: %s%s%s\n")
+		(log_pad prefix)
+		log_code_light_blue (st t) log_code_reset;
+	()
+
+let log_lifted_type prefix lt =
+	let enabled = !log_enabled in
+	let st = !log_lifted_type_ref in
+	if enabled then
+		Printf.printf ("%s: %s%s%s\n")
+		(log_pad prefix)
+		log_code_cyan (st lt) log_code_reset;
+	()
+
 
 let alloc_var =
 	let uid = ref 0 in
@@ -647,15 +704,31 @@ let rec follow t =
 		(match !r with
 		| Some t -> follow t
 		| _ -> t)
-	(*| TAbstract({a_path=[],"-Of"},[_;_]) ->
-		let t = reduce_of t in
-		if is_of_type t then t else follow t*)
+	| TAbstract({a_path=[],"-Of"},[_;_]) ->
+
+			reduce_of t
+
+		(*if is_of_type t then t else follow t*)
 	| TLazy f ->
 		follow (!f())
 	| TType (t,tl) ->
 		follow (apply_params t.t_params tl t.t_type)
 	| TAbstract({a_path = [],"Null"},[t]) ->
 		follow t
+	| _ -> t
+
+and follow1 t =
+	match t with
+	| TMono r ->
+		(match !r with
+		| Some t -> follow1 t
+		| _ -> t)
+	| TLazy f ->
+		follow1 (!f())
+	| TType (t,tl) ->
+		follow1 (apply_params t.t_params tl t.t_type)
+	| TAbstract({a_path = [],"Null"},[t]) ->
+		follow1 t
 	| _ -> t
 
 and t_in_abstract =
@@ -667,7 +740,7 @@ and t_in = ref t_in_abstract
 
 
 
-and is_in_type t = match follow t with
+and is_in_type t = match follow1 t with
 	| TLazy f -> is_in_type (!f())
 	| TAbstract({a_path=[],"-In"},_) -> true
 	| TInst({cl_path=[],"-In"},_) -> true (* Parameters of Type Parameters like M<In> are currently not mapped *)
@@ -834,6 +907,463 @@ and unapply_in_constraints tm ta =
 	reduce_of Of<In->In, A> true|false => A->In
 *)
 
+and mk_of tm tp =
+	TAbstract(of_type, [tm; tp])
+
+and link e a b =
+	(* tell if setting a == b will create a type-loop *)
+	let rec loop t =
+		if t == a then
+			true
+		else match t with
+		| TMono t -> (match !t with None -> false | Some t -> loop t)
+		| TEnum (_,tl) -> List.exists loop tl
+		| TInst (_,tl) | TType (_,tl) | TAbstract (_,tl) -> List.exists loop tl
+		| TFun (tl,t) -> List.exists (fun (_,_,t) -> loop t) tl || loop t
+		| TDynamic t2 ->
+			if t == t2 then
+				false
+			else
+				loop t2
+		| TLazy f ->
+			loop (!f())
+		| TAnon a ->
+			try
+				PMap.iter (fun _ f -> if loop f.cf_type then raise Exit) a.a_fields;
+				false
+			with
+				Exit -> true
+	in
+	(* tell is already a ~= b *)
+	if loop b then
+		(follow b) == a
+	else if b == t_dynamic then
+		true
+	else begin
+		e := Some b;
+		true
+	end
+
+and unapply_in1_right t ta =
+	unapply_in1_custom t ta true
+and unapply_in1 t ta  =
+	unapply_in1_custom t ta false
+
+and unapply_in1_custom t ta right =
+	let unapply_in1 t ta = unapply_in1_custom t ta right in
+	(* replaces/unnapplies the leftmost In type and returns the unapplied list and a flag which
+	   indicates if an In type was really replaced
+	 *)
+	let unapply_left tl =
+		let rec loop r = match r with
+			| t :: [] when is_in_type t -> ta::[]
+			| t :: tl when is_in_type t ->
+				let only_trailing_ins = List.for_all is_in_type tl in
+				if not only_trailing_ins && (not right) then
+					assert false
+				else
+					ta::tl
+			| t :: tl when not (is_in_type t) ->
+				(* t could be Option<_> *)
+				(*begin try
+					let t = unapply_in1 t ta in
+					t::tl
+				with Not_found ->*)
+					let tl = loop tl in
+					t::tl
+				(*end*)
+			| [] ->
+				(* maybe we have to create an of type here *)
+				let st = s_type (print_context()) in
+				(*Printf.printf "WHAT2: %s %s\n" (st t) (st ta);*)
+				raise Not_found
+			| _ -> assert false
+		in
+		let r = begin try
+			let tl = if right then List.rev tl else tl in
+			let tl = loop tl in
+			if right then List.rev tl else tl
+		with Not_found ->
+				raise Not_found
+		end
+		in
+		r
+	in
+	let rec loop t = match t with
+		| TInst(c,tl) ->
+			TInst(c, unapply_left tl)
+		| TEnum(en,tl) ->
+			TEnum(en,unapply_left tl)
+		| TType(tt,tl) ->
+			TType(tt,unapply_left tl)
+		| TAbstract({a_path=[],"-Of"},[tm;tx]) when is_in_type tx ->
+			mk_of tm ta
+		| TAbstract({a_path=[],"-Of"},[tm;tx]) ->
+			loop tm
+		| TAbstract(a,tl) ->
+			TAbstract(a,unapply_left tl)
+		(* TODO: This allows application _ -> Void, not 100% sure if that should be supported *)
+		| TFun(t1,(TAbstract({a_path=[],"Void"},_) as tret)) ->
+			(* concat all types, call unapply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
+			let p_type (a,b,t) = t in
+			let tl = unapply_left (List.map p_type t1) in
+			let t1 = List.map2 (fun (a,b,_) t -> a,b,t) t1 tl in
+			TFun(t1,tret)
+		| TFun(t1,t2) ->
+			(* concat all types, call unapply_left (avoids multiple List.rev), combine resulting types to TFun parameters *)
+			let p_type (a,b,t) = t in
+			let tl = unapply_left ((List.map p_type t1)@[t2]) in
+			begin match List.rev tl with
+				| tret :: tparams ->
+					let tl = List.map2 (fun (a,b,_) t -> a,b,t) t1 (List.rev tparams) in
+					TFun(tl,tret)
+				| [] -> assert false
+			end
+
+		| TMono r ->
+			begin match !r with
+				| Some t -> loop t
+				| _ ->
+					raise Not_found
+			end
+		| TLazy f ->
+			loop (!f())
+		| TDynamic _ | TAnon _ ->
+			assert false
+	in
+	loop t
+
+and reduce_lifted_type (t : lifted_type) : t =
+	match t with
+	| LTNested(t, params) ->
+		let params = List.map reduce_lifted_type params in
+		begin match follow1 t, params with
+			| TInst({ cl_kind = KTypeParameter _}, []) as t, _ ->
+				List.fold_left (fun acc p -> mk_of acc p) t params
+			| TInst(c,_), _ ->
+				TInst(c, params)
+			| TEnum(e,_), _ ->
+				TEnum(e, params)
+			| TAbstract(e,_), _ ->
+				TAbstract(e, params)
+			| TMono _ as t, [p] ->
+				assert false
+				(*mk_of t p*)
+			| _ ->
+				let st = s_type (print_context()) in
+				Printf.printf "WHAT1: %s\n" (st t);
+				assert false
+				(*let rparams = params in
+				let t = List.fold_left (fun acc p -> unapply_in1 acc p) t rparams in
+				t*)
+		end
+	| LTNestedMono(t, tp) ->
+		List.fold_left (fun a p -> mk_of a (reduce_lifted_type p)) t tp
+	| LTFunc(TFun(args, r), params, None) ->
+		let params = List.map reduce_lifted_type params in
+		let params = List.fold_left2 (fun acc (s,o,_) b -> (s,o,b)::acc ) [] args params in
+		TFun(List.rev params, r)
+	| LTFunc(TFun(args, _), params, Some r) ->
+		let params = List.map reduce_lifted_type params in
+		let r = reduce_lifted_type r in
+		let params = List.fold_left2 (fun acc (s,o,_) b -> (s,o,b)::acc ) [] args params in
+		TFun(List.rev params, r)
+	| LTLeaf(t) ->
+		t
+	| _ -> assert false
+
+
+and normalize_of_type t =
+	let not_in t = not (is_in_type t) in
+	let not_of t = not (is_of_type t) in
+	let rec loop t =
+		match follow1 t with
+		| TAbstract({a_path=[],"-Of"}, [tm; TAbstract({a_path=[],"-Of"}, [tm2; tp])]) ->
+			let tm =  mk_of tm tm2 in
+			loop (mk_of tm (normalize_of_type tp))
+		(*| TAbstract({a_path=[],"-Of"}, [TAbstract({a_path=[],"-Of"}, [tm2;tp2]) as tm; tp]) when not_of tp -> (* tp is not an of type here *)
+			let loop1 =
+
+				let tm = tm in
+				(try
+					loop (unapply_in1_left tm tp)
+				with Not_found ->
+					mk_of tm tp)
+		*)
+		| TAbstract({a_path=[],"-Of"}, [tm; tp]) when not_of tp ->
+			let rec loop1 t1 tp1 = match follow1 t1 with
+			| TAbstract({a_path=[],"-Of"}, [t2; tp2]) ->
+				(match tp1 with
+				| x::tail ->
+					let tp1 = (try
+						 (unapply_in1 tp2 x )::tail
+					with Not_found ->
+						tp2::tp1)
+					in
+					loop1 t2 tp1
+				| _ ->
+					loop1 t2 (tp2::tp1))
+			| TInst(_, []) ->
+				raise Not_found
+			| TInst(_, _) | TEnum(_, _) | TAbstract(_, _) | TFun(_,_) | TType(_,_) ->
+				(*let rec loop2 t1 tp1 = match tp1 with
+				| x::y::tail
+					let t1 = unapply_in1 y x in
+					loop2 (t1::tail)
+				| y::[]
+					y
+				| _ -> assert false
+				in
+				loop2 List.rev (t1::tp1)*)
+				List.fold_left (fun acc p -> unapply_in1 acc p ) t1 tp1
+			| TMono t ->
+				raise Not_found
+			| _ ->
+				assert false
+			in
+			(try
+				loop1 tm [tp]
+			with Not_found ->
+				mk_of tm tp)
+
+			(*begin match follow1 tp with
+			(*| TInst(i, [a]) when not_in a ->
+				let tp = TInst(i, [!t_in]) in
+				let t = mk_of tm (mk_of tp a) in
+				normalize_of_type t*)
+			| _ ->
+				(try
+						loop (unapply_in1_right tm tp)
+				with Not_found ->
+					mk_of tm tp
+				)
+			end*)
+		| t -> t
+	in
+	let res = loop t in
+	(*begin match res with
+		| TAbstract({a_path=[],"-Of"}, [tm; tp]) ->
+			(match follow1 tm with
+			| TEnum(_, _) ->
+				(try unapply_in1 tm tp with _ -> assert false);
+				()
+
+			| TInst(_, a::tl) ->
+				(try unapply_in1 tm tp with _ -> assert false);
+				()
+			| TAbstract({a_path=[],"-Of"}, _) -> ()
+			| TAbstract(_, _) ->
+				(try unapply_in1 tm tp
+					with _ ->
+					let st = s_type (print_context()) in
+					Printf.printf "ERROR: %s => %s\n" (st t) (st res);
+					assert false);
+				()
+			| _ -> ())
+		| _ -> ()
+	end;*)
+	res
+
+and validate_lifted t =
+	let check_params p params =
+		begin
+		(if (List.length p) <> (List.length params) then
+			(Printf.printf "VALIDATION ERROR!!!!\n";
+			raise Exit)
+		else
+			t);
+		List.iter (fun t -> (validate_lifted t; ())) params;
+		t
+		end
+	in
+	match t with
+	| LTNested(TEnum(_, p), params) ->
+		check_params p params
+	| LTNested(TInst(_, p), params) when (List.length p) > 0 ->
+		check_params p params
+	| LTNested(TAbstract(_, p), params) ->
+		check_params p params
+	| LTFunc(TFun(args, ret), args2, ret2) ->
+		check_params args args2
+	| LTNested(t1, params) ->
+		(match follow1 t1 with
+		| TEnum _ ->
+			(Printf.printf "VALIDATION ERROR!!!!\n";
+			assert false;
+			raise Exit)
+		| _ -> t)
+	| _ -> t;
+
+
+and lift_type (t : t) : lifted_type =
+		(*let st = s_type (print_context()) in
+		Printf.printf "normalize\n%s\n%s\n" (st t) (st (normalize_of_type t));*)
+		lift_type1 (normalize_of_type t)
+and lift_type1 (t : t) : lifted_type =
+
+	(*let st = s_type (print_context()) in
+	Printf.printf "DO Lift: %s\n" (st (follow1 t));*)
+	let ft = t in
+	let t_in = !t_in in
+	let t = (follow1 t) in
+	match t with
+	(*| TAbstract({a_path=[],"-Of"}, [tm; TAbstract({a_path=[],"-Of"}, [tm2; tp])]) ->
+		lift_type (mk_of (mk_of tm tm2) tp)*)
+	| TAbstract({a_path=[],"-Of"}, [tm; tp]) ->
+
+		(*let st = s_type (print_context()) in
+		Printf.printf "%s\n" (st (follow tm));*)
+		let tm = (follow1 tm) in
+		begin match tm with
+			| TInst(_, []) as a ->
+				validate_lifted (LTNested(tm, [lift_type1 tp]))
+			| TEnum(_, _) when not (is_in_type tp) ->
+				let st = s_type (print_context()) in
+				let before = st t in
+				(try
+
+					validate_lifted (lift_type1 (unapply_in1_right tm tp))
+				with (Not_found as e) ->
+
+					Printf.printf "enum failed %s\n" before;
+					LTNested(tm, [lift_type1 tp])
+					(* raise e *)
+
+				)
+			| TInst(_, _) when not (is_in_type tp) ->
+				(try
+					validate_lifted (lift_type1 (unapply_in1_right tm tp))
+				with (Not_found as e) ->
+					(* raise e *)
+					LTNested(tm, [lift_type1 tp])
+				)
+			| TType(_, _) when not (is_in_type tp) ->
+				(try
+					validate_lifted (lift_type1 (unapply_in1_right tm tp))
+				with (Not_found as e) ->
+					(* raise e *)
+					LTNested(tm, [lift_type1 tp])
+				)
+			| TFun(_, _) when not (is_in_type tp) ->
+				(try
+					validate_lifted (lift_type1 (unapply_in1_right tm tp))
+				with (Not_found as e) ->
+					(* raise e *)
+					assert false
+				)
+			| TAbstract({a_path=[],"-Of"}, _) when not (is_in_type tp) ->
+				begin
+				let rec loop t tp =
+					match follow1 t with
+						(*| TAbstract({a_path=[],"-Of"}, [TMono _ as tm; tp1]) ->
+							LTNestedMono ( tm, [lift_type1 tp1] )
+							(*loop tm (tp1::tp)*)*)
+						| TAbstract({a_path=[],"-Of"}, [tm; tp1]) ->
+							loop tm (tp1::tp)
+						| TInst(_, []) ->
+							let params = tp in
+							validate_lifted (LTNested( t, List.map lift_type1 params ))
+						| TEnum(_, _) ->
+							let t = lift_type1 (List.fold_left (fun acc p -> unapply_in1_right acc p) t tp) in
+							validate_lifted t
+
+						| TInst(_, _) ->
+							validate_lifted (lift_type1 (List.fold_left (fun acc p -> unapply_in1_right acc p) t tp))
+						| TType(_, _) ->
+							validate_lifted (lift_type1 (List.fold_left (fun acc p -> unapply_in1_right acc p) t tp))
+
+						| TAbstract(_, _) ->
+							validate_lifted (lift_type1 (List.fold_left (fun acc p -> unapply_in1_right acc p) t tp))
+						| TFun(_,_) ->
+							validate_lifted (lift_type1 (List.fold_left (fun acc p -> unapply_in1_right acc p) t tp))
+						| (TMono _) as tx ->
+							(*let st = s_type (print_context()) in
+							Printf.printf "tp: [%s]\n" (String.concat "," (List.map st tp));
+							Printf.printf "tx: %s\n" (st tx);
+							let rec loop1 tp = match tp with
+								| tx::prev::[] ->
+									LTNestedMono(tx, [lift_type1 prev])
+								| cur::tail ->
+									LTNestedMono(cur, [(loop1 tail)])
+								| _ ->
+									assert false
+
+							in
+							validate_lifted (loop1 (tx::List.rev tp ))*)
+							let st = s_type (print_context()) in
+							(*Printf.printf "tp: [%s]\n" (String.concat "," (List.map st tp));
+							Printf.printf "tx: %s\n" (st tx);*)
+							validate_lifted (LTNestedMono(tx, (List.map (fun p -> lift_type1 p) tp)))
+						| _ ->
+							let st = s_type (print_context()) in
+							Printf.printf "%s => %s\n" (st t) (st tm);
+							assert false
+				in
+				loop tm (tp ::[])
+				end
+			| TAbstract(_, _) as x when not (is_in_type tp) ->
+				let st = s_type (print_context()) in
+				Printf.printf "%s\n" (st x);
+				(try
+					validate_lifted (lift_type1 (unapply_in1_right tm tp))
+				with (Not_found as e) ->
+					raise e
+				)
+			| (TMono m) as tm ->
+				validate_lifted (LTNestedMono(tm, [lift_type1 tp]))
+			| _ (*when is_in_type tp*) ->
+				validate_lifted (lift_type1 tm)
+		end
+	| TEnum (_,[]) | TInst (_,[]) | TAbstract (_,[]) | TType (_,[]) -> LTLeaf(t)
+
+	| TAbstract (t1,tl) ->
+		let t1 = TAbstract(t1, List.map (fun _ -> t_in) tl ) in
+		validate_lifted (LTNested(t1, List.map lift_type1 tl))
+
+	| TEnum (t1,tl) ->
+		let st = s_type (print_context()) in
+		(*Printf.printf "!!!!!! %s\n" (st t);*)
+		let t1 = TEnum(t1, List.map (fun _ -> t_in) tl ) in
+		(*Printf.printf "!!!!!! %s\n" (st t1);*)
+		validate_lifted (LTNested(t1, List.map lift_type1 tl))
+
+	| TInst (t1,tl) ->
+		let t1 = TInst(t1, List.map (fun _ -> t_in) tl ) in
+		validate_lifted (LTNested(t1, List.map lift_type1 tl))
+	| TType (t1,tl) ->
+		let t1 = TType(t1, List.map (fun _ -> t_in) tl ) in
+		validate_lifted (LTNested(t1, List.map lift_type1 tl))
+
+	| TFun (tl,r) ->
+		let is_void = function
+		| TAbstract({a_path=[],"Void"},_) -> true
+		| _ -> false
+		in
+		let nr = if is_void r then r else t_in in
+		let ltr = if is_void r then None else Some (lift_type1 r) in
+		let t1 = TFun( (List.map (fun (s, o, _) -> s, o, t_in) tl ), nr) in
+		validate_lifted (LTFunc(t1, List.map (fun (_,_,t) -> lift_type1 t) tl, ltr))
+
+	| t ->
+		LTLeaf(t)
+
+
+and reduce_of t =
+		match follow1 t with
+		| TAbstract({a_path=[],"-Of"}, [tm; tp1]) ->
+			begin try
+				reduce_lifted_type (lift_type t)
+			with Not_found ->
+				t
+			end
+		| _ ->
+			let st = s_type (print_context()) in
+			(*Printf.printf "reduce_of: %s\n" (st t);*)
+			t
+
+
+
+(*
 and reduce_of t =
 	match t with
 	| TAbstract( ({a_path=[],"-Of"} as a),[tm;(TAbstract({a_path=[],"-Of"}, [tb; tx]))]) ->
@@ -849,8 +1379,8 @@ and reduce_of t =
 	| TLazy f ->
 		reduce_of (!f())
 	| _ -> t
-
-let rec is_nullable = function
+*)
+and is_nullable = function
 	| TMono r ->
 		(match !r with None -> false | Some t -> is_nullable t)
 	| TAbstract ({ a_path = ([],"Null") },[_]) ->
@@ -877,7 +1407,7 @@ let rec is_nullable = function
 	| _ ->
 		true
 
-let rec is_null ?(no_lazy=false) = function
+and is_null ?(no_lazy=false) = function
 	| TMono r ->
 		(match !r with None -> false | Some t -> is_null t)
 	| TAbstract ({ a_path = ([],"Null") },[t]) ->
@@ -890,7 +1420,7 @@ let rec is_null ?(no_lazy=false) = function
 		false
 
 (* Determines if we have a Null<T>. Unlike is_null, this returns true even if the wrapped type is nullable itself. *)
-let rec is_explicit_null = function
+and is_explicit_null = function
 	| TMono r ->
 		(match !r with None -> false | Some t -> is_null t)
 	| TAbstract ({ a_path = ([],"Null") },[t]) ->
@@ -902,7 +1432,7 @@ let rec is_explicit_null = function
 	| _ ->
 		false
 
-let rec has_mono t = match t with
+and has_mono t = match t with
 	| TMono r ->
 		(match !r with None -> true | Some t -> has_mono t)
 	| TInst(_,pl) | TEnum(_,pl) | TAbstract(_,pl) | TType(_,pl) ->
@@ -916,7 +1446,7 @@ let rec has_mono t = match t with
 	| TLazy r ->
 		has_mono (!r())
 
-let concat e1 e2 =
+and concat e1 e2 =
 	let e = (match e1.eexpr, e2.eexpr with
 		| TBlock el1, TBlock el2 -> TBlock (el1@el2)
 		| TBlock el, _ -> TBlock (el @ [e2])
@@ -925,15 +1455,15 @@ let concat e1 e2 =
 	) in
 	mk e e2.etype (punion e1.epos e2.epos)
 
-let is_closed a = !(a.a_status) <> Opened
+and is_closed a = !(a.a_status) <> Opened
 
-let type_of_module_type = function
+and type_of_module_type = function
 	| TClassDecl c -> TInst (c,List.map snd c.cl_params)
 	| TEnumDecl e -> TEnum (e,List.map snd e.e_params)
 	| TTypeDecl t -> TType (t,List.map snd t.t_params)
 	| TAbstractDecl a -> TAbstract (a,List.map snd a.a_params)
 
-let rec module_type_of_type = function
+and module_type_of_type = function
 	| TInst(c,_) -> TClassDecl c
 	| TEnum(en,_) -> TEnumDecl en
 	| TType(t,_) -> TTypeDecl t
@@ -946,7 +1476,7 @@ let rec module_type_of_type = function
 	| _ ->
 		raise Exit
 
-let tconst_to_const = function
+and tconst_to_const = function
 	| TInt i -> Int (Int32.to_string i)
 	| TFloat s -> Float s
 	| TString s -> String s
@@ -955,7 +1485,7 @@ let tconst_to_const = function
 	| TThis -> Ident "this"
 	| TSuper -> Ident "super"
 
-let has_ctor_constraint c = match c.cl_kind with
+and has_ctor_constraint c = match c.cl_kind with
 	| KTypeParameter tl ->
 		List.exists (fun t -> match follow t with
 			| TAnon a when PMap.mem "new" a.a_fields -> true
@@ -966,28 +1496,28 @@ let has_ctor_constraint c = match c.cl_kind with
 
 (* ======= Field utility ======= *)
 
-let field_name f =
+and field_name f =
 	match f with
 	| FAnon f | FInstance (_,_,f) | FStatic (_,f) | FClosure (_,f) -> f.cf_name
 	| FEnum (_,f) -> f.ef_name
 	| FDynamic n -> n
 
-let extract_field = function
+and extract_field = function
 	| FAnon f | FInstance (_,_,f) | FStatic (_,f) | FClosure (_,f) -> Some f
 	| _ -> None
 
-let is_physical_field f =
+and is_physical_field f =
 	match f.cf_kind with
 	| Method _ -> true
 	| Var { v_read = AccNormal | AccInline | AccNo } | Var { v_write = AccNormal | AccNo } -> true
 	| _ -> Meta.has Meta.IsVar f.cf_meta
 
-let field_type f =
+and field_type f =
 	match f.cf_params with
 	| [] -> f.cf_type
 	| l -> monomorphs l f.cf_type
 
-let rec raw_class_field build_type c tl i =
+and raw_class_field build_type c tl i =
 	let apply = apply_params c.cl_params tl in
 	try
 		let f = PMap.find i c.cl_fields in
@@ -1044,9 +1574,10 @@ let rec raw_class_field build_type c tl i =
 			in
 			loop c.cl_implements
 
-let class_field = raw_class_field field_type
+and class_field tl i =
+	raw_class_field field_type tl i
 
-let quick_field t n =
+and quick_field t n =
 	match follow t with
 	| TInst (c,tl) ->
 		let c, _, f = raw_class_field (fun f -> f.cf_type) c tl n in
@@ -1075,11 +1606,11 @@ let quick_field t n =
 	| TLazy _ | TType _ ->
 		assert false
 
-let quick_field_dynamic t s =
+and quick_field_dynamic t s =
 	try quick_field t s
 	with Not_found -> FDynamic s
 
-let rec get_constructor build_type c =
+and get_constructor build_type c =
 	match c.cl_constructor, c.cl_super with
 	| Some c, _ -> build_type c, c
 	| None, None -> raise Not_found
@@ -1089,9 +1620,9 @@ let rec get_constructor build_type c =
 
 (* ======= Printing ======= *)
 
-let print_context() = ref []
+and print_context () = ref []
 
-let rec s_type_kind t =
+and s_type_kind t =
 	let map tl = String.concat ", " (List.map s_type_kind tl) in
 	match t with
 	| TMono r ->
@@ -1108,13 +1639,13 @@ let rec s_type_kind t =
 	| TDynamic t2 -> "TDynamic"
 	| TLazy _ -> "TLazy"
 
-let s_module_type_kind = function
+and s_module_type_kind = function
 	| TClassDecl c -> "TClassDecl(" ^ (s_type_path c.cl_path) ^ ")"
 	| TEnumDecl en -> "TEnumDecl(" ^ (s_type_path en.e_path) ^ ")"
 	| TAbstractDecl a -> "TAbstractDecl(" ^ (s_type_path a.a_path) ^ ")"
 	| TTypeDecl t -> "TTypeDecl(" ^ (s_type_path t.t_path) ^ ")"
 
-let rec s_type ctx t =
+and s_type ctx t =
 	match t with
 	| TMono r ->
 		(match !r with
@@ -1131,8 +1662,49 @@ let rec s_type ctx t =
 	| TType (t,tl) ->
 		s_type_path t.t_path ^ s_type_params ctx tl
 	| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a) ->
-		let r = reduce_of a in
-		if is_of_type r then "-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">" else (s_type ctx r)
+		(*let r = reduce_of a in*)
+		(*if (false) then*)
+			"-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">"
+		(*else (s_type ctx r)*)
+	| TAbstract (a,tl) ->
+		s_type_path a.a_path ^ s_type_params ctx tl
+	| TFun ([],t) ->
+		"Void -> " ^ s_fun ctx t false
+	| TFun (l,t) ->
+		String.concat " -> " (List.map (fun (s,b,t) ->
+			(if b then "?" else "") ^ (if s = "" then "" else s ^ " : ") ^ s_fun ctx t true
+		) l) ^ " -> " ^ s_fun ctx t false
+	| TAnon a ->
+		let fl = PMap.fold (fun f acc -> ((if Meta.has Meta.Optional f.cf_meta then " ?" else " ") ^ f.cf_name ^ " : " ^ s_type ctx f.cf_type) :: acc) a.a_fields [] in
+		"{" ^ (if not (is_closed a) then "+" else "") ^  String.concat "," fl ^ " }"
+	| TDynamic t2 ->
+		"Dynamic" ^ s_type_params ctx (if t == t2 then [] else [t2])
+	| TLazy f ->
+		s_type ctx (!f())
+
+and s_type2 ctx t =
+	let s_type = s_type2 in
+	let s_type_params = s_type_params2 in
+	match t with
+	| TMono r ->
+		(match !r with
+		| None -> Printf.sprintf "Unknown"
+		| Some t -> s_type ctx t)
+	| t when is_in_type t ->
+		"_"
+	| TEnum (e,tl) ->
+		s_type_path e.e_path ^ s_type_params ctx tl
+	| TInst (c,tl) ->
+		(match c.cl_kind with
+		| KExpr e -> Ast.s_expr e
+		| _ -> s_type_path c.cl_path ^ s_type_params ctx tl)
+	| TType (t,tl) ->
+		s_type_path t.t_path ^ s_type_params ctx tl
+	| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a) ->
+		(*let r = reduce_of a in*)
+		(*if (false) then*)
+			"-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">"
+		(*else (s_type ctx r)*)
 	| TAbstract (a,tl) ->
 		s_type_path a.a_path ^ s_type_params ctx tl
 	| TFun ([],t) ->
@@ -1167,8 +1739,10 @@ and s_fun ctx t void =
 and s_type_params ctx = function
 	| [] -> ""
 	| l -> "<" ^ String.concat ", " (List.map (s_type ctx) l) ^ ">"
-
-let s_access is_read = function
+and s_type_params2 ctx = function
+	| [] -> ""
+	| l -> "<" ^ String.concat ", " (List.map (s_type2 ctx) l) ^ ">"
+and s_access is_read = function
 	| AccNormal -> "default"
 	| AccNo -> "null"
 	| AccNever -> "never"
@@ -1177,7 +1751,7 @@ let s_access is_read = function
 	| AccInline	-> "inline"
 	| AccRequire (n,_) -> "require " ^ n
 
-let s_kind = function
+and s_kind = function
 	| Var { v_read = AccNormal; v_write = AccNormal } -> "var"
 	| Var v -> "(" ^ s_access true v.v_read ^ "," ^ s_access false v.v_write ^ ")"
 	| Method m ->
@@ -1187,7 +1761,7 @@ let s_kind = function
 		| MethInline -> "inline method"
 		| MethMacro -> "macro method"
 
-let s_expr_kind e =
+and s_expr_kind e =
 	match e.eexpr with
 	| TConst _ -> "Const"
 	| TLocal _ -> "Local"
@@ -1219,7 +1793,7 @@ let s_expr_kind e =
 	| TMeta _ -> "Meta"
 	| TIdent _ -> "Ident"
 
-let s_const = function
+and s_const = function
 	| TInt i -> Int32.to_string i
 	| TFloat s -> s
 	| TString s -> Printf.sprintf "\"%s\"" (Ast.s_escape s)
@@ -1228,7 +1802,7 @@ let s_const = function
 	| TThis -> "this"
 	| TSuper -> "super"
 
-let rec s_expr s_type e =
+and s_expr s_type e =
 	let sprintf = Printf.sprintf in
 	let slist f l = String.concat "," (List.map f l) in
 	let loop = s_expr s_type in
@@ -1712,39 +2286,7 @@ end
 
 (* ======= Unification ======= *)
 
-let rec link e a b =
-	(* tell if setting a == b will create a type-loop *)
-	let rec loop t =
-		if t == a then
-			true
-		else match t with
-		| TMono t -> (match !t with None -> false | Some t -> loop t)
-		| TEnum (_,tl) -> List.exists loop tl
-		| TInst (_,tl) | TType (_,tl) | TAbstract (_,tl) -> List.exists loop tl
-		| TFun (tl,t) -> List.exists (fun (_,_,t) -> loop t) tl || loop t
-		| TDynamic t2 ->
-			if t == t2 then
-				false
-			else
-				loop t2
-		| TLazy f ->
-			loop (!f())
-		| TAnon a ->
-			try
-				PMap.iter (fun _ f -> if loop f.cf_type then raise Exit) a.a_fields;
-				false
-			with
-				Exit -> true
-	in
-	(* tell is already a ~= b *)
-	if loop b then
-		(follow b) == a
-	else if b == t_dynamic then
-		true
-	else begin
-		e := Some b;
-		true
-	end
+
 
 let link_dynamic a b = match follow a,follow b with
 	| TMono r,TDynamic _ -> r := Some b
@@ -1894,6 +2436,7 @@ type eq_kind =
 	| EqCoreType
 	| EqRightDynamic
 	| EqBothDynamic
+	| EqLeftBoth
 	| EqDoNotFollowNull (* like EqStrict, but does not follow Null<T> *)
 
 let rec type_eq param a b =
@@ -1924,6 +2467,10 @@ let rec type_eq param a b =
 			(fun (a2,b2) -> fast_eq a a2 && fast_eq b b2)
 			(fun() -> type_eq param a (apply_params t.t_params tl t.t_type))
 			(fun l -> error (cannot_unify a b :: l))
+	| TAbstract({a_path=[],"-In"},_), b when (param = EqLeftBoth) ->
+		()
+	| a, TInst({cl_path=[],"-In"},_) when (param = EqLeftBoth) ->
+		()
 	| TEnum (e1,tl1) , TEnum (e2,tl2) ->
 		if e1 != e2 && not (param = EqCoreType && e1.e_path = e2.e_path) then error [cannot_unify a b];
 		List.iter2 (type_eq param) tl1 tl2
@@ -1979,7 +2526,9 @@ let rec type_eq param a b =
 	| _ , _ ->
 		if b == t_dynamic && (param = EqRightDynamic || param = EqBothDynamic) then
 			()
-		else if a == t_dynamic && param = EqBothDynamic then
+		else if a == t_dynamic && (param = EqBothDynamic) then
+			()
+		else if ((is_in_type a) || (is_in_type b)) && (param = EqLeftBoth) then
 			()
 		else
 			error [cannot_unify a b]
@@ -2010,6 +2559,7 @@ let abstract_cast_stack = ref []
 let unify_new_monos = ref []
 
 let print_stacks() =
+	begin
 	let ctx = print_context() in
 	let st = s_type ctx in
 	print_endline "unify_stack";
@@ -2018,8 +2568,13 @@ let print_stacks() =
 	List.iter (fun m -> print_endline ("\t" ^ st m)) !unify_new_monos;
 	print_endline "abstract_cast_stack";
 	List.iter (fun (a,b) -> Printf.printf "\t%s , %s\n" (st a) (st b)) !abstract_cast_stack
+	end
 
-let rec unify_of tm ta b b_is_left tfull =
+
+
+
+
+let rec unify_of_old tm ta b b_is_left tfull =
 	let err str =
 		let params = [tm; ta] in
 		let of_t = TAbstract(of_type, params) in
@@ -2103,7 +2658,7 @@ let rec unify_of tm ta b b_is_left tfull =
 
 
 and isKTypeParameter t =
-	match t with
+	match follow1 t with
 	| TInst ({ cl_kind = KTypeParameter ctl } as c,pl) -> true
 	| _ -> false
 
@@ -2132,70 +2687,12 @@ and unify a b =
 			(fun(a2,b2) -> fast_eq a a2 && fast_eq b b2)
 			(fun() -> unify a (apply_params t.t_params tl t.t_type))
 			(fun l -> error (cannot_unify a b :: l))
-	| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a),(TAbstract({a_path = [],"-Of"},[tm2;ta2]) as b) ->
-		(*
-			unify the reduced Of types, example:
-			unify Of<B->In, A>, B->A becomes unify B->A, B->A
-		*)
-
-		let st = s_type (print_context ()) in
-
-		(*Printf.printf "unify red %s => %s\n" (st (reduce_of a)) (st (reduce_of b));*)
-		(match reduce_of a, reduce_of b with
-			| TAbstract({a_path = [],"-Of"},[tm1;ta1]), TAbstract({a_path = [],"-Of"},[tm2;ta2]) ->
-				(*Printf.printf "unify %s => %s\n" (st tm1) (st tm2);
-				Printf.printf "unify %s => %s\n" (st a) (st b);*)
-				unify tm1 tm2;
-				unify ta1 ta2;
-			| _, TAbstract({a_path = [],"-Of"},[_;_])
-			| TAbstract({a_path = [],"-Of"},[_;_]), _ ->
-				unify tm1 tm2;
-				unify ta1 ta2;
-			| ta,tb -> unify ta tb)
-	| (TAbstract({a_path = [],"-Of"},[tm;ta]) as a),b ->
-		(*
-			try to unify with the reduced Of type first, example:
-			unify Of<A->In, B>, A->B becomes unify A->B, A->B
-		*)
-		let st = s_type (print_context ()) in
-		(* let st = s_type (print_context ()) in
-		Printf.printf "unify %s => %s\n" (st a) (st b); *)
-		let t = reduce_of a in
-		(match t with
-			| TAbstract({a_path = [],"-Of"},[tm;ta]) ->
-				(*Printf.printf "do it unify %s => %s => %s (%b)\n" (st a) (st b) (st tm) (isKTypeParameter b);*)
-				(*if (isKTypeParameter b) && (tm = b) then
-					()
-				else*)
-				unify_of tm ta b false a
-
-
-			| _ -> unify t b)
-	(*
-	| (TInst ({ cl_kind = KTypeParameter ctl } as c,pl) as a), (TAbstract( ({a_path = [],"-Of"} as bb),([tm;ta] as tl)) as b) ->
-		(* one of the constraints must satisfy the abstract *)
-		(*let st = s_type (print_context ()) in
-		Printf.printf "ktyepe param unify %s => %s\n" (st a) (st b);*)
-		unify a tm
-
-		(*let st = s_type (print_context ()) in
-		Printf.printf "ktyepe param unify %s => %s\n" (st a) (st b);
-		error [cannot_unify a b];*)*)
-	| a,(TAbstract({a_path = [],"-Of"},[tm;ta]) as b) ->
-		(* first reduce the Of type, same as in the case above. *)
-		let st = s_type (print_context ()) in
-		(*Printf.printf "unify %s => %s => %s\n" (st a) (st b) (st (reduce_of b));*)
-		let t = reduce_of b in
-		(match t with
-			| TAbstract({a_path = [],"-Of"},[tm;ta]) ->
-				(*(if (isKTypeParameter a) && (tm = a) then
-					(*(Printf.printf "do it unify %s => %s => %s\n" (st a) (st b) (st tm);*)
-					()
-				else*)
-				unify_of tm ta a true b
-
-				(*Printf.printf "do it done unify %s => %s => %s\n" (st a) (st b) (st (reduce_of b))*)
-			| _ -> unify a t)
+	| TAbstract({a_path = [],"-Of"},_),TAbstract({a_path = [],"-Of"},_) ->
+		unify_of a b
+	| TAbstract({a_path = [],"-Of"},_),b ->
+		unify_of a b
+	| a,TAbstract({a_path = [],"-Of"},_) ->
+		unify_of a b
 	| TEnum (ea,tl1) , TEnum (eb,tl2) ->
 		if ea != eb then error [cannot_unify a b];
 		unify_type_params a b tl1 tl2
@@ -2415,6 +2912,322 @@ and unify a b =
 	| _ , _ ->
 		error [cannot_unify a b]
 
+and unify_lifted_types t1 t2 c1 c2 =
+		unify_lifted_types1 t1 t2 t1 t2 c1 c2
+
+
+and s_lifted_type lt =
+	let s_type1 = s_type (print_context()) in
+	let st_params params = (String.concat ", " (List.map s_lifted_type params)) in
+	let s_opt f v = match v with
+	| Some x -> "Some(" ^ (f x) ^ ")"
+	| None -> "None"
+	in
+
+	match validate_lifted lt with
+	| LTNestedMono(t, params) -> "LTNestedMono(" ^ (s_type1 t) ^ ",[" ^ (st_params params) ^ "])"
+	| LTFunc(t,args,ret) -> "LTFunc(" ^ (s_type1 t) ^ ",[" ^ (st_params args) ^ "]," ^ (s_opt s_lifted_type ret) ^ ")"
+	| LTNested(t,params) -> "LTNested(" ^ (s_type1 t) ^ ",[" ^ (st_params params) ^ "])"
+	| LTLeaf(t) -> "LTLeaf(" ^ (s_type1 t) ^ ")"
+
+
+and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
+	let eq_length p1 p2 =
+		List.length p1 = List.length p2
+	in
+	let unify_lifted_types t1 t2 = unify_lifted_types1 t1 t2 o1 o2 c1 c2 in
+	let s_type1 = s_type (print_context()) in
+	let st = s_lifted_type in
+	let unify_lifted_types_params p1 p2 =
+		if (List.length p1) == (List.length p2) then
+			List.iter2 (fun a b ->
+				unify_lifted_types a b
+			) p1 p2
+		else
+			begin
+			Printf.printf
+				"failed to unify_param\n---------start\n%s\n%s\nin\n%s\n%s\n"
+				(st t1) (st t2) (st o1) (st o2);
+			(*Printf.printf
+				"with\n%s\n%s\nin\n%s\n%s\n"
+				 (s_type1 (reduce_lifted_type t1)) (s_type1 (reduce_lifted_type t2)) (s_type1 (reduce_lifted_type o1)) (s_type1 (reduce_lifted_type o1));*)
+			Printf.printf
+					"with\n%s\n%s\n\n"
+					(s_type1 (normalize_of_type c1))
+					(s_type1 (normalize_of_type c2));
+			Printf.printf "-------------end\n";
+			error [Unify_custom ("failed to unify_param" ^ (st t1) ^ " to " ^ (st t2)) ]
+			end
+	in
+	let reduce_mono_params p1 depth =
+		let rec loop p1 d =
+			match p1,d with
+			| _, 0 ->
+				p1
+			| ((LTNestedMono(_, _) as nm)::z::p1), d ->
+				let rec loop1 nm z = match nm with
+				| LTNestedMono(TMono _ as a, [LTLeaf(TMono _ as b)]) ->
+					LTNestedMono(a, [LTNestedMono(b, [z])])
+				| LTNestedMono(TMono _ as a, [LTLeaf(TMono _ as b); LTLeaf(TMono _ as c)]) ->
+					LTNestedMono(a, [LTNestedMono(b, [LTNestedMono(c, [z])])])
+				| LTNestedMono(TMono _ as a, [LTNestedMono(_,_) as z1]) ->
+					loop1 z1 (LTNestedMono(a, [z]))
+				(*| LTNestedMono(TMono _ as a, [z1]) ->
+					LTNestedMono(a, [z1])*)
+
+				| _ ->
+					Printf.printf "UNEXPECTED: %s\n" (s_lifted_type nm);
+					assert false
+				in
+				let nm = loop1 nm z in
+				loop (nm::p1) (d-1)
+			| (LTLeaf(TMono _ as x)::y::p1), d ->
+				let p1 = (LTNestedMono(x, [y])::p1) in
+				loop p1 (d-1)
+			| _ ->
+				assert false
+		in
+		loop p1 depth
+	in
+	let reduce_nested_param t2 p2 d =
+		let rec loop t2 p2 d =
+			match p2,d with
+			| _, 0 ->
+				t2, p2
+			| (x::p2), d ->
+				loop (unapply_in1 t2 (reduce_lifted_type x)) p2 (d-1)
+			| _ ->
+				assert false
+		in
+		loop t2 p2 d
+	in
+	let unify_nested_mono_right t1 p1 t2 p2 =
+		let l1 = List.length p1 in
+		let l2 = List.length p2 in
+
+		(match List.length p1, List.length p2 with
+		| l1, l2 when l1 < l2 ->
+			let p2 = reduce_mono_params p2 (l2-l1) in
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| l1, l2 when l1 > l2 ->
+			let t1, p1 = reduce_nested_param t1 p1 (l1-l2) in
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| _ ->
+			(unify t1 t2;
+			unify_lifted_types_params p1 p2))
+	in
+	let unify_nested_mono_left t1 p1 t2 p2 =
+		let l1 = List.length p1 in
+		let l2 = List.length p2 in
+
+		(match List.length p1, List.length p2 with
+		| l1, l2 when l1 > l2 ->
+			let p1 = reduce_mono_params p1 (l1-l2) in
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| l1, l2 when l1 < l2 ->
+			let t2, p2 = reduce_nested_param t2 p2 (l2-l1) in
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| _ ->
+			(unify t1 t2;
+			unify_lifted_types_params p1 p2))
+	in
+	let unify_nested_both t1 p1 t2 p2 =
+		let l1 = List.length p1 in
+		let l2 = List.length p2 in
+
+		(match List.length p1, List.length p2 with
+		| l1, l2 when l1 > l2 ->
+			let t1, p1 = reduce_nested_param t1 p1 (l1-l2) in
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| l1, l2 when l1 < l2 ->
+			let t2, p2 = reduce_nested_param t2 p2 (l2-l1) in
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| _ ->
+			(unify t1 t2;
+			unify_lifted_types_params p1 p2))
+	in
+	let unify_with_type_param_right a tp =
+		let a = reduce_lifted_type a in
+		begin match tp with
+		| TInst({ cl_kind = KTypeParameter tps }, []) ->
+			List.iter (fun t -> unify a t) tps
+		| _ -> assert false
+		end
+	in
+	let unify_with_type_param_left tp b =
+		let b = reduce_lifted_type b in
+		begin match tp with
+		| TInst({ cl_kind = KTypeParameter tps }, []) ->
+			List.iter (fun t -> unify b t) tps
+		| _ -> assert false
+		end
+	in
+	let lt1 = t1 in
+	let lt2 = t2 in
+	(match lt1, lt2 with
+		| LTFunc(t1, p1, None) as a, LTNestedMono(t2, p2) ->
+			unify_nested_mono_right t1 p1 t2 p2
+		| LTFunc(t1, p1, Some r), LTNestedMono(t2, p2) ->
+			let p1 = p1@[r] in
+			unify_nested_mono_right t1 p1 t2 p2
+		| LTNestedMono(t1, p1), (LTFunc(t2, p2, None ) as b) ->
+			unify_nested_mono_left t1 p1 t2 p2
+		| LTNestedMono(t1, p1), (LTFunc(t2, p2, Some r) as b) ->
+			let p2 = p2@[r] in
+			unify_nested_mono_left t1 p1 t2 p2
+		| LTNested(t1, p1) as a, (LTNestedMono(t2, p2) as nm) ->
+			unify_nested_mono_right t1 p1 t2 p2
+		| LTNestedMono(t1, p1), LTNested(t2, p2) ->
+			unify_nested_mono_left t1 p1 t2 p2
+		| LTNestedMono(t1, p1), LTNestedMono(t2, p2) ->
+			unify t1 t2;
+			unify_lifted_types_params p1 p2
+		| LTNested(t1, p1), LTNested(t2, p2) ->
+			unify_nested_both t1 p1 t2 p2
+		| LTFunc(f1, args1, None), LTFunc(f2, args2, None) ->
+			unify_nested_both f1 args1 f2 args2
+		| LTFunc(f1, args1, Some(ret1)), LTFunc(f2, args2, Some(ret2) ) ->
+			unify_nested_both f1 (args1@[ret1]) f2 (args2@[ret2])
+
+		| LTNestedMono(m, _), LTLeaf(t2) when isKTypeParameter t2 ->
+
+			unify_with_type_param_right t1 t2
+		| LTNested(_, _), LTLeaf(t2) when isKTypeParameter t2 ->
+			unify_with_type_param_right t1 t2
+		| LTFunc(_,_,_), LTLeaf(t2) when isKTypeParameter t2 ->
+			unify_with_type_param_right t1 t2
+		| LTLeaf(t1), LTNested(_, _) when isKTypeParameter t1 ->
+			unify_with_type_param_left t1 t2
+		| LTLeaf(t1), LTFunc(_,_,None) when isKTypeParameter t1 ->
+			unify_with_type_param_left t1 t2
+		| LTLeaf(t1), LTFunc(_,_,_) when isKTypeParameter t1 ->
+			unify_with_type_param_left t1 t2
+		| LTLeaf(t1), LTNestedMono(_,_) when isKTypeParameter t1 ->
+			unify_with_type_param_left t1 t2
+
+		| LTNestedMono(ta, _), LTLeaf(t2) when is_in_type t2 ->
+			()
+		| LTNested(_, _), LTLeaf(t2) when is_in_type t2 ->
+			()
+		| LTFunc(_,_,_), LTLeaf(t2) when is_in_type t2 ->
+			()
+		| LTLeaf(t1), LTNestedMono(ta, _) when is_in_type t1 ->
+			()
+
+		| LTLeaf(t1), LTNested(_, _) when is_in_type t1 ->
+			()
+		| LTLeaf(t1), LTFunc(_,_,None) when is_in_type t1 ->
+			assert false
+		| LTLeaf(t1), LTFunc(_,_,Some(_)) when is_in_type t1 ->
+			()
+		| LTLeaf(t1), LTLeaf(t2) when is_in_type t1 ->
+			()
+		| LTLeaf(t1), LTLeaf(t2) when is_in_type t2 ->
+			()
+		| LTLeaf(t1), LTLeaf(t2) ->
+			unify (follow1 t1) (follow1 t2)
+		| (LTNestedMono(a, [p]) as nm), LTLeaf((TMono _) as b) ->
+			assert false
+			(*unify (reduce_lifted_type nm) b*)
+			(*unify a b;
+			let nm = unapply_in1_right a (reduce_lifted_type p) in
+			let nm = lift_type nm in
+			unify_lifted_types nm (lift_type b)*)
+		| (LTNestedMono(a, p) as nm), LTLeaf((TMono _) as b) ->
+			assert false
+		| LTLeaf((TMono _) as a), (LTNestedMono(b, [p]) as nm) ->
+			assert false
+			(*unify a b;
+			let nm = unapply_in1_right b (reduce_lifted_type p) in
+			let nm = lift_type nm in
+			unify_lifted_types (lift_type a) nm*)
+		| LTLeaf((TMono _) as a), (LTNestedMono(b, p) as nm) ->
+			assert false
+		| LTNested(_, _), LTLeaf(TMono _) ->
+			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
+		| LTFunc(_,_,None), LTLeaf(TMono _) ->
+			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
+		| LTFunc(_,_,_), LTLeaf(TMono _) ->
+			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
+		| LTLeaf(TMono _), LTNested(_, _) ->
+			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
+		| LTLeaf(TMono _), LTFunc(_,_,_) ->
+			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
+		| LTNested(a, p1), LTFunc(b, args, None) ->
+			assert false
+		| LTNested(a, p1), LTFunc(b, args, Some ret) ->
+			unify a b;
+			unify_lifted_types_params p1 (args @ [ret]);
+		| LTFunc(a, args, None), LTNested(b, p1) ->
+			assert false
+		| LTFunc(a, args, Some ret), LTNested(b, p1) ->
+			unify a b;
+			unify_lifted_types_params (args @ [ret]) p1;
+		| LTLeaf(t), LTNested(_, _) ->
+			unify t (reduce_lifted_type t2)
+		| t1, t2 ->
+			Printf.printf "%s %s\n" (s_lifted_type t1) (s_lifted_type t2);
+			assert false
+			(*Printf.printf "failed to unify3\n--start\n%s\n%s\nin\n%s\n%s\n--end\n" (st t1) (st t2) (st o1) (st o2);
+			Printf.printf
+				"with\n%s\n%s\nin\n%s\n%s\n--end\n"
+				 (s_type1 (reduce_lifted_type t1)) (s_type1 (reduce_lifted_type t2)) (s_type1 (reduce_lifted_type o1)) (s_type1 (reduce_lifted_type o1));
+				Printf.printf
+					"with\n%s\n%s\n--end\n"
+					(s_type1 (normalize_of_type c1))
+					(s_type1 (normalize_of_type c2));*)
+			(*error [Unify_custom ("failed to unify" ^ (st t1) ^ " to " ^ (st t2)) ]*)
+	)
+
+and unify_of a b =
+	let err str =
+		let st = s_type (print_context ()) in
+		error [Unify_custom (str ^ "\ncannot unify " ^ (st a) ^ " with " ^ (st b)) ]
+	in
+	let st = s_type (print_context ()) in
+	let beforeA = st a in
+	let beforeB = st b in
+	log_type "try unify_of A" a;
+	log_type "try unify_of B" b;
+	log_normalized_type "try unify_of A" a;
+	log_normalized_type "try unify_of B" b;
+	log_lifted_type "try unify_of A" (lift_type a);
+	log_lifted_type "try unify_of B" (lift_type b);
+	log_type "try unify_of A" (reduce_lifted_type (lift_type a));
+	log_type "try unify_of B" (reduce_lifted_type (lift_type b));
+	log_normalized_type "try unify_of A" (reduce_lifted_type (lift_type a));
+	log_normalized_type "try unify_of B" (reduce_lifted_type (lift_type b));
+	(*Printf.printf "try unify_of %s => %s\n" (beforeA) (beforeB);
+	Printf.printf "try unify_of %s => %s\n" (s_lifted_type (lift_type a)) (s_lifted_type (lift_type b));*)
+	(try
+
+		unify_lifted_types (lift_type a) (lift_type b) a b;
+		log_type "success unify_of A" a;
+		log_type "success unify_of B" b;
+		log_normalized_type "success unify_of A" a;
+		log_normalized_type "success unify_of B" b;
+		log_lifted_type "success unify_of A" (lift_type a);
+		log_lifted_type "success unify_of B" (lift_type b);
+		(*Printf.printf "success unify_of %s => %s\n" (st a) (st b)*)
+	with e ->
+		log_type "error unify_of A" a;
+		log_type "error unify_of B" b;
+		log_normalized_type "error unify_of A" a;
+		log_normalized_type "error unify_of B" b;
+		log_lifted_type "error unify_of A" (lift_type a);
+		log_lifted_type "error unify_of B" (lift_type b);
+		(*Printf.printf "error for unify_of %s => %s\n" (st a) (st b);
+		Printf.printf "error for unify_of %s => %s\n" (beforeA) (beforeB);*)
+		raise e
+		(*err "Unify Error"*)
+	)
+
 and unify_abstracts a b a1 tl1 a2 tl2 =
 	let f1 = unify_to a1 tl1 b in
 		let f2 = unify_from a2 tl2 a b in
@@ -2584,19 +3397,66 @@ and unify_type_params a b tl1 tl2 =
 			with_variance (type_eq EqRightDynamic) t1 t2
 		with Unify_error l ->
 			try
-				if is_of_type t1 || is_of_type t2 then
-					(match t1, t2 with
-						| (TInst({cl_kind = KTypeParameter c }, pl)), (TAbstract({ a_path = [], "-Of"},[tm;_])) ->
-							unify t1 tm
-						| _ -> with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2))
-				else
-					try
-						(* try to reduce nested Of types like in Array<Void->Of<Promise<_>, T> *)
-						with_variance (type_eq EqRightDynamic) (reduce_of_rec t1) (reduce_of_rec t2)
-					with Unify_error l ->
+				match follow1 t1, follow1 t2 with
+				| TInst( { cl_kind = KTypeParameter kt1} as c1, p1), TInst( { cl_kind = KTypeParameter kt2} as c2, p2) ->
+					if kt1 == kt2 && c1.cl_path == c2.cl_path && p1 == p2 && c1.cl_module == c2.cl_module then
+						()
+					else
 						raise (Unify_error l)
-
+				| _ ->
+					begin
+					if (is_in_type (follow1 t1)) || (is_in_type (follow1 t2)) then
+						()
+					else if is_of_type t1 || is_of_type t2 then
+						(try
+							unify_of t1 t2
+						with Unify_error l ->
+							with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2))
+					else
+						begin try
+							unify_of t1 t2
+						with Unify_error l ->
+							begin try
+								with_variance (type_eq EqRightDynamic) (reduce_of_rec t1) (reduce_of_rec t2)
+							with Unify_error l ->
+								raise (Unify_error l)
+							end
+						end
+					end
 			with Unify_error l ->
+				let st = s_type (print_context()) in
+				(*Printf.printf "INVARIANT %s => %s | %b => %b | %b\n" (st t1) (st t2) (is_of_type t1) (is_of_type t2) (t1 == t2) ;*)
+				if (st t1) = "ArrayTFunctor.M" then
+					(match follow1 t1, follow1 t2 with
+					| TInst(a, p1), TInst(b, p2) ->
+
+						let sc = Printer.s_tclass "" in
+						Printf.printf "INVARIANT %i => %i\n" (List.length p1) (List.length p2);
+						Printf.printf "a\n%s\n%s\n" (sc a) (sc b);
+						Printf.printf "a\n%s\n%s\n" (s_class_kind a.cl_kind) (s_class_kind b.cl_kind);
+						Printf.printf "cl_path %b\n" (a.cl_path == b.cl_path);
+						Printf.printf "cl_module %b\n" (a.cl_module == b.cl_module);
+						Printf.printf "cl_pos %b\n" (a.cl_pos == b.cl_pos);
+						Printf.printf "cl_name_pos %b\n" (a.cl_name_pos == b.cl_name_pos);
+						Printf.printf "cl_private %b\n" (a.cl_private == b.cl_private);
+						Printf.printf "cl_doc %b\n" (a.cl_doc == b.cl_doc);
+						Printf.printf "cl_meta %b\n" (a.cl_meta == b.cl_meta);
+						Printf.printf "cl_params %b\n" (a.cl_params == b.cl_params);
+						Printf.printf "cl_kind %b\n" (a.cl_kind == b.cl_kind);
+						Printf.printf "cl_implements %b\n" (a.cl_implements == b.cl_implements);
+						Printf.printf "cl_overrides %b\n" (a.cl_overrides == b.cl_overrides);
+						Printf.printf "cl_ordered_fields %b\n" (a.cl_ordered_fields == b.cl_ordered_fields);
+						Printf.printf "cl_ordered_statics %b\n" (a.cl_ordered_statics == b.cl_ordered_statics);
+						(match a.cl_kind, b.cl_kind with
+						| KTypeParameter al, KTypeParameter bl ->
+							Printf.printf "kind len %i => %i\n" (List.length al) (List.length bl);
+							Printf.printf "kind eq %b\n" (al == bl);
+						| _ -> ());
+						assert false
+					| _ -> assert false);
+
+
+
 				let err = cannot_unify a b in
 				error (err :: (Invariant_parameter (t1,t2)) :: l)
 	) tl1 tl2
@@ -3256,3 +4116,15 @@ module StringError = struct
 		try string_error_raise s sl msg
 		with Not_found -> msg
 end
+
+let enable_type_log b =
+	(if b then
+		let st = s_type (print_context()) in
+		(log_type_ref := st;
+		log_lifted_type_ref := s_lifted_type;
+		log_normalized_type_ref := (fun t -> st (normalize_of_type t));
+		log_enabled := true)
+	else
+		log_enabled := false);
+
+

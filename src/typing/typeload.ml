@@ -441,6 +441,7 @@ let pselect p1 p2 =
 
 (* build an instance from a full type *)
 let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
+	let op = p in
 	let p = pselect pn p in
 	let t = try
 		if t.tpackage <> [] || t.tsub <> None then raise Not_found;
@@ -470,7 +471,13 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 				load_instance ctx (t, p) allow_no_params p
 		end
 	with Not_found ->
-		if t.tname = "-In" then
+		if t.tname = "HKOf" then
+			let t = { t with tname = "-Of"; tpackage = []; tsub = Some("-Of") } in
+			load_instance ctx (t, p) allow_no_params p
+		else if t.tname = "HKMono" then
+			let tr = ref None in
+			TMono tr
+		else if t.tname = "-In" then
 			!t_in
 		else begin
 			let types, path, f, is_generic, is_generic_build = match t with
@@ -491,6 +498,7 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 					t, p, f, is_generic, is_generic_build
 			in
 			let is_rest = is_generic_build && (match types with ["Rest",_] -> true | _ -> false) in
+
 			if allow_no_params && t.tparams = [] && not is_rest then begin
 				let pl = ref [] in
 				pl := List.map (fun (name,t) ->
@@ -508,7 +516,7 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 				| [TPType t] -> TDynamic (load_complex_type ctx true p t)
 				| _ -> error "Too many parameters for Dynamic" p
 			else begin
-				if not is_rest && ctx.com.display.dms_error_policy <> EPIgnore && List.length types <> List.length t.tparams then error ("Invalid number of type parameters for " ^ s_type_path path) p;
+				if not is_rest && (t.tname <> "-Of") && ctx.com.display.dms_error_policy <> EPIgnore && List.length types <> List.length t.tparams then error ("Invalid number of type parameters for " ^ s_type_path path) p;
 				let tparams = List.map (fun t ->
 					match t with
 					| TPExpr e ->
@@ -523,7 +531,7 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 						TInst (c,[])
 					| TPType t -> load_complex_type ctx true p t
 				) t.tparams in
-				let rec loop tl1 tl2 is_rest = match tl1,tl2 with
+				let rec loop tl1 tl2 is_rest is_of = match tl1,tl2 with
 					| t :: tl1,(name,t2) :: tl2 ->
 						let check_const c =
 							let is_expression = (match t with TInst ({ cl_kind = KExpr _ },_) -> true | _ -> false) in
@@ -535,6 +543,7 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 							end else if expects_expression then
 								error "Type parameter is expected to be a constant value" p
 						in
+						let is_of = is_of || name == "-Of" in
 						let is_rest = is_rest || name = "Rest" && is_generic_build in
 						let t = match follow t2 with
 							| TInst ({ cl_kind = KTypeParameter [] } as c, []) when not is_generic ->
@@ -551,22 +560,22 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 								TLazy r
 							| _ -> assert false
 						in
-						t :: loop tl1 tl2 is_rest
+						t :: loop tl1 tl2 is_rest is_of
 					| [],[] ->
 						[]
 					| [],["Rest",_] when is_generic_build ->
 						[]
 					| [],(_,t) :: tl when ctx.com.display.dms_error_policy = EPIgnore ->
-						t :: loop [] tl is_rest
+						t :: loop [] tl is_rest is_of
 					| [],_ ->
 						error ("Not enough type parameters for " ^ s_type_path path) p
 					| t :: tl,[] ->
-						if is_rest then
-							t :: loop tl [] true
+						if is_rest || is_of then
+							t :: loop tl [] is_rest is_of
 						else
 							error ("Too many parameters for " ^ s_type_path path) p
 				in
-				let params = loop tparams types false in
+				let params = loop tparams types false false in
 				f params
 			end
 		end

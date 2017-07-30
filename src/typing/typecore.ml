@@ -197,9 +197,12 @@ let unify_raise ctx t1 t2 p =
 	try
 		Type.unify t1 t2
 	with
-		Unify_error l ->
+		| Unify_error l ->
+			(*let st = s_type (print_context ()) in
+			Printf.printf "error for unify_raise %s => %s\n" (st t1) (st t2);*)
 			(* no untyped check *)
 			raise (Error (Unify l,p))
+
 
 let save_locals ctx =
 	let locals = ctx.locals in

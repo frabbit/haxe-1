@@ -1031,7 +1031,9 @@ and encode_abref ab =
 and encode_lifted_type lt =
 	let rec loop = function
 	| LTNested(t, params) -> 0, [encode_type t; encode_array (List.map encode_lifted_type params) ]
-	| LTLeaf(t) -> 1, [encode_type t]
+	(*| LTFunc(t, params, Some r) -> 1, [encode_type t; encode_array (List.map encode_lifted_type params); encode_lifted_type r ]*)
+	| LTLeaf(t) -> 2, [encode_type t]
+	| _ -> assert false
 	in
 	let tag, pl = loop lt in
 	encode_enum ILiftedType tag pl
@@ -1101,7 +1103,8 @@ and decode_type t =
 and decode_lifted_type t =
 	match decode_enum t with
 	| 0, [t; pl] -> LTNested( decode_type t, List.map decode_lifted_type (decode_array pl) )
-	| 1, [t] -> LTLeaf( decode_type t)
+	(*| 1, [t; pl; r] -> LTFunc( decode_type t, List.map decode_lifted_type (decode_array pl), decode_lifted_type r )*)
+	| 2, [t] -> LTLeaf( decode_type t)
 	| _ -> raise Invalid_expr
 
 
@@ -1492,7 +1495,7 @@ let rec make_const e =
 
 
 
-
+(*
 and mk_of tm tp =
 	TAbstract(of_type, [tm; tp])
 
@@ -1629,6 +1632,8 @@ and lift_type (t : t) : lifted_type =
 
 	| _ ->
 		LTLeaf(t)
+*)
+
 
 let macro_api ccom get_api =
 	[
@@ -1824,6 +1829,26 @@ let macro_api ccom get_api =
 			let t = decode_lifted_type t in
 			let t2 = reduce_lifted_type t in
 			encode_type t2
+		);
+		"enable_type_log", vfun1 (fun b ->
+			enable_type_log (decode_bool b);
+			vnull
+		);
+		"unify_lifted_types", vfun2 (fun t1 t2 ->
+			let t1 = decode_lifted_type t1 in
+			let t2 = decode_lifted_type t2 in
+			vbool (
+				try (unify_lifted_types t1 t2; true)
+				with Unify_error e ->
+					let st = s_type (print_context()) in
+					let rec loop e = match e with
+						| Cannot_unify(a,b)::tail -> "Cannot unify " ^ (st a) ^ " with " ^ (st b) ^ "\n" ^ (loop tail)
+						| [] -> ""
+						| _ -> "Other error"
+					in
+					let s = loop e in
+					Printf.printf "failed to unify: %s" s;
+					false)
 		);
 		"mk_of", vfun2 (fun t1 t2 ->
 			let t1 = decode_type t1 in

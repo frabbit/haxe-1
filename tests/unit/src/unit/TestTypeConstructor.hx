@@ -1,25 +1,31 @@
 package unit;
 
- 
+import haxe.ds.Option;
 
-using unit.TestTypeConstructor;
+
 using unit.MyTypeConstructor;
 
 class TestTypeConstructor extends Test {
 
-	
 
-	
+
+
 	public function testMonadTransformers()
 	{
-		
+		var func = new ArrayTFunctor(new OptionMonad());
+		var e = Some([1]);
+
+		var func = new ArrayTFunctor(new EitherMonad());
+		var e = Right([1]);
+
 		var func = new ArrayTFunctor(new ArrayTFunctor(new EitherMonad()));
+
 		var e = Right([[1]]);
-		
+
 		var r = e.arrayT().arrayT().fmap(function (x) return x+1, func).runT().runT();
 
 		var rx : Either<String, Array<Array<Int>>> = r;
-		
+
 		t(r.match(Right([[2]])));
 
 		var r = e.fmap(function (x) return 1, new EitherMonad());
@@ -38,20 +44,14 @@ class TestTypeConstructor extends Test {
 
 		t(r.match(Right([[2]])));
 
-
-
 		var e2 = Right([[Right(1)]]);
 
-
-
 		var r = e2.arrayT().arrayT().eitherT().fmap(function (x) return x+1, new EitherTFunctor(new ArrayTFunctor(new ArrayTFunctor(new EitherMonad())))).runT().runT().runT();
-
-
 
 		t(r.match(Right([[Right(2)]])));
 
 	}
-	
+
 
 
 
@@ -63,7 +63,7 @@ class TestTypeConstructor extends Test {
 
 		t(r.toEither().match(Left("hello world")));
 	}
-	
+
 	function mapTwice <M:Mappable<M,_>,A,B,C>(m:Mappable<M,A>, f:A->B, f2:B->C):M<C> {
 		return m.map(f).map(f2);
 	}
@@ -103,7 +103,6 @@ class TestTypeConstructor extends Test {
 	}
 
 
-
 	public function testFlatMappable() {
 
 		function flatMapFlatMappable <M,A,B>(m:FlatMappable<M,A>, f:A->M<B>):M<B> {
@@ -127,9 +126,9 @@ class TestTypeConstructor extends Test {
 
 	}
 
-	/*	*/
 
-	
+
+
 
 	public function testMappableWithTypedef() {
 
@@ -139,12 +138,12 @@ class TestTypeConstructor extends Test {
 
 
 		#if !as3
-		/*
-		 !!!!!!!!!!!!!
-		 TODO
-		 This fails on as3 because the call to map inside of mapMappable actually calls map on dynamic nand not the haxe defined function.
-		 A runtime wrapper for filter and map is missing.
-		*/
+
+		// !!!!!!!!!!!!!
+		// TODO
+		// This fails on as3 because the call to map inside of mapMappable actually calls map on dynamic nand not the haxe defined function.
+		// A runtime wrapper for filter and map is missing.
+
 		var x = [1];
 
 		var r = mapMappable(x, function (y) return y+1);
@@ -161,7 +160,7 @@ class TestTypeConstructor extends Test {
 		t(r.first() == 2);
 
 	}
-	
+
 
 
 	public function testFilterableWithTypedef() {
@@ -172,12 +171,12 @@ class TestTypeConstructor extends Test {
 		}
 
 		#if !as3
-		/*
-		 !!!!!!!!!!!!!
-		 TODO
-		 This fails on as3 because the call to filter inside of filterFilterable actually calls filter on dynamic and not the haxe defined function.
-		 A runtime wrapper for filter and map is missing.
-		*/
+
+		// !!!!!!!!!!!!!
+		// TODO
+		// This fails on as3 because the call to filter inside of filterFilterable actually calls filter on dynamic and not the haxe defined function.
+		//A runtime wrapper for filter and map is missing.
+
 
 		var x = [1,2,3,4];
 
@@ -202,10 +201,12 @@ class TestTypeConstructor extends Test {
 	}
 
 
- 	private static function typeConstructorWithConstraints <M:(Filterable<M,_>, MappableTD<M,_>, { var length(default, null):Int;}), T> (m:M<Int>):M<Int>
+
+ 	private static function typeConstructorWithConstraints<M:(Filterable<M,Int>, MappableTD<M,Int>)> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
+
 
 	public function testTypeConstructorWithConstraints () {
 
@@ -218,11 +219,14 @@ class TestTypeConstructor extends Test {
 		#end
 
 		var a = new List(); a.add(1); a.add(2); a.add(3);
+
 		var r = typeConstructorWithConstraints(a);
 		t(r.length == 2);
 		t(r.first() == 3);
 		t(r.last() == 4);
+
 	}
+
 
 
 
@@ -289,7 +293,7 @@ class TestTypeConstructor extends Test {
 		t(r.run(1) == "foo3");
 	}
 
-	static function withArrow <Arr:(Arrow<Arr,_,_>)> (a:Arr<Int,String>):Int->String
+	static function withArrow <Arr:(Arrow<Arr,Int,String>)> (a:Arr<Int,String>):Int->String
 	{
 		return a.dot(a.create(function (y) return y+2))
 			.dot(a.create(function (y) return y+2)).run;
@@ -364,7 +368,9 @@ class TestTypeConstructor extends Test {
 		}, 1);
 
 		eq(a.first(), b.first());
+
 	}
+
 }
 
 typedef Of4<M,A,B,C,D> = M<A,B,C,D>;
@@ -382,6 +388,7 @@ class FourTypeParameters<A,B,C,D> {
 		this.d = d;
 	}
 }
+
 
 class TestUnificationBetweenNestedOfTypesAndTypedef {
 	function main <M, X,Y>() {

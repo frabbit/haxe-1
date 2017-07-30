@@ -38,12 +38,6 @@ typedef Ref<T> = {
 	public function toString() : String;
 }
 
-
-enum LiftedType {
-	LTNested(t:Type, params:Array<LiftedType>);
-	LTLeaf(t:Type);
-}
-
 /**
 	Represents a type.
 */
