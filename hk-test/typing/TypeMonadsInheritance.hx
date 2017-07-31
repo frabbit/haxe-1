@@ -1,8 +1,11 @@
 package typing;
 import types.inheritance.Monad;
+import types.inheritance.Functor;
 
 import haxe.ds.Option;
 
+
+#if cpp @:generic #end
 private class Array1<T> implements Monad<Array1<_>, T> {
 	var a:Array<T>;
 	public function new (a:Array<T>) {
@@ -12,11 +15,15 @@ private class Array1<T> implements Monad<Array1<_>, T> {
 		return new Array1(a.map(f));
 	}
 	public function flatMap <B>(f:T->Array1<B>):Array1<B> {
-		var res = [];
+		var res:Array<B> = [];
 		for (x in a.map(f)) {
+			// x.a; // causes an infinite loop with @:generic
+			/*
 			for (y in x.a) {
 				res.push(y);
 			}
+			*/
+
 		}
 		return new Array1(res);
 	}
@@ -25,6 +32,7 @@ private class Array1<T> implements Monad<Array1<_>, T> {
 	}
 }
 
+#if cpp @:generic #end
 private class Option1<T> implements Monad<Option1<_>, T> {
 	var a:Option<T>;
 	public function new (a:Option<T>) {
@@ -48,17 +56,21 @@ private class Option1<T> implements Monad<Option1<_>, T> {
 		return new Option1(Some(x));
 	}
 }
+
 class TypeMonadsInheritance {
 
-	@:generic static inline function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
+	#if cpp @:generic #end
+	#if !java inline #end
+	static function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
 		return x.map(f).flatMap(f2);
 	}
 
 	public static function main () {
 		var a = new Array1([1,2,3]);
 		var b = new Option1(Some(1));
-
+		Log.enable(true);
 		withMonad(a, _ -> true, _ -> new Array1(["foo"]));
+		Log.enable(false);
 		withMonad(b, _ -> true, _ -> new Option1(Some("foo")));
 
 	}

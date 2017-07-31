@@ -2664,6 +2664,10 @@ let rec unify a b =
 		error [cannot_unify a b]
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) ->
 		unify_abstracts a b a1 tl1 a2 tl2
+	| TInst( { cl_kind = KGenericInstance(c, tl)}, []), b ->
+		unify (TInst(c, tl)) b
+	| a, TInst( { cl_kind = KGenericInstance(c, tl)}, []) ->
+		unify a (TInst(c, tl))
 	| TInst (c1,tl1) , TInst (c2,tl2) ->
 		let rec loop c tl =
 			if c == c2 then begin
