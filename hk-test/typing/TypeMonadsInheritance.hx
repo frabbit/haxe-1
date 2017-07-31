@@ -20,8 +20,8 @@ private class Array1<T> implements Monad<Array1<_>, T> {
 		}
 		return new Array1(res);
 	}
-	public function pure<T>():Array1<T> {
-		return new Array1([]);
+	public function pure<T>(x:T):Array1<T> {
+		return new Array1([x]);
 	}
 }
 
@@ -44,13 +44,13 @@ private class Option1<T> implements Monad<Option1<_>, T> {
 		}
 
 	}
-	public function pure<T>():Option1<T> {
-		return new Option1(None);
+	public function pure<T>(x:T):Option1<T> {
+		return new Option1(Some(x));
 	}
 }
 class TypeMonadsInheritance {
 
-	@:generic static function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
+	@:generic static inline function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
 		return x.map(f).flatMap(f2);
 	}
 
