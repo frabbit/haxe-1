@@ -24,19 +24,20 @@ private typedef Container<M,T> = {
 class TypeTypedef {
 	static function main () {
 
-		Log.enable(true);
+		//Log.enable(true);
 		var a:Mappable<Array<_>,Int> = [1];
-		Log.enable(false);
+		//Log.enable(false);
 
 		test();
 
 	}
 
-	private static function withContainer <M:Container<M,Int>> (m:M<Int>):M<Int>
+	private static function withContainer <M:Container<M,_>> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
-	private static function mapAndFilter <M:(Filterable<M,Int>, Mappable<M,Int>)> (m:M<Int>):M<Int>
+
+	private static function mapAndFilter <M:(Filterable<M,_>, Mappable<M,_>)> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
@@ -45,7 +46,7 @@ class TypeTypedef {
 		var a = [1,2,3];
 		var r = mapAndFilter(a);
 		trace(r.length);
-		$type(r);
+
 	}
 
 

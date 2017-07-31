@@ -115,12 +115,12 @@ class TypeBasic {
 		var a:Int->(Int -> _) = (null:HKOf<Int -> _, HKMono>);
 		var a:HKOf<Int -> _, HKMono> = (null:Int->(Int -> _));
 
-		var a:(Int -> Void)->Void = (null:HKOf<_ -> Void, HKMono>);
+		//var a:(Int -> Void)->Void = (null:HKOf<_ -> Void, HKMono>);
 		var a:HKOf<_ -> Void, HKMono> = (null:(Int -> Void)->Void);
 
-		var a:(Int -> Void)->Void = (null:HKOf<HKMono, _ -> Void>);
+		//var a:(Int -> Void)->Void = (null:HKOf<HKMono, _ -> Void>);
 
-		var a:HKOf<HKMono, _ -> Void> = (null:(Int -> Void)->Void);
+		var a:HKOf<HKMono, Int -> Void> = (null:(Int -> Void)->Void);
 
 		//var a:HKOf<HKOf<Array<_>, Int>, String> = (null:HKOf<Array<_>, Int>);
 
@@ -146,9 +146,9 @@ class TypeBasic {
 		function foo <A,T>(a:A<T>) {
 
 		}
-		Log.enable(true);
+		//Log.enable(true);
 		foo([1]);
-		Log.enable(false);
+		//Log.enable(false);
 	}
 
 
