@@ -746,6 +746,8 @@ and t_in = ref t_in_abstract
 and is_in_type t = match follow1 t with
 	| TLazy f -> is_in_type (!f())
 	| TAbstract({a_path=[],"-In"},_) -> true
+	| TInst({ cl_kind = KGenericInstance({cl_path=[],"-In"}, [])},[]) ->
+		true
 	| TInst({cl_path=[],"-In"},_) -> true (* Parameters of Type Parameters like M<In> are currently not mapped *)
 	| TMono r ->
 		(match !r with
@@ -993,6 +995,8 @@ and unapply_in1_custom t ta right =
 		r
 	in
 	let rec loop t = match t with
+		| TInst({ cl_kind = KGenericInstance(c, tl)} as c1,[]) ->
+			TInst({ c1 with cl_kind = KGenericInstance(c, unapply_left tl) },[])
 		| TInst(c,tl) ->
 			TInst(c, unapply_left tl)
 		| TEnum(en,tl) ->
@@ -1043,6 +1047,8 @@ and reduce_lifted_type (t : lifted_type) : t =
 		begin match follow1 t, params with
 			| TInst({ cl_kind = KTypeParameter _}, []) as t, _ ->
 				List.fold_left (fun acc p -> mk_of acc p) t params
+			| TInst({ cl_kind = KGenericInstance(c, tl)} as c1,[]),_ ->
+				TInst({ c1 with cl_kind = KGenericInstance(c, params) },[])
 			| TInst(c,_), _ ->
 				TInst(c, params)
 			| TEnum(e,_), _ ->
@@ -1108,6 +1114,8 @@ and normalize_of_type t =
 					loop1 t2 tp1
 				| _ ->
 					loop1 t2 (tp2::tp1))
+			| TInst({ cl_kind = KGenericInstance(c, tl)} as c1,[]) ->
+				List.fold_left (fun acc p -> unapply_in1 acc p ) t1 tp1
 			| TInst(_, []) ->
 				raise Not_found
 			| TInst(_, _) | TEnum(_, _) | TAbstract(_, _) | TFun(_,_) | TType(_,_) ->
@@ -1184,6 +1192,8 @@ and validate_lifted t =
 	match t with
 	| LTNested(TEnum(_, p), params) ->
 		check_params p params
+	| LTNested(TInst({ cl_kind = KGenericInstance(_, p)}, []), params) ->
+		check_params p params
 	| LTNested(TInst(_, p), params) when (List.length p) > 0 ->
 		check_params p params
 	| LTNested(TAbstract(_, p), params) ->
@@ -1220,6 +1230,13 @@ and lift_type1 (t : t) : lifted_type =
 		Printf.printf "%s\n" (st (follow tm));*)
 		let tm = (follow1 tm) in
 		begin match tm with
+			| TInst({ cl_kind = KGenericInstance(_, _)},[]) when not (is_in_type tp) ->
+				(try
+					validate_lifted (lift_type1 (unapply_in1_right tm tp))
+				with (Not_found as e) ->
+					(* raise e *)
+					LTNested(tm, [lift_type1 tp])
+				)
 			| TInst(_, []) as a ->
 				validate_lifted (LTNested(tm, [lift_type1 tp]))
 			| TEnum(_, _) when not (is_in_type tp) ->
@@ -1235,6 +1252,8 @@ and lift_type1 (t : t) : lifted_type =
 					(* raise e *)
 
 				)
+
+
 			| TInst(_, _) when not (is_in_type tp) ->
 				(try
 					validate_lifted (lift_type1 (unapply_in1_right tm tp))
@@ -1265,6 +1284,9 @@ and lift_type1 (t : t) : lifted_type =
 							(*loop tm (tp1::tp)*)*)
 						| TAbstract({a_path=[],"-Of"}, [tm; tp1]) ->
 							loop tm (tp1::tp)
+
+						| TInst({ cl_kind = KGenericInstance(_, _)},[]) ->
+							validate_lifted (lift_type1 (List.fold_left (fun acc p -> unapply_in1_right acc p) t tp))
 						| TInst(_, []) ->
 							let params = tp in
 							validate_lifted (LTNested( t, List.map lift_type1 params ))
@@ -1319,6 +1341,10 @@ and lift_type1 (t : t) : lifted_type =
 			| _ (*when is_in_type tp*) ->
 				validate_lifted (lift_type1 tm)
 		end
+	| TInst ({ cl_kind = KGenericInstance(c, tl)} as c1,[]) ->
+		let tl1 = List.map (fun _ -> t_in) tl in
+		let t1 = TInst({c1 with cl_kind = KGenericInstance(c, tl1) }, []) in
+		validate_lifted (LTNested(t1, List.map lift_type1 tl))
 	| TEnum (_,[]) | TInst (_,[]) | TAbstract (_,[]) | TType (_,[]) -> LTLeaf(t)
 
 	| TAbstract (t1,tl) ->
@@ -2921,6 +2947,17 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		in
 		loop t2 p2 d
 	in
+	let unify_type_constructor t1 t2 =
+		let rec loop t1 t2 =
+			match t1, t2 with
+			| TInst({ cl_kind = KGenericInstance(t, tl)}, []), b ->
+				loop (TInst(t, tl)) b
+			| a, TInst({ cl_kind = KGenericInstance(t, tl)},[]) ->
+				loop a (TInst(t, tl))
+			| t1, t2 -> unify t1 t2
+		in
+		loop t1 t2
+	in
 	let unify_nested_mono_right t1 p1 t2 p2 =
 		let l1 = List.length p1 in
 		let l2 = List.length p2 in
@@ -2928,14 +2965,14 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		(match List.length p1, List.length p2 with
 		| l1, l2 when l1 < l2 ->
 			let p2 = reduce_mono_params p2 (l2-l1) in
-			unify t1 t2;
+			unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2
 		| l1, l2 when l1 > l2 ->
 			let t1, p1 = reduce_nested_param t1 p1 (l1-l2) in
-			unify t1 t2;
+			unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2
 		| _ ->
-			(unify t1 t2;
+			(unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2))
 	in
 	let unify_nested_mono_left t1 p1 t2 p2 =
@@ -2945,14 +2982,14 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		(match List.length p1, List.length p2 with
 		| l1, l2 when l1 > l2 ->
 			let p1 = reduce_mono_params p1 (l1-l2) in
-			unify t1 t2;
+			unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2
 		| l1, l2 when l1 < l2 ->
 			let t2, p2 = reduce_nested_param t2 p2 (l2-l1) in
-			unify t1 t2;
+			unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2
 		| _ ->
-			(unify t1 t2;
+			(unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2))
 	in
 	let unify_nested_both t1 p1 t2 p2 =
@@ -2962,14 +2999,14 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		(match List.length p1, List.length p2 with
 		| l1, l2 when l1 > l2 ->
 			let t1, p1 = reduce_nested_param t1 p1 (l1-l2) in
-			unify t1 t2;
+			unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2
 		| l1, l2 when l1 < l2 ->
 			let t2, p2 = reduce_nested_param t2 p2 (l2-l1) in
-			unify t1 t2;
+			unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2
 		| _ ->
-			(unify t1 t2;
+			(unify_type_constructor t1 t2;
 			unify_lifted_types_params p1 p2))
 	in
 	let unify_with_type_param_right a tp =
@@ -3325,64 +3362,35 @@ and unify_type_params a b tl1 tl2 =
 			with_variance (type_eq EqRightDynamic) t1 t2
 		with Unify_error l ->
 			try
-				match follow1 t1, follow1 t2 with
-				(*| TInst( { cl_kind = KTypeParameter kt1} as c1, p1), TInst( { cl_kind = KTypeParameter kt2} as c2, p2) ->
-					if kt1 == kt2 && c1.cl_path == c2.cl_path && p1 == p2 && c1.cl_module == c2.cl_module then
+				let rec loop t1 t2 =
+					match follow1 t1, follow1 t2 with
+					(*| TInst( { cl_kind = KTypeParameter kt1} as c1, p1), TInst( { cl_kind = KTypeParameter kt2} as c2, p2) ->
+						if kt1 == kt2 && c1.cl_path == c2.cl_path && p1 == p2 && c1.cl_module == c2.cl_module then
+							()
+						else
+							raise (Unify_error l)*)
+					| TInst( { cl_kind = KGenericInstance(c, tl)}, []), b ->
+						loop (TInst(c, tl)) b
+					| a, TInst( { cl_kind = KGenericInstance(c, tl)}, []) ->
+						loop a (TInst(c, tl))
+					| a,b when is_in_type a ->
 						()
-					else
-						raise (Unify_error l)*)
-				| _ ->
-					begin
-					(*if (is_in_type (follow1 t1)) || (is_in_type (follow1 t2)) then
-						()*)
-					if is_of_type t1 || is_of_type t2 then
+					| a,b when (is_of_type t1) || (is_of_type t2) ->
 						(try
-							unify_of t1 t2
-						with Unify_error l ->
-							with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2))
-					else
-
-							begin try
-								with_variance (type_eq EqRightDynamic) (reduce_of_rec t1) (reduce_of_rec t2)
+								unify_of t1 t2
 							with Unify_error l ->
-								raise (Unify_error l)
-							end
-
-					end
+								with_variance (type_eq EqRightDynamic) (reduce_of t1) (reduce_of t2))
+					| _ ->
+						begin try
+							with_variance (type_eq EqRightDynamic) (reduce_of_rec t1) (reduce_of_rec t2)
+						with Unify_error l ->
+							raise (Unify_error l)
+						end
+					in
+					loop t1 t2
 			with Unify_error l ->
 				let st = s_type (print_context()) in
 				(*Printf.printf "INVARIANT %s => %s | %b => %b | %b\n" (st t1) (st t2) (is_of_type t1) (is_of_type t2) (t1 == t2) ;*)
-				if (st t1) = "ArrayTFunctor.M" then
-					(match follow1 t1, follow1 t2 with
-					| TInst(a, p1), TInst(b, p2) ->
-
-						let sc = Printer.s_tclass "" in
-						Printf.printf "INVARIANT %i => %i\n" (List.length p1) (List.length p2);
-						Printf.printf "a\n%s\n%s\n" (sc a) (sc b);
-						Printf.printf "a\n%s\n%s\n" (s_class_kind a.cl_kind) (s_class_kind b.cl_kind);
-						Printf.printf "cl_path %b\n" (a.cl_path == b.cl_path);
-						Printf.printf "cl_module %b\n" (a.cl_module == b.cl_module);
-						Printf.printf "cl_pos %b\n" (a.cl_pos == b.cl_pos);
-						Printf.printf "cl_name_pos %b\n" (a.cl_name_pos == b.cl_name_pos);
-						Printf.printf "cl_private %b\n" (a.cl_private == b.cl_private);
-						Printf.printf "cl_doc %b\n" (a.cl_doc == b.cl_doc);
-						Printf.printf "cl_meta %b\n" (a.cl_meta == b.cl_meta);
-						Printf.printf "cl_params %b\n" (a.cl_params == b.cl_params);
-						Printf.printf "cl_kind %b\n" (a.cl_kind == b.cl_kind);
-						Printf.printf "cl_implements %b\n" (a.cl_implements == b.cl_implements);
-						Printf.printf "cl_overrides %b\n" (a.cl_overrides == b.cl_overrides);
-						Printf.printf "cl_ordered_fields %b\n" (a.cl_ordered_fields == b.cl_ordered_fields);
-						Printf.printf "cl_ordered_statics %b\n" (a.cl_ordered_statics == b.cl_ordered_statics);
-						(match a.cl_kind, b.cl_kind with
-						| KTypeParameter al, KTypeParameter bl ->
-							Printf.printf "kind len %i => %i\n" (List.length al) (List.length bl);
-							Printf.printf "kind eq %b\n" (al == bl);
-						| _ -> ());
-						assert false
-					| _ -> assert false);
-
-
-
 				let err = cannot_unify a b in
 				error (err :: (Invariant_parameter (t1,t2)) :: l)
 	) tl1 tl2
