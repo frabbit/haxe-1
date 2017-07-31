@@ -3,7 +3,7 @@ package types.inheritance;
 import types.inheritance.Category;
 import types.Tup2;
 
-interface Arrow<Arr:Arrow<Arr, _, _>,A,B> extends Category<Arr, A, B>
+interface Arrow<Arr,A,B> extends Category<Arr, A, B>
 {
 
   public function first  <C>():Arr<Tup2<A,C>, Tup2<B,C>>;

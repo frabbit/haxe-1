@@ -6,6 +6,7 @@ import typing.TypeArrayT;
 import typing.TypeEitherT;
 import typing.TypeFuncT;
 import typing.TypeAllTypes;
+import typing.TypeMonadsInheritance;
 class Main {
 
 	public static function main () {
