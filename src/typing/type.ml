@@ -3034,22 +3034,30 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		| LTNestedMono(ta, _), LTLeaf(t2) when is_in_type t2 ->
 			()
 		| LTNested(_, _), LTLeaf(t2) when is_in_type t2 ->
-			()
+			assert false
 		| LTFunc(_,_,_), LTLeaf(t2) when is_in_type t2 ->
 			()
 		| LTLeaf(t1), LTNestedMono(ta, _) when is_in_type t1 ->
 			()
 
 		| LTLeaf(t1), LTNested(_, _) when is_in_type t1 ->
-			()
+			assert false
 		| LTLeaf(t1), LTFunc(_,_,None) when is_in_type t1 ->
 			assert false
 		| LTLeaf(t1), LTFunc(_,_,Some(_)) when is_in_type t1 ->
+			assert false
+		| LTLeaf(t1), LTLeaf(t2) when is_in_type t1 && is_in_type t2 ->
 			()
 		| LTLeaf(t1), LTLeaf(t2) when is_in_type t1 ->
-			()
+			let st = s_type (print_context ()) in
+			Printf.printf "%s\n" (st t2);
+			Printf.printf "%s\n" (st c2);
+			assert false
 		| LTLeaf(t1), LTLeaf(t2) when is_in_type t2 ->
-			()
+			let st = s_type (print_context ()) in
+			Printf.printf "%s\n" (st t2);
+			Printf.printf "%s\n" (st c2);
+			assert false
 		| LTLeaf(t1), LTLeaf(t2) ->
 			unify (follow1 t1) (follow1 t2)
 		| (LTNestedMono(a, [p]) as nm), LTLeaf((TMono _) as b) ->
@@ -3325,9 +3333,9 @@ and unify_type_params a b tl1 tl2 =
 						raise (Unify_error l)*)
 				| _ ->
 					begin
-					if (is_in_type (follow1 t1)) || (is_in_type (follow1 t2)) then
-						()
-					else if is_of_type t1 || is_of_type t2 then
+					(*if (is_in_type (follow1 t1)) || (is_in_type (follow1 t2)) then
+						()*)
+					if is_of_type t1 || is_of_type t2 then
 						(try
 							unify_of t1 t2
 						with Unify_error l ->
