@@ -50,7 +50,7 @@ private class Option1<T> implements Monad<Option1<_>, T> {
 }
 class TypeMonadsInheritance {
 
-	static function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
+	@:generic static function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
 		return x.map(f).flatMap(f2);
 	}
 
