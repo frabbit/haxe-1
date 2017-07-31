@@ -275,12 +275,12 @@ typedef Filterable<M, T> = {
 }
 
 
-typedef BetterFilterable<M:BetterFilterable<M,_>, T> = {
+typedef BetterFilterable<M, T> = {
   public function filter (f:T->Bool):M<T>;
 }
 
 
-interface Category<Cat:Category<Cat, _, _>, A, B>
+interface Category<Cat, A, B>
 {
   public function create<A,B> (f:A->B):Cat<A,B>;
 
@@ -293,7 +293,7 @@ interface Category<Cat:Category<Cat, _, _>, A, B>
 
 }
 
-interface Arrow<Arr:Arrow<Arr, _, _>,A,B> extends Category<Arr, A, B>
+interface Arrow<Arr,A,B> extends Category<Arr, A, B>
 {
 
   public function first  <C>():Arr<Tup2<A,C>, Tup2<B,C>>;

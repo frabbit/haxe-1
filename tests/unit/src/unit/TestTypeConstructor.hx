@@ -202,7 +202,7 @@ class TestTypeConstructor extends Test {
 
 
 
- 	private static function typeConstructorWithConstraints<M:(Filterable<M,Int>, MappableTD<M,Int>)> (m:M<Int>):M<Int>
+ 	private static function typeConstructorWithConstraints<M:(Filterable<M,_>, MappableTD<M,_>)> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
@@ -293,7 +293,7 @@ class TestTypeConstructor extends Test {
 		t(r.run(1) == "foo3");
 	}
 
-	static function withArrow <Arr:(Arrow<Arr,Int,String>)> (a:Arr<Int,String>):Int->String
+	static function withArrow <Arr:(Arrow<Arr,_,_>)> (a:Arr<Int,String>):Int->String
 	{
 		return a.dot(a.create(function (y) return y+2))
 			.dot(a.create(function (y) return y+2)).run;
