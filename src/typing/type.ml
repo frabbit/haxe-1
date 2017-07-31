@@ -2664,31 +2664,60 @@ let rec unify a b =
 		error [cannot_unify a b]
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) ->
 		unify_abstracts a b a1 tl1 a2 tl2
-	| TInst( { cl_kind = KGenericInstance(c, tl)}, []), b ->
+	(*| TInst( { cl_kind = KGenericInstance(c, tl)}, []), b ->
 		unify (TInst(c, tl)) b
 	| a, TInst( { cl_kind = KGenericInstance(c, tl)}, []) ->
-		unify a (TInst(c, tl))
+		unify a (TInst(c, tl))*)
 	| TInst (c1,tl1) , TInst (c2,tl2) ->
 		let rec loop c tl =
+			let default () =
+				(match c.cl_super with
+						| None -> false
+						| Some (cs,tls) ->
+							loop cs (List.map (apply_params c.cl_params tl) tls)
+					) || List.exists (fun (cs,tls) ->
+						loop cs (List.map (apply_params c.cl_params tl) tls)
+					) c.cl_implements
+					|| (match c.cl_kind with
+					| KTypeParameter pl ->
+						List.exists (fun t ->
+							match follow t with
+							| TInst (cs,tls) -> loop cs (List.map (apply_params c.cl_params tl) tls)
+							| TAbstract(aa,tl) -> List.exists (unify_to aa tl b) aa.a_to
+							| _ -> false
+						) pl
+					| _ -> false)
+			in
 			if c == c2 then begin
 				unify_type_params a b tl tl2;
 				true
-			end else (match c.cl_super with
-				| None -> false
-				| Some (cs,tls) ->
-					loop cs (List.map (apply_params c.cl_params tl) tls)
-			) || List.exists (fun (cs,tls) ->
-				loop cs (List.map (apply_params c.cl_params tl) tls)
-			) c.cl_implements
-			|| (match c.cl_kind with
-			| KTypeParameter pl ->
-				List.exists (fun t ->
-				match follow t with
-				| TInst (cs,tls) -> loop cs (List.map (apply_params c.cl_params tl) tls)
-				| TAbstract(aa,tl) -> List.exists (unify_to aa tl b) aa.a_to
-				| _ -> false
-			) pl
-			| _ -> false)
+			end else (match a, b with
+				| TInst({ cl_kind = KGenericInstance(c, tl)},[]), TInst({ cl_kind = KGenericInstance(c2, tl2)},[]) ->
+					(if c == c2 then
+						(unify_type_params a b tl tl2;
+						true)
+					else
+						false)
+				| TInst({ cl_kind = KGenericInstance(c, tl)},[]), _ ->
+					(try
+						(unify (TInst(c, tl)) b;
+						true)
+					with
+						Unify_error l ->
+							default()
+					)
+				| _, TInst({ cl_kind = KGenericInstance(c, tl)},[]) ->
+					(try
+						(unify a (TInst(c, tl));
+						true)
+					with
+						Unify_error l ->
+							default()
+					)
+				| _ ->
+					default ()
+			)
+
 		in
 		if not (loop c1 tl1) then error [cannot_unify a b]
 	| TFun (l1,r1) , TFun (l2,r2) when List.length l1 = List.length l2 ->
