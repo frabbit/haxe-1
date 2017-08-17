@@ -1392,6 +1392,17 @@ and reduce_of t =
 			(*Printf.printf "reduce_of: %s\n" (st t);*)
 			t
 
+and try_reduce_of t =
+		match follow1 t with
+		| TAbstract({a_path=[],"-Of"}, [tm; tp1]) ->
+			begin try
+				Some(reduce_lifted_type (lift_type t))
+			with Not_found ->
+				None
+			end
+		| _ ->
+			Some(t)
+
 
 
 (*
