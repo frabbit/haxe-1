@@ -1560,6 +1560,10 @@ let macro_api ccom get_api =
 			try	encode_ctype (TExprToExpr.convert_type' (decode_type v))
 			with Exit -> vnull
 		);
+		"duplicate_type", vfun1 (fun t ->
+			let t = decode_type t in
+			encode_type (dup t)
+		);
 		"unify", vfun2 (fun t1 t2 ->
 			let e1 = mk (TObjectDecl []) (decode_type t1) Globals.null_pos in
 			vbool (((get_api()).cast_or_unify) (decode_type t2) e1 Globals.null_pos)
