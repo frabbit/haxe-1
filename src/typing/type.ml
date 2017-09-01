@@ -1392,6 +1392,23 @@ and reduce_of t =
 			(*Printf.printf "reduce_of: %s\n" (st t);*)
 			t
 
+and reduce_of_rec t =
+	let rp = List.map reduce_of_rec in
+	let t = match follow t with
+	| TInst(c,tl) ->
+		TInst(c, rp tl )
+	| TEnum(en,tl) ->
+		TEnum(en, rp tl)
+	| TAbstract(a,tl) ->
+		TAbstract( a, rp tl)
+	| TType(ta, tl) ->
+		TType( ta, rp tl)
+	| TFun(p, r) ->
+		TFun( List.map (fun (s, b, t) -> (s, b, reduce_of_rec t)) p, reduce_of_rec r )
+	| _ ->
+		t
+	in
+	reduce_of t
 and try_reduce_of t =
 		match follow1 t with
 		| TAbstract({a_path=[],"-Of"}, [tm; tp1]) ->
@@ -1703,11 +1720,15 @@ and s_type ctx t =
 		| _ -> s_type_path c.cl_path ^ s_type_params ctx tl)
 	| TType (t,tl) ->
 		s_type_path t.t_path ^ s_type_params ctx tl
+	(* useful for debugging
+		| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a) ->
+		"-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">"
+	*)
 	| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a) ->
-		(*let r = reduce_of a in*)
-		(*if (false) then*)
-			"-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">"
-		(*else (s_type ctx r)*)
+		let r = reduce_of_rec a in
+		if (is_of_type r) then
+			(s_type ctx tm1) ^ "<" ^ (s_type ctx ta1) ^ ">"
+		else (s_type ctx r)
 	| TAbstract (a,tl) ->
 		s_type_path a.a_path ^ s_type_params ctx tl
 	| TFun ([],t) ->
@@ -1742,11 +1763,15 @@ and s_type2 ctx t =
 		| _ -> s_type_path c.cl_path ^ s_type_params ctx tl)
 	| TType (t,tl) ->
 		s_type_path t.t_path ^ s_type_params ctx tl
+	(* useful for debugging
+		| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a) ->
+		"-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">"
+	*)
 	| (TAbstract({a_path = [],"-Of"},[tm1;ta1]) as a) ->
-		(*let r = reduce_of a in*)
-		(*if (false) then*)
-			"-Of<" ^ (s_type ctx tm1) ^ "," ^ (s_type ctx ta1) ^ ">"
-		(*else (s_type ctx r)*)
+		let r = reduce_of_rec a in
+		if (is_of_type r) then
+			(s_type ctx tm1) ^ "<" ^ (s_type ctx ta1) ^ ">"
+		else (s_type ctx r)
 	| TAbstract (a,tl) ->
 		s_type_path a.a_path ^ s_type_params ctx tl
 	| TFun ([],t) ->
@@ -3115,49 +3140,58 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		| LTNestedMono(ta, _), LTLeaf(t2) when is_in_type t2 ->
 			()
 		| LTNested(_, _), LTLeaf(t2) when is_in_type t2 ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
 		| LTFunc(_,_,_), LTLeaf(t2) when is_in_type t2 ->
 			()
 		| LTLeaf(t1), LTNestedMono(ta, _) when is_in_type t1 ->
 			()
 
 		| LTLeaf(t1), LTNested(_, _) when is_in_type t1 ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTLeaf(t1), LTFunc(_,_,None) when is_in_type t1 ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTLeaf(t1), LTFunc(_,_,Some(_)) when is_in_type t1 ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTLeaf(t1), LTLeaf(t2) when is_in_type t1 && is_in_type t2 ->
 			()
 		| LTLeaf(t1), LTLeaf(t2) when is_in_type t1 ->
 			let st = s_type (print_context ()) in
 			Printf.printf "%s\n" (st t2);
 			Printf.printf "%s\n" (st c2);
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTLeaf(t1), LTLeaf(t2) when is_in_type t2 ->
 			let st = s_type (print_context ()) in
 			Printf.printf "%s\n" (st t2);
 			Printf.printf "%s\n" (st c2);
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTLeaf(t1), LTLeaf(t2) ->
 			unify (follow1 t1) (follow1 t2)
 		| (LTNestedMono(a, [p]) as nm), LTLeaf((TMono _) as b) ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 			(*unify (reduce_lifted_type nm) b*)
 			(*unify a b;
 			let nm = unapply_in1_right a (reduce_lifted_type p) in
 			let nm = lift_type nm in
 			unify_lifted_types nm (lift_type b)*)
 		| (LTNestedMono(a, p) as nm), LTLeaf((TMono _) as b) ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTLeaf((TMono _) as a), (LTNestedMono(b, [p]) as nm) ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 			(*unify a b;
 			let nm = unapply_in1_right b (reduce_lifted_type p) in
 			let nm = lift_type nm in
 			unify_lifted_types (lift_type a) nm*)
 		| LTLeaf((TMono _) as a), (LTNestedMono(b, p) as nm) ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTNested(_, _), LTLeaf(TMono _) ->
 			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
 		| LTFunc(_,_,None), LTLeaf(TMono _) ->
@@ -3169,20 +3203,35 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 		| LTLeaf(TMono _), LTFunc(_,_,_) ->
 			unify (reduce_lifted_type t1) (reduce_lifted_type t2)
 		| LTNested(a, p1), LTFunc(b, args, None) ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTNested(a, p1), LTFunc(b, args, Some ret) ->
 			unify a b;
 			unify_lifted_types_params p1 (args @ [ret]);
 		| LTFunc(a, args, None), LTNested(b, p1) ->
-			assert false
+			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTFunc(a, args, Some ret), LTNested(b, p1) ->
 			unify a b;
 			unify_lifted_types_params (args @ [ret]) p1;
 		| LTLeaf(t), LTNested(_, _) ->
-			unify t (reduce_lifted_type t2)
-		| t1, t2 ->
-			Printf.printf "%s %s\n" (s_lifted_type t1) (s_lifted_type t2);
-			assert false
+			begin match reduce_lifted_type lt2 with
+			| t2 when is_of_type t2 -> error [cannot_unify t t2]
+			| t2 -> unify t t2
+			end
+		| LTNested(_,_), LTLeaf(t) ->
+			begin match reduce_lifted_type lt2 with
+			| t2 when is_of_type t2 -> error [cannot_unify t2 t]
+			| t2 -> unify t2 t
+			end
+		| LTLeaf(t), LTNestedMono(_,_) ->
+			begin match reduce_lifted_type lt2 with
+			| t2 when is_of_type t2 -> error [cannot_unify t t2]
+			| t2 -> unify t t2
+			end
+		| _, _ ->
+			Printf.printf "%s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type t1) (reduce_lifted_type t2)]
 			(*Printf.printf "failed to unify3\n--start\n%s\n%s\nin\n%s\n%s\n--end\n" (st t1) (st t2) (st o1) (st o2);
 			Printf.printf
 				"with\n%s\n%s\nin\n%s\n%s\n--end\n"
@@ -3382,23 +3431,7 @@ and unify_with_variance f t1 t2 =
 	| _ ->
 		error [cannot_unify t1 t2]
 
-and reduce_of_rec t =
-	let rp = List.map reduce_of_rec in
-	let t = match follow t with
-	| TInst(c,tl) ->
-		TInst(c, rp tl )
-	| TEnum(en,tl) ->
-		TEnum(en, rp tl)
-	| TAbstract(a,tl) ->
-		TAbstract( a, rp tl)
-	| TType(ta, tl) ->
-		TType( ta, rp tl)
-	| TFun(p, r) ->
-		TFun( List.map (fun (s, b, t) -> (s, b, reduce_of_rec t)) p, reduce_of_rec r )
-	| _ ->
-		t
-	in
-	reduce_of t
+
 
 and unify_type_params a b tl1 tl2 =
 	List.iter2 (fun t1 t2 ->
