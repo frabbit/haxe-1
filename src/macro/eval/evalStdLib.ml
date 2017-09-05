@@ -583,7 +583,7 @@ module StdCallStack = struct
 			| _ :: _ :: envs -> envs (* Skip calls to callStack() and getCallStack() *)
 			| _ -> envs
 		in
-		make_stack (List.map (fun env -> {pfile = rev_hash_s env.env_info.pfile;pmin = env.env_leave_pmin; pmax = env.env_leave_pmax},env.env_info.kind) envs)
+		make_stack (List.map (fun env -> {pfile = rev_file_hash env.env_info.pfile;pmin = env.env_leave_pmin; pmax = env.env_leave_pmax},env.env_info.kind) envs)
 	)
 
 	let getExceptionStack = vfun0 (fun () ->
@@ -1126,7 +1126,7 @@ module StdFileSystem = struct
 			| _ -> p
 
 	let patch_path s =
-		if String.length s > 0 && String.length s <= 3 && s.[1] = ':' then Path.add_trailing_slash s
+		if String.length s > 1 && String.length s <= 3 && s.[1] = ':' then Path.add_trailing_slash s
 		else remove_trailing_slash s
 
 	let absolutePath = vfun1 (fun relPath ->
@@ -1768,7 +1768,7 @@ module StdSocket = struct
 
 	let select = vfun4 (fun read write others timeout ->
 		let proto = get_instance_prototype (get_ctx()) key_sys_net_Socket null_pos in
-		let i = get_instance_field_index proto key_socket in
+		let i = get_instance_field_index proto key_socket null_pos in
 		let pair = function
 			| VInstance vi as v -> this vi.iproto.pfields.(i),v
 			| v -> unexpected_value v "NativeSocket"
@@ -2676,6 +2676,18 @@ let init_constructors builtins =
 	add key_haxe_ds_IntMap (fun _ -> encode_instance key_haxe_ds_IntMap ~kind:(IIntMap (IntHashtbl.create 0)));
 	add key_haxe_ds_ObjectMap (fun _ -> encode_instance key_haxe_ds_ObjectMap ~kind:(IObjectMap (Obj.magic (ValueHashtbl.create 0))));
 	add key_haxe_io_BytesBuffer (fun _ -> encode_instance key_haxe_io_BytesBuffer ~kind:(IOutput (Buffer.create 0)));
+	add key_haxe_io_Bytes
+		(fun vl -> match vl with
+			| [length;b] ->
+				let length = decode_int length in
+				let b = decode_bytes b in
+				let blit_length = if length > Bytes.length b then Bytes.length b else length in
+				let b' = Bytes.create length in
+				Bytes.blit b 0 b' 0 blit_length;
+				encode_bytes b'
+			| _ ->
+				assert false
+		);
 	add key_sys_io__Process_NativeProcess
 		(fun vl -> match vl with
 			| [cmd;args] ->

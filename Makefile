@@ -51,6 +51,7 @@ else
 	COMPILER = ocamlfind ocamlopt
 	LIB_EXT = cmxa
 	MODULE_EXT = cmx
+	OCAMLDEP_FLAGS = -native
 endif
 
 CC_CMD = $(COMPILER) $(ALL_CFLAGS) -c $<
@@ -137,7 +138,7 @@ build_pass_2:
 	ocamlfind ocamldep -sort -slash $(HAXE_INCLUDES) $(MODULES) | sed -e "s/\.ml//g" >> Makefile.modules
 
 build_pass_3:
-	ocamlfind ocamldep -slash -native $(HAXE_INCLUDES) $(MODULES:%=%.ml) > Makefile.dependencies
+	ocamlfind ocamldep -slash $(OCAMLDEP_FLAGS) $(HAXE_INCLUDES) $(MODULES:%=%.ml) > Makefile.dependencies
 
 build_pass_4: $(MODULES:%=%.$(MODULE_EXT))
 	$(COMPILER) -safe-string -linkpkg -o $(OUTPUT) $(NATIVE_LIBS) $(NATIVE_LIB_FLAG) $(LFLAGS) $(FINDLIB_PACKAGES) $(EXTLIB_INCLUDES) $(EXTLIB_LIBS:=.$(LIB_EXT)) $(MODULES:%=%.$(MODULE_EXT))
@@ -150,12 +151,17 @@ else
 endif
 
 # Only use if you have only changed gencpp.ml
-quickcpp: _build/src/generators/gencpp.ml build_pass_4 copy_haxetoolkit
-_build/src/generators/gencpp.ml:src/generators/gencpp.ml
-	cp $< $@
+quickcpp: build_src build_pass_4 copy_haxetoolkit
+
+CPP_OS := $(shell uname)
+ifeq ($(CPP_OS),Linux)
+copy_haxetoolkit: 
+	sudo cp haxe /usr/bin/haxe
+else
 copy_haxetoolkit: /cygdrive/c/HaxeToolkit/haxe/haxe.exe
 /cygdrive/c/HaxeToolkit/haxe/haxe.exe:haxe.exe
 	cp $< $@
+endif
 
 haxelib:
 	(cd $(CURDIR)/extra/haxelib_src && $(CURDIR)/$(OUTPUT) client.hxml && nekotools boot run.n)

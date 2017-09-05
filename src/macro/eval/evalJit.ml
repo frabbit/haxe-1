@@ -64,7 +64,7 @@ let get_binop_fun op p = match op with
 	| OpShr -> op_shr p
 	| OpUShr -> op_ushr p
 	| OpMod -> op_mod p
-	| OpAssign | OpBoolAnd | OpBoolOr | OpAssignOp _ | OpInterval | OpArrow -> assert false
+	| OpAssign | OpBoolAnd | OpBoolOr | OpAssignOp _ | OpInterval | OpArrow | OpIn -> assert false
 
 open EvalJitContext
 
@@ -78,19 +78,21 @@ let rec op_assign ctx jit e1 e2 = match e1.eexpr with
 		let exec1 = jit_expr jit false e1 in
 		let exec2 = jit_expr jit false e2 in
 		begin match fa with
+			| FInstance({cl_path=(["haxe";"io"],"Bytes")},_,{cf_name="length"}) ->
+				emit_bytes_length_write exec1 exec2
 			| FStatic({cl_path=path},_) | FEnum({e_path=path},_) ->
 				let proto = get_static_prototype jit.ctx (path_hash path) e1.epos in
 				emit_proto_field_write proto (get_proto_field_index proto name) exec2
 			| FInstance(c,_,_) when not c.cl_interface ->
 				let proto = get_instance_prototype jit.ctx (path_hash c.cl_path) e1.epos in
-				let i = get_instance_field_index proto name in
+				let i = get_instance_field_index proto name e1.epos in
 				emit_instance_field_write exec1 i exec2
 			| FAnon cf ->
 				begin match follow e1.etype with
 					| TAnon an ->
 						let l = PMap.foldi (fun k _ acc -> (hash_s k,()) :: acc) an.a_fields [] in
 						let proto,_ = ctx.get_object_prototype ctx l in
-						let i = get_instance_field_index proto name in
+						let i = get_instance_field_index proto name e1.epos in
 						emit_anon_field_write exec1 proto i name exec2
 					| _ ->
 						emit_field_write exec1 name exec2
@@ -144,7 +146,7 @@ and op_assign_op jit op e1 e2 prefix = match e1.eexpr with
 				emit_proto_field_read_write proto (get_proto_field_index proto name) exec2 op prefix
 			| FInstance(c,_,_) when not c.cl_interface ->
 				let proto = get_instance_prototype jit.ctx (path_hash c.cl_path) e1.epos in
-				let i = get_instance_field_index proto name in
+				let i = get_instance_field_index proto name e1.epos in
 				emit_instance_field_read_write exec1 i exec2 op prefix
 			| _ ->
 				emit_field_read_write exec1 name exec2 op prefix
@@ -242,7 +244,7 @@ and jit_expr jit return e =
 	| TObjectDecl fl ->
 		let fl = List.map (fun (s,e) -> hash_s s,jit_expr jit false e) fl in
 		let proto,_ = ctx.get_object_prototype ctx fl in
-		let fl = List.map (fun (s,exec) -> get_instance_field_index proto s,exec) fl in
+		let fl = List.map (fun (s,exec) -> get_instance_field_index proto s e.epos,exec) fl in
 		let fa = Array.of_list fl in
 		emit_object_declaration proto fa
 	| TArrayDecl el ->
@@ -433,7 +435,10 @@ and jit_expr jit return e =
 		pop_scope jit;
 		emit_block (Array.of_list (execs @ [exec1]))
 	| TBlock [e1] ->
-		loop e1
+		push_scope jit e.epos;
+		let f = loop e1 in
+		pop_scope jit;
+		f
 	| TBlock [e1;e2] ->
 		push_scope jit e.epos;
 		let exec1 = jit_expr jit false e1 in
@@ -675,7 +680,7 @@ and jit_expr jit return e =
 				emit_proto_field_read proto (get_proto_field_index proto name)
 			| FInstance(c,_,_) when not c.cl_interface ->
 				let proto = get_instance_prototype ctx (path_hash c.cl_path) e1.epos in
-				let i = get_instance_field_index proto name in
+				let i = get_instance_field_index proto name e1.epos in
 				begin match e1.eexpr with
 					| TLocal var when not var.v_capture -> emit_instance_local_field_read (get_slot jit var.v_id e1.epos) i
 					| _ -> emit_instance_field_read (jit_expr jit false e1) i
@@ -685,7 +690,7 @@ and jit_expr jit return e =
 					| TAnon an ->
 						let l = PMap.foldi (fun k _ acc -> (hash_s k,()) :: acc) an.a_fields [] in
 						let proto,_ = ctx.get_object_prototype ctx l in
-						let i = get_instance_field_index proto name in
+						let i = get_instance_field_index proto name e1.epos in
 						begin match e1.eexpr with
 							| TLocal var when not var.v_capture -> emit_anon_local_field_read (get_slot jit var.v_id e1.epos) proto i name e1.epos
 							| _ -> emit_anon_field_read (jit_expr jit false e1) proto i name e1.epos

@@ -24,6 +24,7 @@ open Ast
 open Type
 open Common
 open ExtList
+open Error
 
 type pos = Globals.pos
 
@@ -74,7 +75,7 @@ let get_exposed ctx path meta = try
         (match args with
          | [ EConst (String s), _ ] -> [s]
          | [] -> [path]
-         | _ -> abort "Invalid @:expose parameters" pos)
+         | _ -> error "Invalid @:expose parameters" pos)
     with Not_found -> []
 
 let dot_path = Globals.s_type_path
@@ -158,7 +159,7 @@ let println ctx =
             newline ctx
         end)
 
-let unsupported p = abort "This expression cannot be compiled to Lua" p
+let unsupported p = error "This expression cannot be compiled to Lua" p
 
 let basename path =
     try
@@ -342,7 +343,7 @@ let rec gen_call ctx e el =
     (match e.eexpr , el with
      | TConst TSuper , params ->
          (match ctx.current.cl_super with
-          | None -> abort "Missing api.setCurrentClass" e.epos
+          | None -> error "Missing api.setCurrentClass" e.epos
           | Some (c,_) ->
               print ctx "%s.super(%s" (ctx.type_accessor (TClassDecl c)) (this ctx);
               List.iter (fun p -> print ctx ","; gen_value ctx p) params;
@@ -350,7 +351,7 @@ let rec gen_call ctx e el =
          );
      | TField ({ eexpr = TConst TSuper },f) , params ->
          (match ctx.current.cl_super with
-          | None -> abort "Missing api.setCurrentClass" e.epos
+          | None -> error "Missing api.setCurrentClass" e.epos
           | Some (c,_) ->
               let name = field_name f in
               print ctx "%s.prototype%s(%s" (ctx.type_accessor (TClassDecl c)) (field name) (this ctx);
@@ -395,7 +396,7 @@ let rec gen_call ctx e el =
                   if List.length(fields) > 0 then incr count;
               | { eexpr = TConst(TNull)} -> ()
               | _ ->
-                  abort "__lua_table__ only accepts array or anonymous object arguments" e.epos;
+                  error "__lua_table__ only accepts array or anonymous object arguments" e.epos;
              )) el;
          spr ctx "})";
      | TIdent "__lua__", [{ eexpr = TConst (TString code) }] ->
@@ -1041,6 +1042,13 @@ and gen_block_element ctx e  =
             semicolon ctx;
     end;
 
+and is_const_null e =
+    match e.eexpr with
+    | TConst TNull ->
+        true
+    | _ ->
+        false
+
     (* values generated in anon structures can get modified.  Functions are bind-ed *)
     (* and include a dummy "self" leading variable so they can be called like normal *)
     (* instance methods *)
@@ -1063,7 +1071,7 @@ and gen_anon_value ctx e =
         ctx.in_value <- fst old;
         ctx.in_loop <- snd old;
         ctx.separator <- true
-    | _ when (is_function_type ctx e.etype) ->
+    | _ when (is_function_type ctx e.etype) && not (is_const_null e) ->
         spr ctx "function(_,...) return ";
         gen_value ctx e;
         spr ctx "(...) end";
@@ -1429,40 +1437,20 @@ let check_multireturn ctx c =
     match c with
     | _ when Meta.has Meta.MultiReturn c.cl_meta ->
         if not c.cl_extern then
-            abort "MultiReturns must be externs" c.cl_pos
+            error "MultiReturns must be externs" c.cl_pos
         else if List.length c.cl_ordered_statics > 0 then
-            abort "MultiReturns must not contain static fields" c.cl_pos
+            error "MultiReturns must not contain static fields" c.cl_pos
         else if (List.exists (fun cf -> match cf.cf_kind with Method _ -> true | _-> false) c.cl_ordered_fields) then
-            abort "MultiReturns must not contain methods" c.cl_pos;
+            error "MultiReturns must not contain methods" c.cl_pos;
     | {cl_super = Some(csup,_)} when Meta.has Meta.MultiReturn csup.cl_meta ->
-        abort "Cannot extend a MultiReturn" c.cl_pos
+        error "Cannot extend a MultiReturn" c.cl_pos
     | _ -> ()
 
-
-let generate_package_create ctx (p,_) =
-    let rec loop acc = function
-        | [] -> ()
-        | p :: l when Hashtbl.mem ctx.packages (p :: acc) -> loop (p :: acc) l
-        | p :: l ->
-            Hashtbl.add ctx.packages (p :: acc) ();
-            (match acc with
-             | [] -> print ctx "local %s = {}" p
-             | _ ->
-                 let p = String.concat "." (List.rev acc) ^ (field p) in
-                 print ctx "%s = {}" p
-            );
-            ctx.separator <- true;
-            newline ctx;
-            loop (p :: acc) l
-    in
-    match p with
-    | [] -> print ctx "local "
-    | _ -> loop [] p
 
 let check_field_name c f =
     match f.cf_name with
     | "prototype" | "__proto__" | "constructor" ->
-        abort ("The field name '" ^ f.cf_name ^ "'  is not allowed in Lua") (match f.cf_expr with None -> c.cl_pos | Some e -> e.epos);
+        error ("The field name '" ^ f.cf_name ^ "'  is not allowed in Lua") (match f.cf_expr with None -> c.cl_pos | Some e -> e.epos);
     | _ -> ()
 
 (* convert a.b.c to ["a"]["b"]["c"] *)
@@ -1493,11 +1481,11 @@ let gen_class_static_field ctx c f =
 
 let gen_class_field ctx c f =
     let p = s_path ctx c.cl_path in
-    print ctx "%s.prototype." p;
     check_field_name c f;
+    print ctx "%s.prototype%s" p (field f.cf_name);
     match f.cf_expr with
     | None ->
-        println ctx "%s = nil;" f.cf_name;
+        println ctx "= nil;"
     | Some e ->
         ctx.id_counter <- 0;
         (match e.eexpr with
@@ -1505,7 +1493,7 @@ let gen_class_field ctx c f =
              let old = ctx.in_value, ctx.in_loop in
              ctx.in_value <- None;
              ctx.in_loop <- false;
-             print ctx "%s = function" f.cf_name;
+             print ctx " = function";
              print ctx "(%s) " (String.concat "," ("self" :: List.map ident (List.map arg_name f2.tf_args)));
              let fblock = fun_block ctx f2 e.epos in
              (match fblock.eexpr with
@@ -1550,7 +1538,7 @@ let generate_class ctx c =
     ctx.current <- c;
     ctx.id_counter <- 0;
     (match c.cl_path with
-     | [],"Function" -> abort "This class redefines a native one" c.cl_pos
+     | [],"Function" -> error "This class redefines a native one" c.cl_pos
      | _ -> ());
     let p = s_path ctx c.cl_path in
     let hxClasses = has_feature ctx "Type.resolveClass" in
@@ -1738,15 +1726,13 @@ let generate_require ctx path meta =
     let _, args, mp = Meta.get Meta.LuaRequire meta in
     let p = (s_path ctx path) in
 
-    (* generate_package_create ctx path; *)
-
     (match args with
      | [(EConst(String(module_name)),_)] ->
          print ctx "%s = _G.require(\"%s\")" p module_name
      | [(EConst(String(module_name)),_) ; (EConst(String(object_path)),_)] ->
          print ctx "%s = _G.require(\"%s\").%s" p module_name object_path
      | _ ->
-         abort "Unsupported @:luaRequire format" mp);
+         error "Unsupported @:luaRequire format" mp);
 
     newline ctx
 
@@ -1761,13 +1747,9 @@ let generate_type ctx = function
         if p = "Std" && c.cl_ordered_statics = [] then
             ()
         else if (not c.cl_extern) && Meta.has Meta.LuaDotMethod c.cl_meta then
-            abort "LuaDotMethod is valid for externs only" c.cl_pos
+            error "LuaDotMethod is valid for externs only" c.cl_pos
         else if not c.cl_extern then
-            generate_class ctx c
-        else if Meta.has Meta.InitPackage c.cl_meta then
-            (match c.cl_path with
-             | ([],_) -> ()
-             | _ -> generate_package_create ctx c.cl_path);
+            generate_class ctx c;
         check_multireturn ctx c;
     | TEnumDecl e ->
         if not e.e_extern then generate_enum ctx e
@@ -1778,8 +1760,9 @@ let generate_type_forward ctx = function
     | TClassDecl c ->
         if not c.cl_extern then
             begin
-                generate_package_create ctx c.cl_path;
                 let p = s_path ctx c.cl_path in
+                let l,c = c.cl_path in
+                if List.length(l) == 0 then spr ctx "local ";
                 println ctx "%s = _hx_e()" p
             end
         else if Meta.has Meta.LuaRequire c.cl_meta && is_directly_used ctx.com c.cl_meta then
@@ -1788,8 +1771,9 @@ let generate_type_forward ctx = function
         if Meta.has Meta.LuaRequire e.e_meta && is_directly_used ctx.com e.e_meta then
             generate_require ctx e.e_path e.e_meta;
     | TEnumDecl e ->
-        generate_package_create ctx e.e_path;
         let p = s_path ctx e.e_path in
+        let l,c = e.e_path in
+        if List.length(l) == 0 then spr ctx "local ";
         println ctx "%s = _hx_e()" p;
     | TTypeDecl _ | TAbstractDecl _ -> ()
 
@@ -1874,7 +1858,7 @@ let transform_multireturn ctx = function
                         e
                     | TReturn Some(e2) ->
                         if is_multireturn e2.etype then
-                            failwith "You cannot return a multireturn type from a haxe function"
+                            error "You cannot return a multireturn type from a haxe function" e2.epos
                         else
                             Type.map_expr loop e;
      (*

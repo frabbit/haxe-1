@@ -895,7 +895,10 @@ class RunCi {
 								runCommand("haxe", ["compile-cppia-host.hxml"]);
 								runCommand("haxe", ["compile-cppia.hxml"]);
 								runCpp("bin/cppia/Host-debug", ["bin/unit.cppia"]);
-								//runCpp("bin/cppia/Host-debug", ["bin/unit.cppia", "-jit"]);
+								runCpp("bin/cppia/Host-debug", ["bin/unit.cppia", "-jit"]);
+								runCommand("haxe", ["compile-cppia.hxml", "-D", "nocppiaast"]);
+								runCpp("bin/cppia/Host-debug", ["bin/unit.cppia"]);
+								runCpp("bin/cppia/Host-debug", ["bin/unit.cppia", "-jit"]);
 						}
 
 						changeDirectory(sysDir);

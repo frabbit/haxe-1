@@ -4092,6 +4092,7 @@ let gen_cpp_ast_expression_tree ctx class_name func_name function_args function_
       | OpMod -> "%"
       | OpInterval -> "..."
       | OpArrow -> "->"
+      | OpIn -> " in "
       | OpAssign | OpAssignOp _ -> abort "Unprocessed OpAssign" pos
    and string_of_path path =
       "::" ^ (join_class_path_remap path "::") ^ "_obj"
@@ -7035,6 +7036,7 @@ let cppia_op_info = function
 	| IaBinOp OpMod -> ("%", 120)
 	| IaBinOp OpInterval -> ("...", 121)
 	| IaBinOp OpArrow -> ("=>", 122)
+	| IaBinOp OpIn -> (" in ", 123)
 	| IaBinOp OpAssignOp OpAdd -> ("+=", 201)
 	| IaBinOp OpAssignOp OpMult -> ("*=", 202)
 	| IaBinOp OpAssignOp OpDiv -> ("/=", 203)
@@ -7051,6 +7053,7 @@ let cppia_op_info = function
 	| IaBinOp OpAssignOp OpShl -> ("<<=", 219)
 	| IaBinOp OpAssignOp OpMod -> ("%=", 220)
 
+	| IaBinOp OpAssignOp OpIn
 	| IaBinOp OpAssignOp OpInterval
 	| IaBinOp OpAssignOp OpAssign
 	| IaBinOp OpAssignOp OpEq
@@ -7080,7 +7083,7 @@ class script_writer ctx filename asciiOut =
    val identTable = Hashtbl.create 0
    val fileTable = Hashtbl.create 0
    val identBuffer = Buffer.create 0
-   val cppiaAst = Common.defined ctx.ctx_common Define.CppiaAst
+   val cppiaAst = not (Common.defined ctx.ctx_common Define.NoCppiaAst)
 
    method stringId name =
       try ( Hashtbl.find identTable name )

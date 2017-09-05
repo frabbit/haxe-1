@@ -186,12 +186,17 @@ module Pattern = struct
 				ctx.locals <- PMap.add name v ctx.locals;
 				v
 		in
+		let con_enum en ef p =
+			Display.DeprecationCheck.check_enum pctx.ctx.com en p;
+			Display.DeprecationCheck.check_ef pctx.ctx.com ef p;
+			ConEnum(en,ef)
+		in
 		let check_expr e =
 			let rec loop e = match e.eexpr with
 				| TField(_,FEnum(en,ef)) ->
 					(* Let the unification afterwards fail so we don't recover. *)
 					(* (match follow ef.ef_type with TFun _ -> raise Exit | _ -> ()); *)
-					PatConstructor(ConEnum(en,ef),[])
+					PatConstructor(con_enum en ef e.epos,[])
 				| TField(_,FStatic(c,({cf_kind = Var {v_write = AccNever}} as cf))) ->
 					PatConstructor(ConStatic(c,cf),[])
 				| TConst ct ->
@@ -322,7 +327,7 @@ module Pattern = struct
 						(* We want to change the original monomorphs back to type parameters, but we don't want to do that
 						   if they are bound to other monomorphs (issue #4578). *)
 						unapply_type_parameters ef.ef_params monos;
-						PatConstructor(ConEnum(en,ef),patterns)
+						PatConstructor(con_enum en ef e1.epos,patterns)
 					| _ ->
 						fail()
 				end
@@ -355,7 +360,7 @@ module Pattern = struct
 						fail()
 				end
 			| EObjectDecl fl ->
-				let known_fields = match follow t with
+				let rec known_fields t = match follow t with
 					| TAnon an ->
 						PMap.fold (fun cf acc -> (cf,cf.cf_type) :: acc) an.a_fields []
 					| TInst(c,tl) ->
@@ -370,16 +375,28 @@ module Pattern = struct
 						in
 						loop [] c tl
 					| TAbstract({a_impl = Some c} as a,tl) ->
+						let fields = try
+							let _,el,_ = Meta.get Meta.Forward a.a_meta in
+							let sl = ExtList.List.filter_map (fun e -> match fst e with
+								| EConst(Ident s) -> Some s
+								| _ -> None
+							) el in
+							let fields = known_fields (Abstract.get_underlying_type a tl) in
+							if sl = [] then fields else List.filter (fun (cf,t) -> List.mem cf.cf_name sl) fields
+						with Not_found ->
+							[]
+						in
 						let fields = List.fold_left (fun acc cf ->
 							if Meta.has Meta.Impl cf.cf_meta then
 								(cf,apply_params a.a_params tl cf.cf_type) :: acc
 							else
 								acc
-						) [] c.cl_ordered_statics in
+						) fields c.cl_ordered_statics in
 						fields
 					| _ ->
 						error (Printf.sprintf "Cannot field-match against %s" (s_type t)) (pos e)
 				in
+				let known_fields = known_fields t in
 				let is_matchable cf =
 					match cf.cf_kind with Method _ -> false | _ -> true
 				in
@@ -419,9 +436,11 @@ module Pattern = struct
 					in
 					loop false e1
 			| EBinop(OpArrow,e1,e2) ->
+				let restore = save_locals ctx in
 				let v = add_local "_" null_pos in
 				let e1 = type_expr ctx e1 Value in
 				v.v_name <- "tmp";
+				restore();
 				let pat = make pctx e1.etype e2 in
 				PatExtractor(v,e1,pat)
 			| EDisplay(e,iscall) ->
@@ -1137,7 +1156,7 @@ module TexprConverter = struct
 			let t_ef = match follow ef.ef_type with TFun(_,t) -> t | _ -> ef.ef_type in
 			let t_ef = apply_params ctx.type_params params (monomorphs en.e_params (monomorphs ef.ef_params t_ef)) in
 			let monos = List.map (fun t -> match follow t with
-				| TInst({cl_kind = KTypeParameter _},_) -> mk_mono()
+				| TInst({cl_kind = KTypeParameter _},_) | TMono _ -> mk_mono()
 				| _ -> t
 			) params in
 			let rec duplicate_monos t = match follow t with
