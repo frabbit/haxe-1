@@ -138,6 +138,7 @@ module Pattern = struct
 	type pattern_context = {
 		ctx : typer;
 		or_locals : (string, tvar * pos) PMap.t option;
+		ctx_locals : (string, tvar) PMap.t;
 		mutable current_locals : (string, tvar * pos) PMap.t;
 		mutable in_reification : bool;
 	}
@@ -437,6 +438,7 @@ module Pattern = struct
 					loop false e1
 			| EBinop(OpArrow,e1,e2) ->
 				let restore = save_locals ctx in
+				ctx.locals <- pctx.ctx_locals;
 				let v = add_local "_" null_pos in
 				let e1 = type_expr ctx e1 Value in
 				v.v_name <- "tmp";
@@ -458,6 +460,7 @@ module Pattern = struct
 		let pctx = {
 			ctx = ctx;
 			current_locals = PMap.empty;
+			ctx_locals = ctx.locals;
 			or_locals = None;
 			in_reification = false;
 		} in
@@ -1072,9 +1075,9 @@ module Compile = struct
 				let e1 = loop e1 in
 				let bindings = List.map (fun v -> v,subject.epos,subject) vars @ bindings in
 				begin try
-					let v,_,_,left,right = List.find (fun (_,_,e2,_,_) -> Texpr.equal e1 e2) ex_bindings in
+					let v,_,_,left2,right2 = List.find (fun (_,_,e2,_,_) -> Texpr.equal e1 e2) ex_bindings in
 					let ev = mk (TLocal v) v.v_type e1.epos in
-					let patterns = make_offset_list (left + 1) (right - 1) pat pat_any @ patterns in
+					let patterns = make_offset_list (left2 + 1) (right2 - 1) pat pat_any @ patterns in
 					(left + 1, right - 1,ev :: subjects,((case,bindings,patterns) :: cases),ex_bindings)
 				with Not_found ->
 					let v = alloc_var "_hx_tmp" e1.etype e1.epos in
@@ -1353,7 +1356,7 @@ module TexprConverter = struct
 				in
 				begin match cases with
 					| [_,e2] when e_default = None && (match finiteness with RunTimeFinite -> true | _ -> false) ->
-						e2
+						{e2 with etype = t_switch}
 					| [[e1],e2] when (with_type = NoValue || e_default <> None) && ctx.com.platform <> Java (* TODO: problem with TestJava.hx:285 *) ->
 						let e_op = mk (TBinop(OpEq,e_subject,e1)) ctx.t.tbool e_subject.epos in
 						mk (TIf(e_op,e2,e_default)) t_switch dt.dt_pos
