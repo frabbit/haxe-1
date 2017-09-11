@@ -52,6 +52,7 @@ type 'value compiler_api = {
 	encode_expr : Ast.expr -> 'value;
 	encode_ctype : Ast.type_hint -> 'value;
 	decode_type : 'value -> t;
+	flush_context : (unit -> t) -> t;
 }
 
 
@@ -156,7 +157,7 @@ module type InterpApi = sig
 	val encode_string_map : ('a -> value) -> (string, 'a) PMap.t -> value
 
 	val encode_tdecl : Type.module_type -> value
-	val encode_lazytype : (unit -> Type.t) ref -> (unit -> value) -> value
+	val encode_lazytype : tlazy ref -> (unit -> value) -> value
 	val encode_unsafe : Obj.t -> value
 
 	val field : value -> string -> value
@@ -170,7 +171,7 @@ module type InterpApi = sig
 	val decode_pos : value -> Globals.pos
 	val decode_enum : value -> int * value list
 	val decode_tdecl : value -> Type.module_type
-	val decode_lazytype : value -> (unit -> Type.t) ref
+	val decode_lazytype : value -> tlazy ref
 	val decode_unsafe : value -> Obj.t
 
 	val decode_enum_with_pos : value -> (int * value list) * Globals.pos
@@ -179,6 +180,7 @@ module type InterpApi = sig
 	val decode_ref : value -> 'a
 
 	val compiler_error : string -> Globals.pos -> 'a
+	val error_message : string -> 'a
 	val value_to_expr : value -> Globals.pos -> Ast.expr
 	val value_signature : value -> string
 
@@ -188,6 +190,8 @@ module type InterpApi = sig
 	val prepare_callback : value -> int -> (value list -> value)
 
 	val value_string : value -> string
+
+	val flush_core_context : (unit -> t) -> t
 
 end
 
@@ -910,11 +914,14 @@ and encode_efield f =
 and encode_cfield f =
 	encode_obj OClassField [
 		"name", encode_string f.cf_name;
-		"type", (match f.cf_kind with Method _ -> encode_lazy_type f.cf_type | _ -> encode_type f.cf_type);
+		"type", encode_lazy_type f.cf_type;
 		"isPublic", vbool f.cf_public;
 		"params", encode_type_params f.cf_params;
 		"meta", encode_meta f.cf_meta (fun m -> f.cf_meta <- m);
-		"expr", vfun0 (fun() -> ignore(follow f.cf_type); (match f.cf_expr with None -> vnull | Some e -> encode_texpr e));
+		"expr", vfun0 (fun() ->
+			ignore (flush_core_context (fun() -> follow f.cf_type));
+			(match f.cf_expr with None -> vnull | Some e -> encode_texpr e)
+		);
 		"kind", encode_field_kind f.cf_kind;
 		"pos", encode_pos f.cf_pos;
 		"namePos",encode_pos f.cf_name_pos;
@@ -1053,7 +1060,7 @@ and encode_type t =
 			else
 				6, [encode_type tsub]
 		| TLazy f ->
-			loop (!f())
+			loop (lazy_type f)
 		| TAbstract (a, pl) ->
 			8, [encode_abref a; encode_tparams pl]
 	in
@@ -1067,7 +1074,21 @@ and encode_lazy_type t =
 			| Some t -> loop t
 			| _ -> encode_type t)
 		| TLazy f ->
-			encode_enum IType 7 [encode_lazytype f (fun() -> encode_type (!f()))]
+			(match !f with
+			| LAvailable t ->
+				encode_type t
+			| _ ->
+				encode_enum IType 7 [encode_lazytype f (fun() ->
+					(match !f with
+					| LAvailable t ->
+						encode_type t
+					| LWait _ ->
+						(* we are doing some typing here, let's flush our context if it's not already *)
+						encode_type (flush_core_context (fun() -> lazy_type f))
+					| LProcessing _ ->
+						(* our type in on the processing stack, error instead of returning most likely an unbound mono *)
+						error_message "Accessing a type while it's being typed");
+				)])
 		| _ ->
 			encode_type t
 	in
@@ -1738,7 +1759,7 @@ let macro_api ccom get_api =
 				| TType (t,tl) ->
 					apply_params t.t_params tl t.t_type
 				| TLazy f ->
-					(!f)()
+					lazy_type f
 			in
 			encode_type (if decode_opt_bool once then follow_once t else Abstract.follow_with_abstracts t)
 		);
@@ -1755,7 +1776,7 @@ let macro_api ccom get_api =
 				| TType (t,tl) ->
 					apply_params t.t_params tl t.t_type
 				| TLazy f ->
-					(!f)()
+					lazy_type f
 			in
 			encode_type (if decode_opt_bool once then follow_once t else follow t)
 		);
