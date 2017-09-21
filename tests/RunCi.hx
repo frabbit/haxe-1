@@ -574,12 +574,13 @@ class RunCi {
 	static function deploy():Void {
 
 		var doDocs = isDeployApiDocsRequired();
-		var doNightlies = isDeployNightlies();
+		var doNightlies = isDeployNightlies(),
+				doInstaller = doNightlies && shouldDeployInstaller();
 
 		if (doDocs || doNightlies) {
 			changeDirectory(repoDir);
 			if (doDocs) {
-				if (Sys.systemName() != 'Windows') {
+				if (systemName != 'Windows') {
 					// generate doc
 					runCommand("make", ["-s", "install_dox"]);
 					runCommand("make", ["-s", "package_doc"]);
@@ -591,7 +592,12 @@ class RunCi {
 				}
 			}
 			if (doNightlies) {
-				deployNightlies();
+				if (doInstaller && !doDocs && systemName != 'Windows') {
+					// generate doc
+					runCommand("make", ["-s", "install_dox"]);
+					runCommand("make", ["-s", "package_doc"]);
+				}
+				deployNightlies(doInstaller);
 			}
 		}
 	}
@@ -625,6 +631,17 @@ class RunCi {
 		}
 	}
 
+	static function shouldDeployInstaller() {
+		if (systemName == 'Linux') {
+			return false;
+		}
+		if (gitInfo.branch == 'nightly-travis') {
+			return true;
+		}
+		var rev = Sys.getEnv('ADD_REVISION');
+		return rev != null && rev != "0";
+	}
+
 	static function isDeployApiDocsRequired () {
 		return gitInfo.branch == "development" &&
 			Sys.getEnv("DEPLOY_API_DOCS") != null &&
@@ -647,7 +664,7 @@ class RunCi {
 	/**
 		Deploy source package to hxbuilds s3
 	*/
-	static function deployNightlies():Void {
+	static function deployNightlies(doInstaller:Bool):Void {
 		var gitTime = commandResult("git", ["show", "-s", "--format=%ct", "HEAD"]).stdout;
 		var tzd = {
 			var z = Date.fromTime(0);
@@ -664,7 +681,11 @@ class RunCi {
 		) {
 			if (ci == TravisCI) {
 				runCommand("make", ["-s", "package_unix"]);
-				if (Sys.systemName() == 'Linux') {
+				if (doInstaller) {
+					getLatestNeko();
+					runCommand("make", ["-s", 'package_installer_mac']);
+				}
+				if (systemName == 'Linux') {
 					// source
 					for (file in sys.FileSystem.readDirectory('out')) {
 						if (file.startsWith('haxe') && file.endsWith('_src.tar.gz')) {
@@ -674,23 +695,55 @@ class RunCi {
 					}
 				}
 				for (file in sys.FileSystem.readDirectory('out')) {
-					if (file.startsWith('haxe') && file.endsWith('_bin.tar.gz')) {
-						var name = Sys.systemName() == "Linux" ? 'linux64' : 'mac';
-						submitToS3(name, 'out/$file');
-						break;
+					if (file.startsWith('haxe')) {
+						if (file.endsWith('_bin.tar.gz')) {
+							var name = systemName == "Linux" ? 'linux64' : 'mac';
+							submitToS3(name, 'out/$file');
+						} else if (file.endsWith('_installer.tar.gz')) {
+							submitToS3('mac-installer', 'out/$file');
+						}
 					}
 				}
 			} else {
+				if (doInstaller) {
+					getLatestNeko();
+					var cygRoot = Sys.getEnv("CYG_ROOT");
+					if (cygRoot != null) {
+						runCommand('$cygRoot/bin/bash', ['-lc', "cd \"$OLDPWD\" && make -s -f Makefile.win package_installer_win"]);
+					} else {
+						runCommand("make", ['-f', 'Makefile.win', "-s", 'package_installer_win']);
+					}
+				}
 				for (file in sys.FileSystem.readDirectory('out')) {
-					if (file.startsWith('haxe') && file.endsWith('_bin.zip')) {
-						submitToS3('windows', 'out/$file');
-						break;
+					if (file.startsWith('haxe')) {
+						if (file.endsWith('_bin.zip')) {
+							submitToS3('windows', 'out/$file');
+						} else if (file.endsWith('_installer.zip')) {
+							submitToS3('windows-installer', 'out/$file');
+						}
 					}
 				}
 			}
 		} else {
 			trace('Not deploying nightlies');
 		}
+	}
+
+	static function getLatestNeko() {
+		if (!FileSystem.exists('installer')) {
+			FileSystem.createDirectory('installer');
+		}
+		var src = 'http://nekovm.org/media/neko-2.1.0-';
+		var suffix = systemName == 'Windows' ? 'win.zip' : 'osx64.tar.gz';
+		src += suffix;
+		runCommand("wget", [src, '-O', 'installer/neko-$suffix'], true);
+	}
+
+	static function createNsiInstaller() {
+		if (!FileSystem.exists('installer')) {
+			FileSystem.createDirectory('installer');
+		}
+		getLatestNeko();
 	}
 
 	static function fileExtension(file:String) {
@@ -808,6 +861,7 @@ class RunCi {
 						runCommand("haxe", ["compile.hxml"]);
 
 						changeDirectory(sysDir);
+						haxelibInstall("utest");
 						runCommand("haxe", ["compile-macro.hxml"]);
 						runCommand("haxe", ["compile-each.hxml", "--run", "Main"]);
 					case Neko:
@@ -815,6 +869,7 @@ class RunCi {
 						runCommand("neko", ["bin/unit.n"]);
 
 						changeDirectory(sysDir);
+						haxelibInstall("utest");
 						runCommand("haxe", ["compile-neko.hxml"]);
 						runCommand("neko", ["bin/neko/sys.n"]);
 					case Php7:
@@ -824,6 +879,7 @@ class RunCi {
 							runCommand("php", ["bin/php7/index.php"]);
 
 							changeDirectory(sysDir);
+							haxelibInstall("utest");
 							runCommand("haxe", ["compile-php7.hxml"]);
 							runCommand("php", ["bin/php7/Main/index.php"]);
 						}
@@ -833,6 +889,7 @@ class RunCi {
 							runCommand("php", ["bin/php/index.php"]);
 
 							changeDirectory(sysDir);
+							haxelibInstall("utest");
 							runCommand("haxe", ["compile-php.hxml"]);
 							runCommand("php", ["bin/php/Main/index.php"]);
 					case Python:
@@ -844,6 +901,7 @@ class RunCi {
 						}
 
 						changeDirectory(sysDir);
+						haxelibInstall("utest");
 						runCommand("haxe", ["compile-python.hxml"]);
 						for (py in pys) {
 							runCommand(py, ["bin/python/sys.py"]);
@@ -873,6 +931,7 @@ class RunCi {
 							runCommand("lua", ["bin/unit.lua"]);
 
 							changeDirectory(sysDir);
+							haxelibInstall("utest");
 							runCommand("haxe", ["compile-lua.hxml"].concat(args));
 							runCommand("lua", ["bin/lua/sys.lua"]);
 
@@ -902,6 +961,7 @@ class RunCi {
 						}
 
 						changeDirectory(sysDir);
+						haxelibInstall("utest");
 						runCommand("haxe", ["compile-cpp.hxml"]);
 						runCpp("bin/cpp/Main-debug", []);
 
@@ -988,6 +1048,7 @@ class RunCi {
 						runCommand("java", ["-jar", "bin/java/TestMain-Debug.jar"]);
 
 						changeDirectory(sysDir);
+						haxelibInstall("utest");
 						runCommand("haxe", ["compile-java.hxml"]);
 						runCommand("java", ["-jar", "bin/java/Main-Debug.jar"]);
 
@@ -1032,6 +1093,7 @@ class RunCi {
 						runCs("bin/cs/bin/TestMain-Debug.exe");
 
 						changeDirectory(sysDir);
+						haxelibInstall("utest");
 						runCommand("haxe", ["compile-cs.hxml",'-D','fast_cast']);
 						runCs("bin/cs/bin/Main-Debug.exe", []);
 
