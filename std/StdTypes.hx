@@ -76,7 +76,7 @@
 typedef Null<T> = T;
 typedef UnsafeNull<T> = Null<T>;
 #if null_safety
-abstract SafeNull<T>(Null<T>) from T {
+abstract SafeNull<T>(UnsafeNull<T>) from T {
 	public inline function isNull () return this == cast null;
 
 	public inline function isSome () return !isNull();

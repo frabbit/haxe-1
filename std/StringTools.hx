@@ -150,9 +150,9 @@ class StringTools {
 		- `"` becomes `&quot`;
 		- `'` becomes `&#039`;
 	**/
-	public static function htmlEscape( s : String, ?quotes : Bool ) : String {
+	public static function htmlEscape( s : String, ?quotes : SafeNull<Bool> ) : String {
 		s = s.split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;");
-		return quotes ? s.split('"').join("&quot;").split("'").join("&#039;") : s;
+		return (@:forceNotNull quotes) ? s.split('"').join("&quot;").split("'").join("&#039;") : s;
 	}
 
 	/**

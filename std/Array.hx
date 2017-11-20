@@ -130,7 +130,7 @@ extern class Array<T> {
 		If `pos` exceeds `this.length` or if `end` is less than or equals
 		`pos`, the result is `[]`.
 	**/
-	function slice( pos : Int, ?end : Int ) : Array<T>;
+	function slice( pos : Int, ?end : SafeNull<Int> ) : Array<T>;
 
 	/**
 		Sorts `this` Array according to the comparison function `f`, where
@@ -153,7 +153,7 @@ extern class Array<T> {
 
 		This operation modifies `this` Array in place.
 
-		If `len` is < 0 or `pos` exceeds `this`.length, an empty Array [] is 
+		If `len` is < 0 or `pos` exceeds `this`.length, an empty Array [] is
 		returned and `this` Array is unchanged.
 
 		If `pos` is negative, its value is calculated from the end	of `this`

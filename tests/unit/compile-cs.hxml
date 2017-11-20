@@ -2,7 +2,7 @@
 -cmd "haxelib run hxcs native_cs/hxcs_build.txt"
 
 --next
-
+#-D null_safety
 compile-each.hxml
 -main unit.TestMain
 -cs bin/cs

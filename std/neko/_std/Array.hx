@@ -206,7 +206,7 @@
 		return x;
 	}
 
-	public function slice( pos : Int, ?end : Int ) : Array<T> {
+	public function slice( pos : Int, ?end : SafeNull<Int> ) : Array<T> {
 		if( pos < 0 ){
 			pos = this.length + pos;
 			if( pos < 0 )
@@ -214,11 +214,11 @@
 		}
 		if( end == null )
 			end = this.length;
-		else if( end < 0 )
-			end = this.length + end;
-		if( end > this.length )
+		else if( (@:forceNotNull end) < 0 )
+			end = this.length + (@:forceNotNull end);
+		if( (@:forceNotNull end) > this.length )
 			end = this.length;
-		var len = end - pos;
+		var len = (@:forceNotNull end) - pos;
 		if( len < 0 ) return new Array();
 		return new1(neko.NativeArray.sub(this.__a,pos,len),len);
 	}

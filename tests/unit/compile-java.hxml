@@ -2,7 +2,7 @@
 -cmd "haxelib run hxjava native_java/hxjava_build.txt --out native_java/native"
 
 --next
-
+-D null_safety
 compile-each.hxml
 -main unit.TestMain
 -java bin/java
