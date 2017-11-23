@@ -3154,6 +3154,7 @@ and unify_lifted_types1 t1 t2 o1 o2 c1 c2 =
 			()
 		| LTNested(_, _), LTLeaf(t2) when is_in_type t2 ->
 			Printf.printf "ASSERT unexpected unify %s %s\n" (s_lifted_type lt1) (s_lifted_type lt2);
+			error [cannot_unify (reduce_lifted_type lt1) (reduce_lifted_type lt2)]
 		| LTFunc(_,_,_), LTLeaf(t2) when is_in_type t2 ->
 			()
 		| LTLeaf(t1), LTNestedMono(ta, _) when is_in_type t1 ->
