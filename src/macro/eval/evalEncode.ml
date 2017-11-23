@@ -85,6 +85,7 @@ let encode_enum i pos index pl =
 		| IFieldAccess -> key_haxe_macro_FieldAccess
 		| IAnonStatus -> key_haxe_macro_AnonStatus
 		| IImportMode -> key_haxe_macro_ImportMode
+		| IQuoteStatus -> key_haxe_macro_QuoteStatus
 	in
 	encode_enum_value key index (Array.of_list pl) pos
 

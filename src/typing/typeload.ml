@@ -80,7 +80,7 @@ let make_module ctx mpath file loadp =
 		m_id = alloc_mid();
 		m_path = mpath;
 		m_types = [];
-		m_extra = module_extra (Path.unique_full_path file) (Common.get_signature ctx.com) (file_time file) (if ctx.in_macro then MMacro else MCode) (get_policy ctx mpath);
+		m_extra = module_extra (Path.unique_full_path file) (Define.get_signature ctx.com.defines) (file_time file) (if ctx.in_macro then MMacro else MCode) (get_policy ctx mpath);
 	} in
 	m
 
@@ -135,17 +135,7 @@ let module_pass_1 ctx m tdecls loadp =
 				e_extern = List.mem EExtern d.d_flags;
 				e_constrs = PMap.empty;
 				e_names = [];
-				e_type = {
-					t_path = [], "Enum<" ^ (s_type_path path) ^ ">";
-					t_module = m;
-					t_doc = None;
-					t_pos = p;
-					t_name_pos = null_pos;
-					t_type = mk_mono();
-					t_private = true;
-					t_params = [];
-					t_meta = [];
-				};
+				e_type = enum_module_type m path p;
 			} in
 			decls := (TEnumDecl e, decl) :: !decls;
 			acc
@@ -223,7 +213,7 @@ let module_pass_1 ctx m tdecls loadp =
 				(match !decls with
 				| (TClassDecl c,_) :: _ ->
 					List.iter (fun m -> match m with
-						| ((Meta.Build | Meta.CoreApi | Meta.Allow | Meta.Access | Meta.Enum | Meta.Dce | Meta.Native | Meta.JsRequire | Meta.PythonImport | Meta.Expose | Meta.Deprecated | Meta.PhpConstants | Meta.PhpGlobal),_,_) ->
+						| ((Meta.Build | Meta.CoreApi | Meta.Allow | Meta.Access | Meta.Enum | Meta.Dce | Meta.Native | Meta.JsRequire | Meta.PythonImport | Meta.Expose | Meta.Deprecated | Meta.PhpGlobal),_,_) ->
 							c.cl_meta <- m :: c.cl_meta;
 						| _ ->
 							()
@@ -241,11 +231,11 @@ let module_pass_1 ctx m tdecls loadp =
 	decls, List.rev tdecls
 
 let parse_file_from_lexbuf com file p lexbuf =
-	let t = Common.timer ["parsing"] in
+	let t = Timer.timer ["parsing"] in
 	Lexer.init file true;
 	incr stats.s_files_parsed;
 	let data = try
-		Parser.parse com lexbuf
+		ParserEntry.parse com.defines lexbuf
 	with
 		| Sedlexing.MalFormed ->
 			t();
@@ -325,7 +315,7 @@ let apply_macro ctx mode path el p =
 let rec load_type_def ctx p t =
 	let no_pack = t.tpackage = [] in
 	let tname = (match t.tsub with None -> t.tname | Some n -> n) in
-	if tname = "" then raise (Display.DisplayToplevel (Display.ToplevelCollector.run ctx true));
+	if tname = "" then raise (Display.DisplayToplevel (DisplayToplevel.collect ctx true));
 	try
 		if t.tsub <> None then raise Not_found;
 		let path_matches t2 =
@@ -431,7 +421,7 @@ let requires_value_meta com co =
 
 let generate_value_meta com co cf args =
 	if requires_value_meta com co then begin
-		let values = List.fold_left (fun acc ((name,p),_,_,_,eo) -> match eo with Some e -> ((name,p),e) :: acc | _ -> acc) [] args in
+		let values = List.fold_left (fun acc ((name,p),_,_,_,eo) -> match eo with Some e -> ((name,p,NoQuotes),e) :: acc | _ -> acc) [] args in
 		match values with
 			| [] -> ()
 			| _ -> cf.cf_meta <- ((Meta.Value,[EObjectDecl values,cf.cf_pos],null_pos) :: cf.cf_meta)
@@ -527,8 +517,8 @@ let rec load_instance ?(allow_display=false) ctx (t,pn) allow_no_params p =
 							| EConst (Int i) -> "I" ^ i
 							| EConst (Float f) -> "F" ^ f
 							| _ -> "Expr"
-						) in
-						let c = mk_class null_module ([],name) p (pos e) in
+					) in
+						let c = mk_class ctx.m.curmod ([],name) p (pos e) in
 						c.cl_kind <- KExpr e;
 						TInst (c,[])
 					| TPType t -> load_complex_type ctx true p t
@@ -594,6 +584,7 @@ and load_complex_type ctx allow_display p (t,pn) =
 	| CTParent t -> load_complex_type ctx allow_display p t
 	| CTPath t -> load_instance ~allow_display ctx (t,pn) false p
 	| CTOptional _ -> error "Optional type not allowed here" p
+	| CTNamed _ -> error "Named type not allowed here" p
 	| CTExtend (tl,l) ->
 		(match load_complex_type ctx allow_display p (CTAnonymous l,p) with
 		| TAnon a as ta ->
@@ -663,14 +654,20 @@ and load_complex_type ctx allow_display p (t,pn) =
 			let pub = ref true in
 			let dyn = ref false in
 			let params = ref [] in
+			let final = ref false in
 			List.iter (fun a ->
 				match a with
 				| APublic -> ()
 				| APrivate -> pub := false;
 				| ADynamic when (match f.cff_kind with FFun _ -> true | _ -> false) -> dyn := true
+				| AFinal -> final := true
 				| AStatic | AOverride | AInline | ADynamic | AMacro -> error ("Invalid access " ^ Ast.s_access a) p
 			) f.cff_access;
 			let t , access = (match f.cff_kind with
+				| FVar(t,e) when !final ->
+					no_expr e;
+					let t = (match t with None -> error "Type required for structure property" p | Some t -> t) in
+					load_complex_type ctx allow_display p t, Var { v_read = AccNormal; v_write = AccNever }
 				| FVar (Some (CTPath({tpackage=[];tname="Void"}),_), _)  | FProp (_,_,Some (CTPath({tpackage=[];tname="Void"}),_),_) ->
 					error "Fields of type Void are not allowed in structures" p
 				| FVar (t, e) ->
@@ -705,18 +702,12 @@ and load_complex_type ctx allow_display p (t,pn) =
 			) in
 			let t = if Meta.has Meta.Optional f.cff_meta then ctx.t.tnull t else t in
 			let cf = {
-				cf_name = n;
-				cf_type = t;
-				cf_pos = p;
-				cf_name_pos = (pos f.cff_name);
+				(mk_field n t p (pos f.cff_name)) with
 				cf_public = !pub;
 				cf_kind = access;
 				cf_params = !params;
-				cf_expr = None;
-				cf_expr_unoptimized = None;
 				cf_doc = f.cff_doc;
 				cf_meta = f.cff_meta;
-				cf_overloads = [];
 			} in
 			init_meta_overloads ctx None cf;
 			if ctx.is_display_file then begin
@@ -733,7 +724,8 @@ and load_complex_type ctx allow_display p (t,pn) =
 		| _ ->
 			TFun (List.map (fun t ->
 				let t, opt = (match fst t with CTOptional t -> t, true | _ -> t,false) in
-				"",opt,load_complex_type ctx allow_display p t
+				let n,t = (match fst t with CTNamed (n,t) -> (fst n), t | _ -> "", t) in
+				n,opt,load_complex_type ctx allow_display p t
 			) args,load_complex_type ctx allow_display p r)
 
 and init_meta_overloads ctx co cf =
@@ -833,7 +825,7 @@ let load_type_hint ?(opt=false) ctx pcur t =
 			try
 				load_complex_type ctx true pcur (t,p)
 			with Error(Module_not_found(([],name)),p) as exc ->
-				if Display.Diagnostics.is_diagnostics_run ctx then Display.ToplevelCollector.handle_unresolved_identifier ctx name p true;
+				if Display.Diagnostics.is_diagnostics_run ctx then DisplayToplevel.handle_unresolved_identifier ctx name p true;
 				(* Default to Dynamic in display mode *)
 				if ctx.com.display.dms_display then t_dynamic else raise exc
 	in
@@ -920,80 +912,76 @@ let copy_meta meta_src meta_target sl =
 	) meta_src;
 	!meta
 
-let check_overriding ctx c =
+let check_overriding ctx c f =
 	match c.cl_super with
 	| None ->
-		(match c.cl_overrides with
-		| [] -> ()
-		| i :: _ ->
-			display_error ctx ("Field " ^ i.cf_name ^ " is declared 'override' but doesn't override any field") i.cf_pos)
+		if List.memq f c.cl_overrides then display_error ctx ("Field " ^ f.cf_name ^ " is declared 'override' but doesn't override any field") f.cf_pos
 	| _ when c.cl_extern && Meta.has Meta.CsNative c.cl_meta -> () (* -net-lib specific: do not check overrides on extern CsNative classes *)
 	| Some (csup,params) ->
-		PMap.iter (fun i f ->
-			let p = f.cf_pos in
-			let check_field f get_super_field is_overload = try
-				(if is_overload && not (Meta.has Meta.Overload f.cf_meta) then
-					display_error ctx ("Missing @:overload declaration for field " ^ i) p);
-				let t, f2 = get_super_field csup i in
-				(* allow to define fields that are not defined for this platform version in superclass *)
-				(match f2.cf_kind with
-				| Var { v_read = AccRequire _ } -> raise Not_found;
-				| _ -> ());
-				if ctx.com.config.pf_overload && (Meta.has Meta.Overload f2.cf_meta && not (Meta.has Meta.Overload f.cf_meta)) then
-					display_error ctx ("Field " ^ i ^ " should be declared with @:overload since it was already declared as @:overload in superclass") p
-				else if not (List.memq f c.cl_overrides) then
-					display_error ctx ("Field " ^ i ^ " should be declared with 'override' since it is inherited from superclass " ^ s_type_path csup.cl_path) p
-				else if not f.cf_public && f2.cf_public then
-					display_error ctx ("Field " ^ i ^ " has less visibility (public/private) than superclass one") p
-				else (match f.cf_kind, f2.cf_kind with
-				| _, Method MethInline ->
-					display_error ctx ("Field " ^ i ^ " is inlined and cannot be overridden") p
-				| a, b when a = b -> ()
-				| Method MethInline, Method MethNormal ->
-					() (* allow to redefine a method as inlined *)
-				| _ ->
-					display_error ctx ("Field " ^ i ^ " has different property access than in superclass") p);
-				if has_meta Meta.Final f2.cf_meta then display_error ctx ("Cannot override @:final method " ^ i) p;
-				try
-					let t = apply_params csup.cl_params params t in
-					valid_redefinition ctx f f.cf_type f2 t
-				with
-					Unify_error l ->
-						display_error ctx ("Field " ^ i ^ " overloads parent class with different or incomplete type") p;
-						display_error ctx ("Base field is defined here") f2.cf_pos;
-						display_error ctx (error_msg (Unify l)) p;
+		let p = f.cf_pos in
+		let i = f.cf_name in
+		let check_field f get_super_field is_overload = try
+			(if is_overload && not (Meta.has Meta.Overload f.cf_meta) then
+				display_error ctx ("Missing @:overload declaration for field " ^ i) p);
+			let t, f2 = get_super_field csup i in
+			(* allow to define fields that are not defined for this platform version in superclass *)
+			(match f2.cf_kind with
+			| Var { v_read = AccRequire _ } -> raise Not_found;
+			| _ -> ());
+			if ctx.com.config.pf_overload && (Meta.has Meta.Overload f2.cf_meta && not (Meta.has Meta.Overload f.cf_meta)) then
+				display_error ctx ("Field " ^ i ^ " should be declared with @:overload since it was already declared as @:overload in superclass") p
+			else if not (List.memq f c.cl_overrides) then
+				display_error ctx ("Field " ^ i ^ " should be declared with 'override' since it is inherited from superclass " ^ s_type_path csup.cl_path) p
+			else if not f.cf_public && f2.cf_public then
+				display_error ctx ("Field " ^ i ^ " has less visibility (public/private) than superclass one") p
+			else (match f.cf_kind, f2.cf_kind with
+			| _, Method MethInline ->
+				display_error ctx ("Field " ^ i ^ " is inlined and cannot be overridden") p
+			| a, b when a = b -> ()
+			| Method MethInline, Method MethNormal ->
+				() (* allow to redefine a method as inlined *)
+			| _ ->
+				display_error ctx ("Field " ^ i ^ " has different property access than in superclass") p);
+			if has_meta Meta.Final f2.cf_meta then display_error ctx ("Cannot override final method " ^ i) p;
+			try
+				let t = apply_params csup.cl_params params t in
+				valid_redefinition ctx f f.cf_type f2 t
 			with
-				Not_found ->
-					if List.memq f c.cl_overrides then
-						let msg = if is_overload then
-							("Field " ^ i ^ " is declared 'override' but no compatible overload was found")
-						else
-							("Field " ^ i ^ " is declared 'override' but doesn't override any field")
-						in
-						display_error ctx msg p
-			in
-			if ctx.com.config.pf_overload && Meta.has Meta.Overload f.cf_meta then begin
-				let overloads = Overloads.get_overloads csup i in
-				List.iter (fun (t,f2) ->
-					(* check if any super class fields are vars *)
-					match f2.cf_kind with
-					| Var _ ->
-						display_error ctx ("A variable named '" ^ f2.cf_name ^ "' was already declared in a superclass") f.cf_pos
-					| _ -> ()
-				) overloads;
-				List.iter (fun f ->
-					(* find the exact field being overridden *)
-					check_field f (fun csup i ->
-						List.find (fun (t,f2) ->
-							Overloads.same_overload_args f.cf_type (apply_params csup.cl_params params t) f f2
-						) overloads
-					) true
-				) (f :: f.cf_overloads)
-			end else
+				Unify_error l ->
+					display_error ctx ("Field " ^ i ^ " overloads parent class with different or incomplete type") p;
+					display_error ctx ("Base field is defined here") f2.cf_pos;
+					display_error ctx (error_msg (Unify l)) p;
+		with
+			Not_found ->
+				if List.memq f c.cl_overrides then
+					let msg = if is_overload then
+						("Field " ^ i ^ " is declared 'override' but no compatible overload was found")
+					else
+						("Field " ^ i ^ " is declared 'override' but doesn't override any field")
+					in
+					display_error ctx msg p
+		in
+		if ctx.com.config.pf_overload && Meta.has Meta.Overload f.cf_meta then begin
+			let overloads = Overloads.get_overloads csup i in
+			List.iter (fun (t,f2) ->
+				(* check if any super class fields are vars *)
+				match f2.cf_kind with
+				| Var _ ->
+					display_error ctx ("A variable named '" ^ f2.cf_name ^ "' was already declared in a superclass") f.cf_pos
+				| _ -> ()
+			) overloads;
+			List.iter (fun f ->
+				(* find the exact field being overridden *)
 				check_field f (fun csup i ->
-					let _, t, f2 = raw_class_field (fun f -> f.cf_type) csup params i in
-					t, f2) false
-		) c.cl_fields
+					List.find (fun (t,f2) ->
+						Overloads.same_overload_args f.cf_type (apply_params csup.cl_params params t) f f2
+					) overloads
+				) true
+			) (f :: f.cf_overloads)
+		end else
+			check_field f (fun csup i ->
+				let _, t, f2 = raw_class_field (fun f -> f.cf_type) csup params i in
+				t, f2) false
 
 let class_field_no_interf c i =
 	try
@@ -1188,7 +1176,7 @@ let field_to_type_path ctx e =
 	loop e [] []
 
 let handle_fields ctx fields_to_check with_type_expr =
-	List.map (fun ((name,_),expr) ->
+	List.map (fun ((name,_,_),expr) ->
 		let pos = snd expr in
 		let field = (EField(with_type_expr,name), pos) in
 		let fieldexpr = (EConst(Ident name),pos) in
@@ -1548,7 +1536,7 @@ module Inheritance = struct
 				let t = load_instance ~allow_display:true ctx t false p in
 				Some (check_herit t is_extends)
 			with Error(Module_not_found(([],name)),p) when ctx.com.display.dms_display ->
-				if Display.Diagnostics.is_diagnostics_run ctx then Display.ToplevelCollector.handle_unresolved_identifier ctx name p true;
+				if Display.Diagnostics.is_diagnostics_run ctx then DisplayToplevel.handle_unresolved_identifier ctx name p true;
 				None
 		) herits in
 		fl
@@ -1600,8 +1588,19 @@ let type_function_params ctx fd fname p =
 	params := type_type_params ctx ([],fname) (fun() -> !params) p fd.f_params;
 	!params
 
+let save_function_state ctx =
+	let old_ret = ctx.ret in
+	let old_fun = ctx.curfun in
+	let old_opened = ctx.opened in
+	let locals = ctx.locals in
+	(fun () ->
+		ctx.locals <- locals;
+		ctx.ret <- old_ret;
+		ctx.curfun <- old_fun;
+		ctx.opened <- old_opened;
+	)
+
 let type_function ctx args ret fmode f do_display p =
-	let locals = save_locals ctx in
 	let fargs = List.map2 (fun (n,c,t) ((_,pn),_,m,_,_) ->
 		if n.[0] = '$' then error "Function argument names starting with a dollar are not allowed" p;
 		let c = type_function_arg_value ctx t c do_display in
@@ -1612,9 +1611,6 @@ let type_function ctx args ret fmode f do_display p =
 		if n = "this" then v.v_meta <- (Meta.This,[],null_pos) :: v.v_meta;
 		v,c
 	) args f.f_args in
-	let old_ret = ctx.ret in
-	let old_fun = ctx.curfun in
-	let old_opened = ctx.opened in
 	ctx.curfun <- fmode;
 	ctx.ret <- ret;
 	ctx.opened <- [];
@@ -1686,7 +1682,28 @@ let type_function ctx args ret fmode f do_display p =
 	in
 	let e = if fmode <> FunConstructor then
 		e
-	else match has_super_constr() with
+	else begin
+		let final_vars = Hashtbl.create 0 in
+		List.iter (fun cf -> match cf.cf_kind with
+			| Var _ when Meta.has Meta.Final cf.cf_meta && cf.cf_expr = None ->
+				Hashtbl.add final_vars cf.cf_name cf
+			| _ ->
+				()
+		) ctx.curclass.cl_ordered_fields;
+		if Hashtbl.length final_vars > 0 then begin
+			let rec find_inits e = match e.eexpr with
+				| TBinop(OpAssign,{eexpr = TField({eexpr = TConst TThis},fa)},e2) ->
+					Hashtbl.remove final_vars (field_name fa);
+					find_inits e2;
+				| _ ->
+					Type.iter find_inits e
+			in
+			find_inits e;
+			Hashtbl.iter (fun _ cf ->
+				display_error ctx ("final field " ^ cf.cf_name ^ " must be initialized immediately or in the constructor") cf.cf_pos;
+			) final_vars
+		end;
+		match has_super_constr() with
 		| Some (was_forced,t_super) ->
 			(try
 				loop e;
@@ -1702,8 +1719,7 @@ let type_function ctx args ret fmode f do_display p =
 				Exit -> e);
 		| None ->
 			e
-	in
-	locals();
+	end in
 	let e = match ctx.curfun, ctx.vthis with
 		| (FunMember|FunConstructor), Some v ->
 			let ev = mk (TVar (v,Some (mk (TConst TThis) ctx.tthis p))) ctx.t.tvoid p in
@@ -1713,16 +1729,17 @@ let type_function ctx args ret fmode f do_display p =
 		| _ -> e
 	in
 	List.iter (fun r -> r := Closed) ctx.opened;
-	ctx.ret <- old_ret;
-	ctx.curfun <- old_fun;
-	ctx.opened <- old_opened;
 	e , fargs
+
+let type_function ctx args ret fmode f do_display p =
+	let save = save_function_state ctx in
+	Std.finally save (type_function ctx args ret fmode f do_display) p
 
 let load_core_class ctx c =
 	let ctx2 = (match ctx.g.core_api with
 		| None ->
 			let com2 = Common.clone ctx.com in
-			com2.defines <- PMap.empty;
+			com2.defines.Define.values <- PMap.empty;
 			Common.define com2 Define.CoreApi;
 			Common.define com2 Define.Sys;
 			if ctx.in_macro then Common.define com2 Define.Macro;
@@ -1948,6 +1965,7 @@ module ClassInitializer = struct
 		context_init : unit -> unit;
 		mutable delayed_expr : (typer * tlazy ref option) list;
 		mutable force_constructor : bool;
+		mutable uninitialized_final : pos option;
 	}
 
 	type field_kind =
@@ -1957,6 +1975,7 @@ module ClassInitializer = struct
 
 	type field_init_ctx = {
 		is_inline : bool;
+		is_final : bool;
 		is_static : bool;
 		is_override : bool;
 		is_extern : bool;
@@ -2047,6 +2066,7 @@ module ClassInitializer = struct
 			abstract = abstract;
 			context_init = context_init;
 			force_constructor = false;
+			uninitialized_final = None;
 			delayed_expr = [];
 		} in
 		ctx,cctx
@@ -2076,6 +2096,7 @@ module ClassInitializer = struct
 			is_override = is_override;
 			is_macro = is_macro;
 			is_extern = is_extern;
+			is_final = List.mem AFinal cff.cff_access;
 			is_display_field = ctx.is_display_file && Display.is_display_position cff.cff_pos;
 			is_field_debug = cctx.is_class_debug;
 			is_abstract_member = cctx.abstract <> None && Meta.has Meta.Impl cff.cff_meta;
@@ -2328,7 +2349,10 @@ module ClassInitializer = struct
 		if not fctx.is_static && cctx.abstract <> None then error (fst f.cff_name ^ ": Cannot declare member variable in abstract") p;
 		if fctx.is_inline && not fctx.is_static then error (fst f.cff_name ^ ": Inline variable must be static") p;
 		if fctx.is_inline && eo = None then error (fst f.cff_name ^ ": Inline variable must be initialized") p;
-
+		if fctx.is_final && eo = None then begin
+			if fctx.is_static then error (fst f.cff_name ^ ": Static final variable must be initialized") p
+			else cctx.uninitialized_final <- Some f.cff_pos;
+		end;
 		let t = (match t with
 			| None when not fctx.is_static && eo = None ->
 				error ("Type required for member variable " ^ fst f.cff_name) p;
@@ -2345,19 +2369,19 @@ module ClassInitializer = struct
 				if fctx.is_static then ctx.type_params <- old;
 				t
 		) in
+		let kind = if fctx.is_inline then
+			{ v_read = AccInline ; v_write = AccNever }
+		else if fctx.is_final then
+			{ v_read = AccNormal ; v_write = if fctx.is_static then AccNever else AccCtor }
+		else
+			{ v_read = AccNormal ; v_write = AccNormal }
+		in
 		let cf = {
-			cf_name = fst f.cff_name;
+			(mk_field (fst f.cff_name) t f.cff_pos (pos f.cff_name)) with
 			cf_doc = f.cff_doc;
-			cf_meta = f.cff_meta;
-			cf_type = t;
-			cf_pos = f.cff_pos;
-			cf_name_pos = pos f.cff_name;
-			cf_kind = Var (if fctx.is_inline then { v_read = AccInline ; v_write = AccNever } else { v_read = AccNormal; v_write = AccNormal });
-			cf_expr = None;
-			cf_expr_unoptimized = None;
+			cf_meta = (if fctx.is_final && not (Meta.has Meta.Final f.cff_meta) then (Meta.Final,[],null_pos) :: f.cff_meta else f.cff_meta);
+			cf_kind = Var kind;
 			cf_public = is_public (ctx,cctx) f.cff_access None;
-			cf_params = [];
-			cf_overloads = [];
 		} in
 		ctx.curfield <- cf;
 		bind_var (ctx,cctx,fctx) cf eo;
@@ -2372,16 +2396,18 @@ module ClassInitializer = struct
 				let allows_no_expr = ref (Meta.has Meta.CoreType a.a_meta) in
 				let rec loop ml = match ml with
 					| (Meta.From,_,_) :: _ ->
-						let r = fun () ->
+						let r = exc_protect ctx (fun r ->
+							r := lazy_processing (fun () -> t);
 							(* the return type of a from-function must be the abstract, not the underlying type *)
 							if not fctx.is_macro then (try type_eq EqStrict ret ta with Unify_error l -> error (error_msg (Unify l)) p);
 							match t with
 								| TFun([_,_,t],_) -> t
 								| _ -> error (cf.cf_name ^ ": @:from cast functions must accept exactly one argument") p
-						in
-						a.a_from_field <- (TLazy (ref (lazy_wait r)),cf) :: a.a_from_field;
+						) "@:from" in
+						a.a_from_field <- (TLazy r,cf) :: a.a_from_field;
 					| ((Meta.Custom ":fromNothing"),_,_) :: _ ->
 						a.a_from_nothing <- Some cf;
+
 					| (Meta.To,_,_) :: _ ->
 						if fctx.is_macro then error (cf.cf_name ^ ": Macro cast functions are not supported") p;
 						(* TODO: this doesn't seem quite right... *)
@@ -2393,6 +2419,7 @@ module ClassInitializer = struct
 								| m -> m
 						in
 						let r = exc_protect ctx (fun r ->
+							r := lazy_processing (fun () -> t);
 							let args = if Meta.has Meta.MultiType a.a_meta then begin
 								let ctor = try
 									PMap.find "_new" c.cl_statics
@@ -2571,18 +2598,12 @@ module ClassInitializer = struct
 		let args = loop fd.f_args in
 		let t = TFun (fun_args args,ret) in
 		let cf = {
-			cf_name = fst f.cff_name;
+			(mk_field (fst f.cff_name) t f.cff_pos (pos f.cff_name)) with
 			cf_doc = f.cff_doc;
-			cf_meta = f.cff_meta;
-			cf_type = t;
-			cf_pos = f.cff_pos;
-			cf_name_pos = pos f.cff_name;
+			cf_meta = (if fctx.is_final && not (Meta.has Meta.Final f.cff_meta) then (Meta.Final,[],null_pos) :: f.cff_meta else f.cff_meta);
 			cf_kind = Method (if fctx.is_macro then MethMacro else if fctx.is_inline then MethInline else if dynamic then MethDynamic else MethNormal);
-			cf_expr = None;
-			cf_expr_unoptimized = None;
 			cf_public = is_public (ctx,cctx) f.cff_access parent;
 			cf_params = params;
-			cf_overloads = [];
 		} in
 		cf.cf_meta <- List.map (fun (m,el,p) -> match m,el with
 			| Meta.AstSource,[] -> (m,(match fd.f_expr with None -> [] | Some e -> [e]),p)
@@ -2615,6 +2636,14 @@ module ClassInitializer = struct
 						cf.cf_type <- t
 					| _ ->
 						let e , fargs = type_function ctx args ret fmode fd fctx.is_display_field p in
+						begin match fctx.field_kind with
+						| FKNormal when not fctx.is_static -> check_overriding ctx c cf
+						| _ -> ()
+						end;
+						(* Disabled for now, see https://github.com/HaxeFoundation/haxe/issues/3033 *)
+						(* List.iter (fun (v,_) ->
+							if v.v_name <> "_" && has_mono v.v_type then ctx.com.warning "Uninferred function argument, please add a type-hint" v.v_pos;
+						) fargs; *)
 						let tf = {
 							tf_args = fargs;
 							tf_type = ret;
@@ -2729,6 +2758,7 @@ module ClassInitializer = struct
 			with Not_found ->
 				()
 		in
+		let delay_check = if c.cl_interface then delay_late ctx PBuildClass else delay ctx PTypeField in
 		let get = (match get with
 			| "null",_ -> AccNo
 			| "dynamic",_ -> AccCall
@@ -2737,7 +2767,7 @@ module ClassInitializer = struct
 			| get,pget ->
 				let get = if get = "get" then "get_" ^ name else get in
 				if fctx.is_display_field && Display.is_display_position pget then delay ctx PTypeField (fun () -> display_accessor get pget);
-				if not cctx.is_lib then delay ctx PTypeField (fun() -> check_method get t_get (if get <> "get" && get <> "get_" ^ name then Some ("get_" ^ name) else None));
+				if not cctx.is_lib then delay_check (fun() -> check_method get t_get (if get <> "get" && get <> "get_" ^ name then Some ("get_" ^ name) else None));
 				AccCall
 		) in
 		let set = (match set with
@@ -2753,23 +2783,16 @@ module ClassInitializer = struct
 			| set,pset ->
 				let set = if set = "set" then "set_" ^ name else set in
 				if fctx.is_display_field && Display.is_display_position pset then delay ctx PTypeField (fun () -> display_accessor set pset);
-				if not cctx.is_lib then delay ctx PTypeField (fun() -> check_method set t_set (if set <> "set" && set <> "set_" ^ name then Some ("set_" ^ name) else None));
+				if not cctx.is_lib then delay_check (fun() -> check_method set t_set (if set <> "set" && set <> "set_" ^ name then Some ("set_" ^ name) else None));
 				AccCall
 		) in
 		if set = AccNormal && (match get with AccCall -> true | _ -> false) then error (name ^ ": Unsupported property combination") p;
 		let cf = {
-			cf_name = name;
+			(mk_field name ret f.cff_pos (pos f.cff_name)) with
 			cf_doc = f.cff_doc;
 			cf_meta = f.cff_meta;
-			cf_pos = f.cff_pos;
-			cf_name_pos = pos f.cff_name;
 			cf_kind = Var { v_read = get; v_write = set };
-			cf_expr = None;
-			cf_expr_unoptimized = None;
-			cf_type = ret;
 			cf_public = is_public (ctx,cctx) f.cff_access None;
-			cf_params = [];
-			cf_overloads = [];
 		} in
 		ctx.curfield <- cf;
 		bind_var (ctx,cctx,fctx) cf eo;
@@ -2783,7 +2806,7 @@ module ClassInitializer = struct
 		if name.[0] = '$' then display_error ctx "Field names starting with a dollar are not allowed" p;
 		List.iter (fun acc ->
 			match (acc, f.cff_kind) with
-			| APublic, _ | APrivate, _ | AStatic, _ -> ()
+			| APublic, _ | APrivate, _ | AStatic, _ | AFinal, _ -> ()
 			| ADynamic, FFun _ | AOverride, FFun _ | AMacro, FFun _ | AInline, FFun _ | AInline, FVar _ -> ()
 			| _, FVar _ -> error ("Invalid accessor '" ^ Ast.s_access acc ^ "' for variable " ^ name) p
 			| _, FProp _ -> error ("Invalid accessor '" ^ Ast.s_access acc ^ "' for property " ^ name) p
@@ -2815,7 +2838,6 @@ module ClassInitializer = struct
 		let fields = build_fields (ctx,cctx) c fields in
 		if cctx.is_core_api && ctx.com.display.dms_check_core_api then delay ctx PForce (fun() -> init_core_api ctx c);
 		if not cctx.is_lib then begin
-			(match c.cl_super with None -> () | Some _ -> delay_late ctx PForce (fun() -> check_overriding ctx c));
 			if ctx.com.config.pf_overload then delay ctx PForce (fun() -> check_overloads ctx c)
 		end;
 		let rec has_field f = function
@@ -2834,7 +2856,7 @@ module ClassInitializer = struct
 							| EBinop ((OpEq|OpNotEq|OpGt|OpGte|OpLt|OpLte) as op,(EConst (Ident s),_),(EConst ((Int _ | Float _ | String _) as c),_)) -> s ^ s_binop op ^ s_constant c
 							| _ -> ""
 						in
-						if not (Parser.is_true (Parser.eval ctx.com e)) then
+						if not (ParserEntry.is_true (ParserEntry.eval ctx.com.defines e)) then
 							Some (sc,(match List.rev l with (EConst (String msg),_) :: _ -> Some msg | _ -> None))
 						else
 							loop l
@@ -2886,7 +2908,7 @@ module ClassInitializer = struct
 				| FKNormal ->
 					let dup = if fctx.is_static then PMap.exists cf.cf_name c.cl_fields || has_field cf.cf_name c.cl_super else PMap.exists cf.cf_name c.cl_statics in
 					if not cctx.is_native && not c.cl_extern && dup then error ("Same field name can't be use for both static and instance : " ^ cf.cf_name) p;
-					if List.mem AOverride f.cff_access then c.cl_overrides <- cf :: c.cl_overrides;
+					if fctx.is_override then c.cl_overrides <- cf :: c.cl_overrides;
 					let is_var f = match cf.cf_kind with | Var _ -> true | _ -> false in
 					if PMap.mem cf.cf_name (if fctx.is_static then c.cl_statics else c.cl_fields) then
 						if ctx.com.config.pf_overload && Meta.has Meta.Overload cf.cf_meta && not (is_var f) then
@@ -2915,6 +2937,13 @@ module ClassInitializer = struct
 		(*
 			make sure a default contructor with same access as super one will be added to the class structure at some point.
 		*)
+		begin match cctx.uninitialized_final with
+			| Some pf when c.cl_constructor = None ->
+				display_error ctx "This class has uninitialized final vars, which requires a constructor" p;
+				error "Example of an uninitialized final var" pf
+			| _ ->
+				()
+		end;
 		(* add_constructor does not deal with overloads correctly *)
 		if not ctx.com.config.pf_overload then add_constructor ctx c cctx.force_constructor p;
 		if Meta.has Meta.StructInit c.cl_meta then check_struct_init_constructor ctx c p;
@@ -3019,7 +3048,7 @@ let init_module_type ctx context_init do_init (decl,p) =
 				ctx.m.wildcard_packages <- (List.map fst pack,p) :: ctx.m.wildcard_packages
 			| _ ->
 				(match List.rev path with
-				| [] -> raise (Display.DisplayToplevel (Display.ToplevelCollector.run ctx true));
+				| [] -> raise (Display.DisplayToplevel (DisplayToplevel.collect ctx true));
 				| (_,p) :: _ -> error "Module name must start with an uppercase letter" p))
 		| (tname,p2) :: rest ->
 			let p1 = (match pack with [] -> p2 | (_,p1) :: _ -> p1) in
@@ -3128,7 +3157,7 @@ let init_module_type ctx context_init do_init (decl,p) =
 			| (s1,_) :: sl ->
 				{ tpackage = List.rev (List.map fst sl); tname = s1; tsub = None; tparams = [] }
 			| [] ->
-				raise (Display.DisplayToplevel (Display.ToplevelCollector.run ctx true));
+				raise (Display.DisplayToplevel (DisplayToplevel.collect ctx true));
 		in
 		(* do the import first *)
 		let types = (match t.tsub with
@@ -3317,21 +3346,13 @@ let init_module_type ctx context_init do_init (decl,p) =
 				ef_meta = c.ec_meta;
 			} in
 			let cf = {
-				cf_name = f.ef_name;
-				cf_public = true;
-				cf_type = f.ef_type;
+				(mk_field f.ef_name f.ef_type p f.ef_name_pos) with
 				cf_kind = (match follow f.ef_type with
 					| TFun _ -> Method MethNormal
 					| _ -> Var { v_read = AccNormal; v_write = AccNo }
 				);
-				cf_pos = p;
-				cf_name_pos = f.ef_name_pos;
 				cf_doc = f.ef_doc;
-				cf_meta = no_meta;
-				cf_expr = None;
-				cf_expr_unoptimized = None;
 				cf_params = f.ef_params;
-				cf_overloads = [];
 			} in
  			if ctx.is_display_file && Display.is_display_position p then
  				Display.DisplayEmitter.display_enum_field ctx.com.display f p;
@@ -3923,7 +3944,7 @@ let rec build_generic ctx c p tl =
 			   we need the full substitution list first. *)
 			let param_subst,params = List.fold_left (fun (subst,params) (s,t) -> match follow t with
 				| TInst(c,tl) as t ->
-					let t2 = TInst({c with cl_pos = c.cl_pos;},tl) in
+					let t2 = TInst({c with cl_module = mg;},tl) in
 					(t,t2) :: subst,(s,t2) :: params
 				| _ -> assert false
 			) ([],[]) cf_old.cf_params in

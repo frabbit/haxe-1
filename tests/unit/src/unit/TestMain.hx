@@ -1,6 +1,7 @@
 package unit;
 
 import unit.Test.*;
+import haxe.ds.List;
 
 @:access(unit.Test)
 @:expose("unit.TestMain")
@@ -64,6 +65,7 @@ class TestMain {
 			new TestGADT(),
 			new TestGeneric(),
 			new TestArrowFunctions(),
+			new TestCasts(),
 			#if !no_pattern_matching
 			new TestMatch(),
 			#end
@@ -94,6 +96,8 @@ class TestMain {
 			#if ((dce == "full") && !interp && !as3)
 			new TestDCE(),
 			#end
+			new TestMapComprehension(),
+			new TestMacro(),
 			// #if ( (java || neko) && !macro && !interp)
 			// new TestThreads(),
 			// #end
