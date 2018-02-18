@@ -1747,6 +1747,17 @@ let macro_api ccom get_api =
 			| None -> vnull
 			| Some t -> encode_type t
 		);
+		"unify_with_expected_implicit", vfun1 (fun t ->
+			match (get_api()).get_expected_type() with
+			| None -> vnull
+			| Some exp ->
+				(match follow exp with
+					| TAbstract( {a_path = ["scuts";"implicit"],"Implicit" }, [exp]) ->
+						let e1 = mk (TObjectDecl []) (decode_type t) Globals.null_pos in
+						vbool (((get_api()).cast_or_unify) exp e1 Globals.null_pos)
+					| _ ->
+						vnull)
+		);
 		"get_call_arguments", vfun0 (fun() ->
 			match (get_api()).get_call_arguments() with
 			| None -> vnull
