@@ -442,6 +442,8 @@ and encode_ctype t =
 		5, [encode_ctype t]
 	| CTNamed (n,t) ->
 		6, [encode_placed_name n; encode_ctype t]
+	| CTIntersection tl ->
+		7, [(encode_array (List.map encode_ctype tl))]
 	in
 	encode_enum ~pos:(Some (pos t)) ICType tag pl
 
@@ -450,7 +452,9 @@ and encode_tparam_decl tp =
 		"name", encode_placed_name tp.tp_name;
 		"name_pos", encode_pos (pos tp.tp_name);
 		"params", encode_array (List.map encode_tparam_decl tp.tp_params);
-		"constraints", encode_array (List.map encode_ctype tp.tp_constraints);
+		"constraints", (match tp.tp_constraints with
+			| None -> encode_array []
+			| Some th -> encode_array [encode_ctype th]);
 		"meta", encode_meta_content tp.tp_meta;
 	]
 
@@ -678,9 +682,14 @@ and decode_tparams v =
 	decode_opt_array decode_tparam_decl v
 
 and decode_tparam_decl v =
+	let vconstraints = field v "constraints" in
 	{
 		tp_name = decode_placed_name (field v "name_pos") (field v "name");
-		tp_constraints = decode_opt_array decode_ctype (field v "constraints");
+		tp_constraints = if vconstraints = vnull then None else (match decode_array vconstraints with
+			| [] -> None
+			| [t] -> Some (decode_ctype t)
+			| tl -> Some (CTIntersection (List.map decode_ctype tl),Globals.null_pos)
+		);
 		tp_params = decode_tparams (field v "params");
 		tp_meta = decode_meta_content (field v "meta");
 	}
@@ -757,6 +766,8 @@ and decode_ctype t =
 		CTOptional (decode_ctype t)
 	| 6, [n;t] ->
 		CTNamed ((decode_string n,p), decode_ctype t)
+	| 7, [tl] ->
+		CTIntersection (List.map decode_ctype (decode_array tl))
 	| _ ->
 		raise Invalid_expr),p
 

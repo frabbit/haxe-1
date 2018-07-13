@@ -16,7 +16,7 @@ interface Filterable<M, T> {
 
 class TypeConstraints {
 	private static function constraint
-	 <M:(Filterable<M,_>, Mappable<M,_>, { var length(default, null):Int;}), T> (m:M<Int>):M<Int>
+	 <M:Filterable<M,_> & Mappable<M,_> & { var length(default, null):Int;}, T> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}

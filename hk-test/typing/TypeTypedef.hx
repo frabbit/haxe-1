@@ -37,7 +37,7 @@ class TypeTypedef {
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
 
-	private static function mapAndFilter <M:(Filterable<M,_>, Mappable<M,_>)> (m:M<Int>):M<Int>
+	private static function mapAndFilter <M:Filterable<M,_> & Mappable<M,_>> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
