@@ -141,16 +141,17 @@ class jsonrpc_handler report_times (id,name,params) = object(self)
 		send_json (JsonRpc.error id 0 ~data:(Some (JArray jl)) "Compiler error")
 end
 
+let debug_context_sign = ref None
+
 class display_handler (jsonrpc : jsonrpc_handler) com cs = object(self)
 	val cs = cs;
-	val mutable debug_context_sign = None
 
 	method get_cs = cs
 
 	method set_debug_context_sign sign =
-		debug_context_sign <- sign
+		debug_context_sign := sign
 
-	method get_sign = match debug_context_sign with
+	method get_sign = match !debug_context_sign with
 		| None -> Define.get_signature com.defines
 		| Some sign -> sign
 
@@ -258,16 +259,16 @@ let handler =
 			) :: hctx.com.callbacks.after_init_macros;
 		);
 		"server/contexts", (fun hctx ->
-			let l = List.map (fun (sign,index) -> jobject [
-				"index",jstring index;
+			let l = List.map (fun (sign,(jo,_)) -> jobject [
 				"signature",jstring (Digest.to_hex sign);
+				"context",jo;
 			]) (CompilationServer.get_signs hctx.display#get_cs) in
 			hctx.jsonrpc#send_result (jarray l)
 		);
 		"server/select", (fun hctx ->
 			let i = hctx.jsonrpc#get_int_param "index" in
 			let (sign,_) = try
-				CompilationServer.get_sign_by_index hctx.display#get_cs (string_of_int i)
+				CompilationServer.get_sign_by_index hctx.display#get_cs i
 			with Not_found ->
 				hctx.jsonrpc#send_error [jstring "No such context"]
 			in
@@ -292,7 +293,9 @@ let handler =
 			hctx.jsonrpc#send_result (generate_module () m)
 		);
 		"server/files", (fun hctx ->
-			let files = CompilationServer.get_file_list hctx.display#get_cs hctx.com in
+			let sign = hctx.display#get_sign in
+			let files = CompilationServer.get_files hctx.display#get_cs in
+			let files = Hashtbl.fold (fun (file,sign') decls acc -> if sign = sign' then (file,decls) :: acc else acc) files [] in
 			let files = List.map (fun (file,cfile) ->
 				jobject [
 					"file",jstring file;
