@@ -78,6 +78,7 @@ type breakpoint = {
 	bpfile : int;
 	bpline : int;
 	bpcolumn : breakpoint_column;
+	bpcondition : Ast.expr option;
 	mutable bpstate : breakpoint_state;
 }
 
@@ -102,6 +103,11 @@ type debug_socket = {
 	mutable socket : Unix.file_descr option;
 }
 
+type exception_mode =
+	| CatchAll
+	| CatchUncaught
+	| CatchNone
+
 type debug = {
 	debug : bool;
 	breakpoints : (int,(int,breakpoint) Hashtbl.t) Hashtbl.t;
@@ -111,6 +117,7 @@ type debug = {
 	caught_types : (int,bool) Hashtbl.t;
 	mutable environment_offset_delta : int;
 	mutable debug_socket : debug_socket option;
+	mutable exception_mode : exception_mode;
 }
 
 type eval = {
