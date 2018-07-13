@@ -432,9 +432,7 @@ let print_signature tl display_arg =
 		"activeParameter",JInt display_arg;
 		"activeSignature",JInt 0;
 	] in
-	let b = Buffer.create 0 in
-	write_json (Buffer.add_string b) jo;
-	Buffer.contents b
+	string_of_json jo
 
 module StatisticsPrinter = struct
 	open Statistics
@@ -449,6 +447,8 @@ module StatisticsPrinter = struct
 		| SKClass _ -> "class type"
 		| SKInterface _ -> "interface type"
 		| SKEnum _ -> "enum type"
+		| SKTypedef _ -> "typedef"
+		| SKAbstract _ -> "abstract"
 		| SKField _ -> "class field"
 		| SKEnumField _ -> "enum field"
 		| SKVariable _ -> "variable"
@@ -484,9 +484,7 @@ module StatisticsPrinter = struct
 				"statistics",JArray l
 			]) :: acc
 		) files [] in
-		let b = Buffer.create 0 in
-		write_json (Buffer.add_string b) (JArray ja);
-		Buffer.contents b
+		string_of_json (JArray ja)
 end
 
 module DiagnosticsPrinter = struct
@@ -571,9 +569,7 @@ module DiagnosticsPrinter = struct
 			]) :: acc
 		) diag [] in
 		let js = JArray jl in
-		let b = Buffer.create 0 in
-		write_json (Buffer.add_string b) js;
-		Buffer.contents b
+		string_of_json js
 end
 
 module ModuleSymbolsPrinter = struct
@@ -617,9 +613,7 @@ module ModuleSymbolsPrinter = struct
 				]) :: acc
 		) [] symbols in
 		let js = JArray ja in
-		let b = Buffer.create 0 in
-		write_json (Buffer.add_string b) js;
-		Buffer.contents b
+		string_of_json js
 end
 
 (* Mode processing *)
@@ -754,7 +748,7 @@ let process_global_display_mode com tctx = match com.display.dms_kind with
 			| [] -> acc
 		in
 		let usages = Hashtbl.fold (fun p sym acc ->
-			if Statistics.is_usage_symbol sym then begin
+			if p = !Display.reference_position then begin
 				let acc = if with_definition then p :: acc else acc in
 				(try loop acc (Hashtbl.find relations p)
 				with Not_found -> acc)

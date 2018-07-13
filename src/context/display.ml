@@ -100,11 +100,17 @@ module ExprPreprocessing = struct
 			end else
 				false
 		in
-		let loop e =
-			if is_annotated (pos e) then
-				(EDisplay(e,dk),(pos e))
-			else
-				e
+		let loop e = match fst e with
+			| EVars vl ->
+				if List.exists (fun ((_,p),_,_) -> is_annotated p) vl then
+					(EDisplay(e,dk),(pos e))
+				else
+					e
+			| _ ->
+				if is_annotated (pos e) then
+					(EDisplay(e,dk),(pos e))
+				else
+					e
 		in
 		let rec map e =
 			loop (Ast.map_expr map e)
@@ -155,7 +161,8 @@ module DisplayEmitter = struct
 
 	let check_display_type ctx t p =
 		let add_type_hint () =
-			Hashtbl.replace ctx.com.shared.shared_display_information.type_hints p t;
+			let md = ctx.m.curmod.m_extra.m_display in
+			md.m_type_hints <- (p,t) :: md.m_type_hints;
 		in
 		let maybe_display_type () =
 			if ctx.is_display_file && is_display_position p then
@@ -582,31 +589,23 @@ module Statistics = struct
 		| SKClass of tclass
 		| SKInterface of tclass
 		| SKEnum of tenum
+		| SKTypedef of tdef
+		| SKAbstract of tabstract
 		| SKField of tclass_field
 		| SKEnumField of tenum_field
 		| SKVariable of tvar
-
-	let is_usage_symbol symbol =
-		let p = match symbol with
-			| SKClass c | SKInterface c -> c.cl_name_pos
-			| SKEnum en -> en.e_name_pos
-			| SKField cf -> cf.cf_name_pos
-			| SKEnumField ef -> ef.ef_name_pos
-			| SKVariable v -> v.v_pos
-		in
-		!reference_position = p
 
 	let collect_statistics ctx =
 		let relations = Hashtbl.create 0 in
 		let symbols = Hashtbl.create 0 in
 		let add_relation pos r =
-			if is_display_file pos.pfile then try
+			try
 				Hashtbl.replace relations pos (r :: Hashtbl.find relations pos)
 			with Not_found ->
 				Hashtbl.add relations pos [r]
 		in
 		let declare kind p =
-			if is_display_file p.pfile then begin
+			begin
 				if not (Hashtbl.mem relations p) then Hashtbl.add relations p [];
 				Hashtbl.replace symbols p kind;
 			end
@@ -635,7 +634,6 @@ module Statistics = struct
 		in
 		let var_decl v = declare (SKVariable v) v.v_pos in
 		let patch_string_pos p s = { p with pmin = p.pmax - String.length s } in
-		let patch_string_pos_front p s  = { p with pmax = p.pmin + String.length s } in
 		let field_reference cf p =
 			add_relation cf.cf_name_pos (Referenced,patch_string_pos p cf.cf_name)
 		in
@@ -686,8 +684,31 @@ module Statistics = struct
 			in
 			loop e
 		in
-		List.iter (function
+		let rec explore_type_hint (p,t) =
+			match t with
+			| TMono r -> (match !r with None -> () | Some t -> explore_type_hint (p,t))
+			| TLazy f -> explore_type_hint (p,lazy_type f)
+			| TInst(({cl_name_pos = pn;cl_path = (_,name)}),_)
+			| TEnum(({e_name_pos = pn;e_path = (_,name)}),_)
+			| TType(({t_name_pos = pn;t_path = (_,name)}),_)
+			| TAbstract(({a_name_pos = pn;a_path = (_,name)}),_) ->
+				add_relation pn (Referenced,p)
+			| TDynamic _ -> ()
+			| TFun _ | TAnon _ -> ()
+		in
+		let handled_modules = Hashtbl.create 0 in
+		let check_module m =
+			if not (Hashtbl.mem handled_modules m.m_path) then begin
+				Hashtbl.add handled_modules m.m_path true;
+				List.iter (fun (p1,p2) ->
+					add_relation p1 (Referenced,p2)
+				) m.m_extra.m_display.m_inline_calls;
+				List.iter explore_type_hint m.m_extra.m_display.m_type_hints
+			end
+		in
+		let f = function
 			| TClassDecl c ->
+				check_module c.cl_module;
 				declare (if c.cl_interface then (SKInterface c) else (SKClass c)) c.cl_name_pos;
 				List.iter (fun (c',_) -> add_relation c'.cl_name_pos ((if c.cl_interface then Extended else Implemented),c.cl_name_pos)) c.cl_implements;
 				begin match c.cl_super with
@@ -704,18 +725,22 @@ module Statistics = struct
 				List.iter field c.cl_ordered_fields;
 				List.iter field c.cl_ordered_statics;
 			| TEnumDecl en ->
+				check_module en.e_module;
 				declare (SKEnum en) en.e_name_pos;
 				PMap.iter (fun _ ef -> declare (SKEnumField ef) ef.ef_name_pos) en.e_constrs
-			| _ ->
-				()
-		) ctx.com.types;
-		let explore_type_hint p t = match follow t with
-			| TInst(c,_) -> add_relation c.cl_name_pos (Referenced,(patch_string_pos_front p (snd c.cl_path)))
-			| _ -> ()
+			| TTypeDecl td ->
+				check_module td.t_module;
+				declare (SKTypedef td) td.t_name_pos
+			| TAbstractDecl a ->
+				check_module a.a_module;
+				declare (SKAbstract a) a.a_name_pos
 		in
-		Hashtbl.iter (fun p t ->
-			explore_type_hint p t
-		) ctx.com.shared.shared_display_information.type_hints;
+		begin match CompilationServer.get () with
+			| None -> List.iter f ctx.com.types
+			| Some cs ->
+				CompilationServer.cache_context cs ctx.com;
+				CompilationServer.iter_modules cs ctx.com (fun m -> List.iter f m.m_types);
+		end;
 		let l = List.fold_left (fun acc (_,cfi,_,cfo) -> match cfo with
 			| Some cf -> if List.mem_assoc cf.cf_name_pos acc then acc else (cf.cf_name_pos,cfi.cf_name_pos) :: acc
 			| None -> acc

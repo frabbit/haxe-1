@@ -105,7 +105,6 @@ type compiler_callback = {
 type shared_display_information = {
 	mutable import_positions : (pos,bool ref * placed_name list) PMap.t;
 	mutable diagnostics_messages : (string * pos * DisplayTypes.DiagnosticsSeverity.t) list;
-	mutable type_hints : (pos,Type.t) Hashtbl.t;
 	mutable document_symbols : (string * DisplayTypes.SymbolInformation.t DynArray.t) list;
 	mutable removable_code : (string * pos * pos) list;
 }
@@ -252,8 +251,9 @@ module CompilationServer = struct
 	let taint_modules cs file =
 		Hashtbl.iter (fun _ m -> if m.m_extra.m_file = file then m.m_extra.m_dirty <- Some m) cs.cache.c_modules
 
-	let iter_modules cs f =
-		Hashtbl.iter (fun _ m -> f m) cs.cache.c_modules
+	let iter_modules cs com f =
+		let sign = Define.get_signature com.defines in
+		Hashtbl.iter (fun (_,sign') m -> if sign = sign' then f m) cs.cache.c_modules
 
 	(* files *)
 
@@ -310,6 +310,17 @@ module CompilationServer = struct
 
 	let clear_directories cs key =
 		Hashtbl.remove cs.cache.c_directories key
+
+	(* context *)
+
+	let rec cache_context cs com =
+		let cache_module m =
+			cache_module cs (m.m_path,m.m_extra.m_sign) m;
+		in
+		List.iter cache_module com.modules;
+		match com.get_macros() with
+		| None -> ()
+		| Some com -> cache_context cs com
 end
 
 (* Defines *)
@@ -486,7 +497,6 @@ let create version s_version args =
 			shared_display_information = {
 				import_positions = PMap.empty;
 				diagnostics_messages = [];
-				type_hints = Hashtbl.create 0;
 				document_symbols = [];
 				removable_code = [];
 			}

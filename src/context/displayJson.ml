@@ -20,11 +20,6 @@ let get_capabilities () =
 	]
 
 let parse_input com input =
-	let string_of_json json =
-		let b = Buffer.create 0 in
-		Json.write_json (Buffer.add_string b) json;
-		Buffer.contents b;
-	in
 	let fail json =
 		prerr_endline (string_of_json json);
 		exit 1;
@@ -40,7 +35,7 @@ let parse_input com input =
 		let params = match params with
 			| Some (JObject fl) -> fl
 			| Some json -> raise_invalid_params json
-			| None -> raise_invalid_params JNull
+			| None -> []
 		in
 		let get_param name =
 			try List.assoc name params with Not_found -> raise_haxe_json_error id (MissingParam name)
