@@ -84,9 +84,9 @@ let collect ctx e_ast e dk with_type p =
 				PMap.map (fun f -> { f with cf_type = apply_params c.cl_params params (opt_type f.cf_type); cf_public = true; }) m
 			in
 			loop c params
-		| TAbstract({a_path=[], "-Of"},[tm;ta]) ->
+		| TAbstract({a_path=[], "-Of"} as a,([tm;ta] as pl) ) ->
 			let t = unapply_in_constraints tm ta in
-			if is_of_type t then PMap.empty else get_fields t
+			if is_of_type t then PMap.empty else get_fields seen t
 		| TAbstract({a_impl = Some c} as a,pl) ->
 			if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc ctx c;
 			let fields = try
