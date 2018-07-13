@@ -8,24 +8,38 @@ open Globals
 
 let reference_position = ref null_pos
 
-exception Diagnostics of string
-exception Statistics of string
-exception ModuleSymbols of string
-exception Metadata of string
-exception DisplaySignatures of (tsignature * documentation) list * int
-exception DisplayType of t * pos * string option
-exception DisplayPosition of pos list
-exception DisplayFields of DisplayTypes.CompletionKind.t list * bool (* toplevel? *)
-exception DisplayPackage of string list
+module DisplayException = struct
+	type kind =
+		| Diagnostics of string
+		| Statistics of string
+		| ModuleSymbols of string
+		| Metadata of string
+		| DisplaySignatures of (tsignature * documentation) list * int
+		| DisplayType of t * pos * string option
+		| DisplayPosition of pos list
+		| DisplayFields of DisplayTypes.CompletionKind.t list * bool (* toplevel? *)
+		| DisplayPackage of string list
+
+	exception DisplayException of kind
+
+	let raise_diagnostics s = raise (DisplayException(Diagnostics s))
+	let raise_statistics s = raise (DisplayException(Statistics s))
+	let raise_module_symbols s = raise (DisplayException(ModuleSymbols s))
+	let raise_metadata s = raise (DisplayException(Metadata s))
+	let raise_signatures l i = raise (DisplayException(DisplaySignatures(l,i)))
+	let raise_type t p so = raise (DisplayException(DisplayType(t,p,so)))
+	let raise_position pl = raise (DisplayException(DisplayPosition pl))
+	let raise_fields ckl b = raise (DisplayException(DisplayFields(ckl,b)))
+	let raise_package sl = raise (DisplayException(DisplayPackage sl))
+end
+
+open DisplayException
 
 let is_display_file file =
 	file <> "?" && Path.unique_full_path file = (!Parser.resume_display).pfile
 
 let encloses_position p_target p =
-	p.pmin <= p_target.pmin && p.pmax >= p_target.pmax
-
-let really_encloses_position p_target p =
-	p.pmin <= p_target.pmin && p.pmax > p_target.pmax
+	p.pmin < p_target.pmin && p.pmax >= p_target.pmax
 
 let is_display_position p =
 	encloses_position !Parser.resume_display p
@@ -33,7 +47,7 @@ let is_display_position p =
 module ExprPreprocessing = struct
 	let find_before_pos com is_completion e =
 		let display_pos = ref (!Parser.resume_display) in
-		let is_annotated p = p.pmin < !display_pos.pmin && p.pmax >= !display_pos.pmax in
+		let is_annotated p = encloses_position !display_pos p in
 		let annotate e dk =
 			display_pos := { pfile = ""; pmin = -2; pmax = -2 };
 			(EDisplay(e,dk),pos e)
@@ -125,13 +139,13 @@ end
 
 module DisplayEmitter = struct
 	let display_module_type dm mt p = match dm.dms_kind with
-		| DMDefinition -> raise (DisplayPosition [(t_infos mt).mt_name_pos]);
+		| DMDefinition -> raise_position [(t_infos mt).mt_name_pos];
 		| DMUsage _ -> reference_position := (t_infos mt).mt_name_pos
-		| DMHover -> raise (DisplayType (type_of_module_type mt,p,None))
+		| DMHover -> raise_type (type_of_module_type mt) p None
 		| _ -> ()
 
 	let rec display_type dm t p = match dm.dms_kind with
-		| DMHover -> raise (DisplayType (t,p,None))
+		| DMHover -> raise_type t p None
 		| _ ->
 			try display_module_type dm (module_type_of_type t) p
 			with Exit -> match follow t,follow !t_dynamic_def with
@@ -154,13 +168,13 @@ module DisplayEmitter = struct
 		| _ -> maybe_display_type()
 
 	let display_variable dm v p = match dm.dms_kind with
-		| DMDefinition -> raise (DisplayPosition [v.v_pos])
+		| DMDefinition -> raise_position [v.v_pos]
 		| DMUsage _ -> reference_position := v.v_pos
-		| DMHover -> raise (DisplayType (v.v_type,p,None))
+		| DMHover -> raise_type v.v_type p None
 		| _ -> ()
 
 	let display_field dm cf p = match dm.dms_kind with
-		| DMDefinition -> raise (DisplayPosition [cf.cf_name_pos]);
+		| DMDefinition -> raise_position [cf.cf_name_pos]
 		| DMUsage _ -> reference_position := cf.cf_name_pos
 		| DMHover ->
 			let t = if Meta.has Meta.Impl cf.cf_meta then
@@ -168,16 +182,16 @@ module DisplayEmitter = struct
 			else
 				cf.cf_type
 			in
-			raise (DisplayType (t,p,cf.cf_doc))
+			raise_type t p cf.cf_doc
 		| _ -> ()
 
 	let maybe_display_field ctx p cf =
 		if is_display_position p then display_field ctx.com.display cf p
 
 	let display_enum_field dm ef p = match dm.dms_kind with
-		| DMDefinition -> raise (DisplayPosition [ef.ef_name_pos]);
+		| DMDefinition -> raise_position [ef.ef_name_pos]
 		| DMUsage _ -> reference_position := ef.ef_name_pos
-		| DMHover -> raise (DisplayType (ef.ef_type,p,ef.ef_doc))
+		| DMHover -> raise_type ef.ef_type p ef.ef_doc
 		| _ -> ()
 
 	let display_meta com meta = match com.display.dms_kind with
@@ -189,16 +203,16 @@ module DisplayEmitter = struct
 				| Some (_,s) ->
 					(* TODO: hack until we support proper output for hover display mode *)
 					if com.json_out = None then
-						raise (Metadata ("<metadata>" ^ s ^ "</metadata>"))
+						raise_metadata ("<metadata>" ^ s ^ "</metadata>")
 					else
-						raise (DisplayType(t_dynamic,null_pos,Some s));
+						raise_type t_dynamic null_pos (Some s)
 			end
 		| DMDefault ->
 			let all,_ = Meta.get_documentation_list() in
 			let all = List.map (fun (s,doc) ->
 				ITMetadata(s,Some doc)
 			) all in
-			raise (DisplayFields(all,false))
+			raise_fields all false
 		| _ ->
 			()
 
@@ -580,9 +594,12 @@ module Statistics = struct
 	let collect_statistics ctx =
 		let relations = Hashtbl.create 0 in
 		let symbols = Hashtbl.create 0 in
+		let handled_modules = Hashtbl.create 0 in
 		let add_relation pos r =
 			if pos <> null_pos then try
-				Hashtbl.replace relations pos (r :: Hashtbl.find relations pos)
+				let l = Hashtbl.find relations pos in
+				if not (List.mem r l) then
+					Hashtbl.replace relations pos (r :: l)
 			with Not_found ->
 				Hashtbl.add relations pos [r]
 		in
@@ -678,7 +695,6 @@ module Statistics = struct
 			| TDynamic _ -> ()
 			| TFun _ | TAnon _ -> ()
 		in
-		let handled_modules = Hashtbl.create 0 in
 		let check_module m =
 			if not (Hashtbl.mem handled_modules m.m_path) then begin
 				Hashtbl.add handled_modules m.m_path true;
@@ -718,17 +734,26 @@ module Statistics = struct
 				declare (SKAbstract a) a.a_name_pos
 		in
 		begin match CompilationServer.get () with
-			| None -> List.iter f ctx.com.types
+			| None ->
+				let rec loop com =
+					List.iter f com.types;
+					Option.may loop (com.get_macros())
+				in
+				loop ctx.com
 			| Some cs ->
-				CompilationServer.cache_context cs ctx.com;
-				CompilationServer.iter_modules cs ctx.com (fun m -> List.iter f m.m_types);
+				let rec loop com =
+					CompilationServer.cache_context cs com;
+					CompilationServer.iter_modules cs com (fun m -> List.iter f m.m_types);
+					Option.may loop (com.get_macros())
+				in
+				loop ctx.com
 		end;
 		let l = List.fold_left (fun acc (_,cfi,_,cfo) -> match cfo with
 			| Some cf -> if List.mem_assoc cf.cf_name_pos acc then acc else (cf.cf_name_pos,cfi.cf_name_pos) :: acc
 			| None -> acc
 		) [] ctx.com.display_information.interface_field_implementations in
 		List.iter (fun (p,p') -> add_relation p' (Implemented,p)) l;
-		let deal_with_imports paths =
+		(* let deal_with_imports paths =
 			let check_subtype m s p =
 				try
 					let mt = List.find (fun mt -> snd (t_infos mt).mt_path = s) m.m_types in
@@ -768,6 +793,6 @@ module Statistics = struct
 					()
 			) paths
 		in
-		if false then deal_with_imports ctx.com.shared.shared_display_information.import_positions;
+		if false then deal_with_imports ctx.com.shared.shared_display_information.import_positions; *)
 		symbols,relations
 end

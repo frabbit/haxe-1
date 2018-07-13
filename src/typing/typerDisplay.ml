@@ -1,6 +1,7 @@
 open Globals
 open Ast
 open DisplayTypes.DisplayMode
+open Display.DisplayException
 open Common
 open Type
 open Typecore
@@ -20,9 +21,9 @@ let rec handle_display ctx e_ast dk with_type =
 		let arg = ["expression",false,mono] in
 		begin match ctx.com.display.dms_kind with
 		| DMSignature ->
-			raise (Display.DisplaySignatures ([((arg,mono),doc)],0))
+			raise_signatures [((arg,mono),doc)] 0
 		| _ ->
-			raise (Display.DisplayType(TFun(arg,mono),(pos e_ast),doc))
+			raise_type (TFun(arg,mono)) (pos e_ast) doc
 		end
 	| (EConst (Ident "trace"),_),_ ->
 		let doc = Some "Print given arguments" in
@@ -30,9 +31,9 @@ let rec handle_display ctx e_ast dk with_type =
 		let ret = ctx.com.basic.tvoid in
 		begin match ctx.com.display.dms_kind with
 		| DMSignature ->
-			raise (Display.DisplaySignatures ([((arg,ret),doc)],0))
+			raise_signatures [((arg,ret),doc)] 0
 		| _ ->
-			raise (Display.DisplayType(TFun(arg,ret),(pos e_ast),doc))
+			raise_type (TFun(arg,ret)) (pos e_ast) doc
 		end
 	| (EConst (Ident "_"),p),WithType t ->
 		mk (TConst TNull) t p (* This is "probably" a bind skip, let's just use the expected type *)
@@ -42,7 +43,7 @@ let rec handle_display ctx e_ast dk with_type =
 		raise (Parser.TypePath ([n],None,false))
 	| Error (Type_not_found (path,_),_) as err ->
 		begin try
-			raise (Display.DisplayFields (DisplayFields.get_submodule_fields ctx path,false))
+			raise_fields (DisplayFields.get_submodule_fields ctx path) false
 		with Not_found ->
 			raise err
 		end
@@ -92,7 +93,7 @@ and handle_signature_display ctx e_ast with_type =
 				acc
 		in
 		let overloads = match loop [] tl with [] -> tl | tl -> tl in
-		raise (Display.DisplaySignatures(overloads,display_arg))
+		raise_signatures overloads display_arg
 	in
 	let find_constructor_types t = match follow t with
 		| TInst (c,tl) | TAbstract({a_impl = Some c},tl) ->
@@ -104,11 +105,19 @@ and handle_signature_display ctx e_ast with_type =
 	in
 	match fst e_ast with
 		| ECall(e1,el) ->
-			let e1 = try
+			let def () = try
 				type_expr ctx e1 Value
 			with Error (Unknown_ident "trace",_) ->
 				let e = expr_of_type_path (["haxe";"Log"],"trace") p in
 				type_expr ctx e Value
+			in
+			let e1 = match e1 with
+				| (EField (e,"bind"),p) ->
+					let e = type_expr ctx e Value in
+					(match follow e.etype with
+						| TFun signature -> e
+						| _ -> def ())
+				| _ ->	def()
 			in
 			let tl = match e1.eexpr with
 				| TField(_,fa) ->
@@ -155,7 +164,7 @@ and display_expr ctx e_ast e dk with_type p =
 			| _ -> e.etype,None
 		in
 		let t,doc = loop e in
-		raise (Display.DisplayType (t,p,doc))
+		raise_type t p doc
 	| DMUsage _ ->
 		let rec loop e = match e.eexpr with
 		| TField(_,FEnum(_,ef)) ->
@@ -224,12 +233,12 @@ and display_expr ctx e_ast e dk with_type p =
 			[]
 		in
 		let pl = loop e in
-		raise (Display.DisplayPosition pl);
+		raise_position pl
 	| DMDefault when not (!Parser.had_resume)->
-		raise (Display.DisplayFields (DisplayToplevel.collect ctx false with_type,true))
+		raise_fields (DisplayToplevel.collect ctx false with_type) true
 	| DMDefault | DMNone | DMModuleSymbols _ | DMDiagnostics _ | DMStatistics ->
 		let fields = DisplayFields.collect ctx e_ast e dk with_type p in
-		raise (Display.DisplayFields(fields,false))
+		raise_fields fields false
 
 let handle_structure_display ctx e fields =
 	let p = pos e in
@@ -239,10 +248,10 @@ let handle_structure_display ctx e fields =
 			if Expr.field_mem_assoc k fl then acc
 			else (DisplayTypes.CompletionKind.ITClassMember cf) :: acc
 		) fields [] in
-		raise (Display.DisplayFields(fields,false))
+		raise_fields fields false
 	| EBlock [] ->
 		let fields = PMap.foldi (fun _ cf acc -> DisplayTypes.CompletionKind.ITClassMember cf :: acc) fields [] in
-		raise (Display.DisplayFields(fields,false))
+		raise_fields fields false
 	| _ ->
 		error "Expected object expression" p
 

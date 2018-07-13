@@ -143,10 +143,7 @@ module CompletionKind = struct
 				"name",jstring s;
 				"type",generate_type ctx t
 			]
-			| ITType(mt,rm) -> "Type",jobject [
-				"modulePath",generate_path (t_infos mt).mt_path;
-				"resolutionMode",jtodo;
-			]
+			| ITType(mt,rm) -> "Type",generate_module_type (Genjson.create_context()) mt (* TODO: resolution mode *)
 			| ITPackage s -> "Package",jstring s
 			| ITModule s -> "Module",jstring s
 			| ITLiteral(s,_) -> "Literal",jstring s
@@ -232,6 +229,7 @@ module DisplayMode = struct
 		| DMDefault | DMDefinition | DMResolve _ | DMPackage | DMHover | DMSignature -> settings
 		| DMUsage _ -> { settings with
 				dms_full_typing = true;
+				dms_force_macro_typing = true;
 				dms_collect_data = true;
 				dms_display_file_policy = DFPAlso;
 				dms_exit_during_typing = false
@@ -246,6 +244,7 @@ module DisplayMode = struct
 				dms_error_policy = EPCollect;
 				dms_collect_data = true;
 				dms_inline = true;
+				dms_force_macro_typing = true;
 				dms_display_file_policy = if global then DFPNo else DFPAlso;
 				dms_exit_during_typing = false;
 			}
@@ -254,7 +253,8 @@ module DisplayMode = struct
 				dms_collect_data = true;
 				dms_inline = false;
 				dms_display_file_policy = DFPAlso;
-				dms_exit_during_typing = false
+				dms_exit_during_typing = false;
+				dms_force_macro_typing = true;
 			}
 
 	let to_string = function
