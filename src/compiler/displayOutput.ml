@@ -1,14 +1,17 @@
 open Globals
+open Ast
 open Common
 open Common.CompilationServer
 open Timer
 open DisplayTypes.DisplayMode
+open DisplayTypes.CompletionResultKind
 open CompletionItem
 open DisplayException
 open Type
 open Display
 open DisplayTypes
 open Typecore
+open Genjson
 
 (* Old XML stuff *)
 
@@ -617,6 +620,7 @@ let process_global_display_mode com tctx = match com.display.dms_kind with
 	| DMStatistics ->
 		let stats = Statistics.collect_statistics tctx in
 		raise_statistics (Statistics.Printer.print_statistics stats)
+	| DMModuleSymbols (Some "") -> ()
 	| DMModuleSymbols filter ->
 		let symbols = com.shared.shared_display_information.document_symbols in
 		let symbols = match CompilationServer.get() with
@@ -625,7 +629,7 @@ let process_global_display_mode com tctx = match com.display.dms_kind with
 				let l = CompilationServer.get_context_files cs ((Define.get_signature com.defines) :: (match com.get_macros() with None -> [] | Some com -> [Define.get_signature com.defines])) in
 				List.fold_left (fun acc (file,cfile) ->
 					if (filter <> None || is_display_file file) then
-						(file,DocumentSymbols.collect_module_symbols (cfile.c_package,cfile.c_decls)) :: acc
+						(file,DocumentSymbols.collect_module_symbols (filter = None) (cfile.c_package,cfile.c_decls)) :: acc
 					else
 						acc
 				) symbols l
@@ -646,3 +650,14 @@ let find_doc t =
 			None
 	in
 	doc
+
+let handle_syntax_completion com kind p = match com.json_out with
+	| None ->
+		(* Not supported *)
+		()
+	| Some(f,_) ->
+		match kind with
+		| Parser.SCClassHerit ->
+			let l = [ITKeyword Extends;ITKeyword Implements] in
+			let ctx = Genjson.create_context GMFull in
+			f(fields_to_json ctx l CRClassHerit None false)
