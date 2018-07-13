@@ -12,7 +12,7 @@ let is_forced_inline c cf =
 	match c with
 	| Some { cl_extern = true } -> true
 	| Some { cl_kind = KAbstractImpl _ } -> true
-	| _ when Meta.has Meta.Extern cf.cf_meta -> true
+	| _ when cf.cf_extern -> true
 	| _ -> false
 
 let make_call ctx e params t p =
@@ -406,12 +406,11 @@ let call_to_string ctx ?(resume=false) e =
 			cf2.cf_meta <- (Meta.NoCompletion,[],p) :: (Meta.NoUsing,[],p) :: (Meta.GenericInstance,[],p) :: metadata;
 			cf2
 		in
-		let path = match c.cl_kind with
+		let e = match c.cl_kind with
 			| KAbstractImpl(a) ->
-				a.a_path
-			| _ -> c.cl_path
+				type_type ctx a.a_path p
+			| _ -> e
 		in
-		let e = if stat then type_type ctx path p else e in
 		let fa = if stat then FStatic (c,cf2) else FInstance (c,tl,cf2) in
 		let e = mk (TField(e,fa)) cf2.cf_type p in
 		make_call ctx e el ret p
@@ -466,7 +465,7 @@ let rec acc_get ctx g p =
 		| None ->
 			error "Recursive inline is not supported" p
 		| Some { eexpr = TFunction _ } ->
-			let chk_class c = (c.cl_extern || Meta.has Meta.Extern f.cf_meta) && not (Meta.has Meta.Runtime f.cf_meta) in
+			let chk_class c = (c.cl_extern || f.cf_extern) && not (Meta.has Meta.Runtime f.cf_meta) in
 			let wrap_extern c =
 				let c2 =
 					let m = c.cl_module in
@@ -501,7 +500,7 @@ let rec acc_get ctx g p =
 					e_def
 				| TAnon a ->
 					begin match !(a.a_status) with
-						| Statics {cl_extern = false} when Meta.has Meta.Extern f.cf_meta ->
+						| Statics {cl_extern = false} when f.cf_extern ->
 							display_error ctx "Cannot create closure on @:extern inline method" p;
 							e_def
 						| Statics c when chk_class c -> wrap_extern c

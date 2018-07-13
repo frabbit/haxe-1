@@ -36,7 +36,7 @@ let transform_abstract_field com this_t a_t a f =
 	match f.cff_kind with
 	| FProp ((("get" | "never"),_),(("set" | "never"),_),_,_) when not stat ->
 		(* TODO: hack to avoid issues with abstract property generation on As3 *)
-		if Common.defined com Define.As3 then f.cff_meta <- (Meta.Extern,[],null_pos) :: f.cff_meta;
+		if Common.defined com Define.As3 then f.cff_access <- AExtern :: f.cff_access;
 		{ f with cff_access = AStatic :: f.cff_access; cff_meta = (Meta.Impl,[],null_pos) :: f.cff_meta }
 	| FProp _ when not stat ->
 		error "Member property accessors must be get/set or never" p;
@@ -45,13 +45,11 @@ let transform_abstract_field com this_t a_t a f =
 		let cast e = (ECast(e,None)),pos e in
 		let ret p = (EReturn (Some (cast (EConst (Ident "this"),p))),p) in
 		let meta = (Meta.Impl,[],null_pos) :: f.cff_meta in
-		let meta = if Meta.has Meta.MultiType a.a_meta then begin
+		if Meta.has Meta.MultiType a.a_meta then begin
 			if List.mem AInline f.cff_access then error "MultiType constructors cannot be inline" f.cff_pos;
 			if fu.f_expr <> None then error "MultiType constructors cannot have a body" f.cff_pos;
-			(Meta.Extern,[],null_pos) :: meta
-		end else
-			meta
-		in
+			f.cff_access <- AExtern :: f.cff_access
+		end;
 		(* We don't want the generated expression positions to shadow the real code. *)
 		let p = { p with pmax = p.pmin } in
 		let fu = {
@@ -167,7 +165,7 @@ let module_pass_1 ctx m tdecls loadp =
 		 | EAbstract d ->
 		 	let name = fst d.d_name in
 			if String.length name > 0 && name.[0] = '$' then error "Type names starting with a dollar are not allowed" p;
-			let priv = List.mem APrivAbstract d.d_flags in
+			let priv = List.mem AbPrivate d.d_flags in
 			let path = make_path name priv in
 			let a = {
 				a_path = path;
@@ -202,7 +200,7 @@ let module_pass_1 ctx m tdecls loadp =
 				in
 				let rec loop = function
 					| [] -> a_t
-					| AIsType t :: _ -> t
+					| AbOver t :: _ -> t
 					| _ :: l -> loop l
 				in
 				let this_t = loop d.d_flags in
@@ -410,7 +408,17 @@ let check_param_constraints ctx types t pl c p =
 			try
 				unify_raise ctx t ti p
 			with Error(Unify l,p) ->
-				if not ctx.untyped then display_error ctx (error_msg (Unify (Constraint_failure (s_type_path c.cl_path) :: l))) p;
+				let fail() =
+					if not ctx.untyped then display_error ctx (error_msg (Unify (Constraint_failure (s_type_path c.cl_path) :: l))) p;
+				in
+				match follow t with
+				| TInst({cl_kind = KExpr e},_) ->
+					let e = type_expr {ctx with locals = PMap.empty} e (WithType ti) in
+					begin try unify_raise ctx e.etype ti p
+					with Error (Unify _,_) -> fail() end
+				| _ ->
+					fail()
+
 		) ctl
 
 let requires_value_meta com co =
@@ -660,7 +668,7 @@ and load_complex_type ctx allow_display p (t,pn) =
 				| APrivate -> pub := false;
 				| ADynamic when (match f.cff_kind with FFun _ -> true | _ -> false) -> dyn := true
 				| AFinal -> final := true
-				| AStatic | AOverride | AInline | ADynamic | AMacro -> error ("Invalid access " ^ Ast.s_access a) p
+				| AStatic | AOverride | AInline | ADynamic | AMacro | AExtern -> error ("Invalid access " ^ Ast.s_access a) p
 			) f.cff_access;
 			let t , access = (match f.cff_kind with
 				| FVar(t,e) when !final ->
@@ -2131,9 +2139,15 @@ module ClassInitializer = struct
 			pass = PBuildClass; (* will be set later to PTypeExpr *)
 		} in
 		let is_static = List.mem AStatic cff.cff_access in
-		let is_extern = Meta.has Meta.Extern cff.cff_meta || c.cl_extern in
+		let is_extern = List.mem AExtern cff.cff_access in
+		let is_extern = if Meta.has Meta.Extern cff.cff_meta then begin
+			ctx.com.warning "`@:extern function` is deprecated in favor of `extern function`" (pos cff.cff_name);
+			true
+		end else
+			is_extern
+		in
 		let allow_inline = cctx.abstract <> None || match cff.cff_kind with
-			| FFun _ -> ctx.g.doinline || is_extern
+			| FFun _ -> ctx.g.doinline || is_extern || c.cl_extern
 			| _ -> true
 		in
 		let is_inline = allow_inline && List.mem AInline cff.cff_access in
@@ -2339,7 +2353,7 @@ module ClassInitializer = struct
 						| None -> display_error ctx msg p; e
 					in
 					let e = (match cf.cf_kind with
-					| Var v when c.cl_extern || Meta.has Meta.Extern cf.cf_meta ->
+					| Var v when c.cl_extern || fctx.is_extern ->
 						if not fctx.is_static then begin
 							display_error ctx "Extern non-static variables may not be initialized" p;
 							e
@@ -2436,6 +2450,7 @@ module ClassInitializer = struct
 			cf_meta = (if fctx.is_final && not (Meta.has Meta.Final f.cff_meta) then (Meta.Final,[],null_pos) :: f.cff_meta else f.cff_meta);
 			cf_kind = Var kind;
 			cf_public = is_public (ctx,cctx) f.cff_access None;
+			cf_extern = fctx.is_extern;
 		} in
 		ctx.curfield <- cf;
 		bind_var (ctx,cctx,fctx) cf eo;
@@ -2658,6 +2673,7 @@ module ClassInitializer = struct
 			cf_kind = Method (if fctx.is_macro then MethMacro else if fctx.is_inline then MethInline else if dynamic then MethDynamic else MethNormal);
 			cf_public = is_public (ctx,cctx) f.cff_access parent;
 			cf_params = params;
+			cf_extern = fctx.is_extern;
 		} in
 		cf.cf_meta <- List.map (fun (m,el,p) -> match m,el with
 			| Meta.AstSource,[] -> (m,(match fd.f_expr with None -> [] | Some e -> [e]),p)
@@ -2847,6 +2863,7 @@ module ClassInitializer = struct
 			cf_meta = f.cff_meta;
 			cf_kind = Var { v_read = get; v_write = set };
 			cf_public = is_public (ctx,cctx) f.cff_access None;
+			cf_extern = fctx.is_extern;
 		} in
 		ctx.curfield <- cf;
 		bind_var (ctx,cctx,fctx) cf eo;
@@ -2860,7 +2877,7 @@ module ClassInitializer = struct
 		if name.[0] = '$' then display_error ctx "Field names starting with a dollar are not allowed" p;
 		List.iter (fun acc ->
 			match (acc, f.cff_kind) with
-			| APublic, _ | APrivate, _ | AStatic, _ | AFinal, _ -> ()
+			| APublic, _ | APrivate, _ | AStatic, _ | AFinal, _ | AExtern, _ -> ()
 			| ADynamic, FFun _ | AOverride, FFun _ | AMacro, FFun _ | AInline, FFun _ | AInline, FVar _ -> ()
 			| _, FVar _ -> error ("Invalid accessor '" ^ Ast.s_access acc ^ "' for variable " ^ name) p
 			| _, FProp _ -> error ("Invalid accessor '" ^ Ast.s_access acc ^ "' for property " ^ name) p
@@ -3514,9 +3531,9 @@ let init_module_type ctx context_init do_init (decl,p) =
 			t
 		in
 		List.iter (function
-			| AFromType t -> a.a_from <- (load_type t true) :: a.a_from
-			| AToType t -> a.a_to <- (load_type t false) :: a.a_to
-			| AIsType t ->
+			| AbFrom t -> a.a_from <- (load_type t true) :: a.a_from
+			| AbTo t -> a.a_to <- (load_type t false) :: a.a_to
+			| AbOver t ->
 				if a.a_impl = None then error "Abstracts with underlying type must have an implementation" a.a_pos;
 				if Meta.has Meta.CoreType a.a_meta then error "@:coreType abstracts cannot have an underlying type" p;
 				let at = load_complex_type ctx true p t in
@@ -3528,9 +3545,9 @@ let init_module_type ctx context_init do_init (decl,p) =
 				);
 				a.a_this <- at;
 				is_type := true;
-			| AExtern ->
+			| AbExtern ->
 				(match a.a_impl with Some c -> c.cl_extern <- true | None -> (* Hmmmm.... *) ())
-			| APrivAbstract -> ()
+			| AbPrivate -> ()
 		) d.d_flags;
 		if not !is_type then begin
 			if Meta.has Meta.CoreType a.a_meta then
@@ -3769,7 +3786,7 @@ let parse_module ctx m p =
 			| EClass d -> build HPrivate d
 			| EEnum d -> build EPrivate d
 			| ETypedef d -> build EPrivate d
-			| EAbstract d -> build APrivAbstract d
+			| EAbstract d -> build AbPrivate d
 			| EImport _ | EUsing _ -> acc
 		) [(EImport (List.map (fun s -> s,null_pos) (!remap @ [snd m]),INormal),null_pos)] decls)
 	else
@@ -3818,18 +3835,27 @@ exception Generic_Exception of string * pos
 
 type generic_context = {
 	ctx : typer;
-	subst : (t * t) list;
+	subst : (t * (t * texpr option)) list;
 	name : string;
 	p : pos;
 	mutable mg : module_def option;
 }
+
+let generic_check_const_expr ctx t =
+	match follow t with
+	| TInst({cl_kind = KExpr e},_) ->
+		let e = type_expr {ctx with locals = PMap.empty} e Value in
+		e.etype,Some e
+	| _ -> t,None
 
 let make_generic ctx ps pt p =
 	let rec loop l1 l2 =
 		match l1, l2 with
 		| [] , [] -> []
 		| (x,TLazy f) :: l1, _ -> loop ((x,lazy_type f) :: l1) l2
-		| (_,t1) :: l1 , t2 :: l2 -> (t1,t2) :: loop l1 l2
+		| (_,t1) :: l1 , t2 :: l2 ->
+			let t,eo = generic_check_const_expr ctx t2 in
+			(t1,(t,eo)) :: loop l1 l2
 		| _ -> assert false
 	in
 	let name =
@@ -3840,8 +3866,11 @@ let make_generic ctx ps pt p =
 			let rec loop top t = match follow t with
 				| t when is_in_type t -> "_hx_In_"
 				| t when is_of_type t -> "_hx_Of_"
-				| TInst(c,tl) -> (ident_safe (s_type_path_underscore c.cl_path)) ^ (loop_tl tl)
+				| TInst(c,tl) -> (match c.cl_kind with
+					| KExpr e -> ident_safe (Ast.s_expr e)
+					| _ -> (ident_safe (s_type_path_underscore c.cl_path)) ^ (loop_tl tl))
 				| TEnum(en,tl) -> (s_type_path_underscore en.e_path) ^ (loop_tl tl)
+				| TAnon(a) -> "anon_" ^ String.concat "_" (PMap.foldi (fun s f acc -> (s ^ "_" ^ (loop false (follow f.cf_type))) :: acc) a.a_fields [])
 				| TAbstract(a,tl) -> (s_type_path_underscore a.a_path) ^ (loop_tl tl)
 				| _ when not top -> "_" (* allow unknown/incompatible types as type parameters to retain old behavior *)
 				| TMono _ -> raise (Generic_Exception (("Could not determine type for parameter " ^ s), p))
@@ -3872,7 +3901,8 @@ let rec generic_substitute_type gctx t =
 		t
 	| _ ->
 		try
-			generic_substitute_type gctx (List.assq t gctx.subst)
+			let t,_ = List.assq t gctx.subst in
+			generic_substitute_type gctx t
 		with Not_found ->
 			Type.map (generic_substitute_type gctx) t
 
@@ -3900,18 +3930,18 @@ let generic_substitute_expr gctx e =
 			build_expr {e with eexpr = TField(e1,fa)}
 		| TTypeExpr (TClassDecl ({cl_kind = KTypeParameter _;} as c)) when Meta.has Meta.Const c.cl_meta ->
 			let rec loop subst = match subst with
-				| (t1,t2) :: subst ->
+				| (t1,(_,eo)) :: subst ->
 					begin match follow t1 with
-						| TInst(c2,_) when c == c2 -> t2
+						| TInst(c2,_) when c == c2 -> eo
 						| _ -> loop subst
 					end
 				| [] -> raise Not_found
 			in
 			begin try
-				let t = loop gctx.subst in
-				begin match follow t with
-					| TInst({cl_kind = KExpr e},_) -> type_expr gctx.ctx e Value
-					| _ -> error "Only Const type parameters can be used as value" e.epos
+				let eo = loop gctx.subst in
+				begin match eo with
+					| Some e -> e
+					| None -> error "Only Const type parameters can be used as value" e.epos
 				end
 			with Not_found ->
 				e
@@ -4003,7 +4033,7 @@ let rec build_generic ctx c p tl =
 			let param_subst,params = List.fold_left (fun (subst,params) (s,t) -> match follow t with
 				| TInst(c,tl) as t ->
 					let t2 = TInst({c with cl_module = mg;},tl) in
-					(t,t2) :: subst,(s,t2) :: params
+					(t,(t2,None)) :: subst,(s,t2) :: params
 				| _ -> assert false
 			) ([],[]) cf_old.cf_params in
 			let gctx = {gctx with subst = param_subst @ gctx.subst} in
