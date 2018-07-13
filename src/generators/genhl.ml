@@ -108,6 +108,8 @@ type context = {
 	core_enum : tclass;
 	ref_abstract : tabstract;
 	cdebug_files : (string, string) lookup;
+	mutable ct_delayed : (unit -> unit) list;
+	mutable ct_depth : int;
 }
 
 (* --- *)
@@ -558,6 +560,7 @@ and class_type ?(tref=None) ctx c pl statics =
 		(match tref with
 		| None -> ()
 		| Some r -> r := Some t);
+		ctx.ct_depth <- ctx.ct_depth + 1;
 		ctx.cached_types <- PMap.add key_path t ctx.cached_types;
 		if c.cl_path = ([],"Array") then assert false;
 		if c == ctx.base_class then begin
@@ -573,13 +576,22 @@ and class_type ?(tref=None) ctx c pl statics =
 			| Some (HObj psup) ->
 				if psup.pnfields < 0 then assert false;
 				p.psuper <- Some psup;
-				p.pfunctions <- psup.pfunctions;
-				p.pinterfaces <- psup.pinterfaces;
 				psup.pnfields, psup.pvirtuals
 			| _ -> assert false
 		) in
 		let fa = DynArray.create() and pa = DynArray.create() and virtuals = DynArray.of_array virtuals in
-		let todo = ref [] in
+		let add_field name get_t =
+			let fid = DynArray.length fa + start_field in
+			let str = if name = "" then 0 else alloc_string ctx name in
+			p.pindex <- PMap.add name (fid, HVoid) p.pindex;
+			DynArray.add fa (name, str, HVoid);
+			ctx.ct_delayed <- (fun() ->
+				let t = get_t() in
+				p.pindex <- PMap.add name (fid, t) p.pindex;
+				Array.set p.pfields (fid - start_field) (name, str, t);
+			) :: ctx.ct_delayed;
+			fid
+		in
 		List.iter (fun f ->
 			if is_extern_field f || (statics && f.cf_name = "__meta__") then () else
 			let fid = (match f.cf_kind with
@@ -603,15 +615,8 @@ and class_type ?(tref=None) ctx c pl statics =
 			| Method MethDynamic when List.exists (fun ff -> ff.cf_name = f.cf_name) c.cl_overrides ->
 				Some (try fst (get_index f.cf_name p) with Not_found -> assert false)
 			| _ ->
-				let fid = DynArray.length fa in
-				p.pindex <- PMap.add f.cf_name (fid + start_field, t) p.pindex;
-				DynArray.add fa (f.cf_name, alloc_string ctx f.cf_name, HVoid);
-				todo := (fun() ->
-					let t = to_type ctx f.cf_type in
-					p.pindex <- PMap.add f.cf_name (fid + start_field, t) p.pindex;
-					Array.set p.pfields fid (f.cf_name, alloc_string ctx f.cf_name, t)
-				) :: !todo;
-				Some (fid + start_field)
+				let fid = add_field f.cf_name (fun() -> to_type ctx f.cf_type) in
+				Some fid
 			) in
 			match f.cf_kind, fid with
 			| Method _, Some fid -> p.pbindings <- (fid, alloc_fun_path ctx c.cl_path f.cf_name) :: p.pbindings
@@ -620,10 +625,12 @@ and class_type ?(tref=None) ctx c pl statics =
 		if not statics then begin
 			(* add interfaces *)
 			List.iter (fun (i,pl) ->
-				let fid = DynArray.length fa in
-				let t = to_type ctx (TInst (i,pl)) in
-				p.pinterfaces <- PMap.add t (fid + start_field) p.pinterfaces;
-				DynArray.add fa ("", 0, t);
+				let rid = ref (-1) in
+				rid := add_field "" (fun() ->
+					let t = to_type ctx (TInst (i,pl)) in
+					p.pinterfaces <- PMap.add t !rid p.pinterfaces;
+					t
+				);
 			) c.cl_implements;
 			(* check toString *)
 			(try
@@ -642,7 +649,12 @@ and class_type ?(tref=None) ctx c pl statics =
 		p.pfields <- DynArray.to_array fa;
 		p.pproto <- DynArray.to_array pa;
 		p.pvirtuals <- DynArray.to_array virtuals;
-		List.iter (fun f -> f()) !todo;
+		ctx.ct_depth <- ctx.ct_depth - 1;
+		if ctx.ct_depth = 0 then begin
+			let todo = ctx.ct_delayed in
+			ctx.ct_delayed <- [];
+			List.iter (fun f -> f()) todo;
+		end;
 		if not statics && c != ctx.core_type && c != ctx.core_enum then p.pclassglobal <- Some (fst (class_global ctx (if statics then ctx.base_class else c)));
 		t
 
@@ -929,7 +941,11 @@ let real_name v =
 	in
 	loop v.v_meta
 
+let is_gen_local v =
+	String.length v.v_name >= 2 && String.unsafe_get v.v_name 0 = '_' && String.unsafe_get v.v_name 1 = 'g'
+
 let add_assign ctx v =
+	if is_gen_local v then () else
 	let name = real_name v in
 	ctx.m.massign <- (alloc_string ctx name, current_pos ctx - 1) :: ctx.m.massign
 
@@ -1036,7 +1052,15 @@ and cast_to ?(force=false) ctx (r:reg) (t:ttype) p =
 	| HObj o, HVirtual _ ->
 		let out = alloc_tmp ctx t in
 		(try
-			let fid = PMap.find t o.pinterfaces in
+			let rec lookup_intf o =
+				try
+					PMap.find t o.pinterfaces
+				with Not_found ->
+					match o.psuper with
+					| None -> raise Not_found
+					| Some o -> lookup_intf o
+			in
+			let fid = lookup_intf o in
 			(* memoisation *)
 			let need_null_check r =
 				not (r = 0 && ctx.m.mhasthis)
@@ -3077,7 +3101,7 @@ and make_fun ?gen_content ctx name fidx f cthis cparent =
 	} in
 	ctx.m <- old;
 	Hashtbl.add ctx.defined_funs fidx ();
-	let f = if ctx.optimize then Hlopt.optimize ctx.dump_out f else f in
+	let f = if ctx.optimize then Hlopt.optimize ctx.dump_out (DynArray.get ctx.cstrings.arr) f else f in
 	DynArray.add ctx.cfunctions f;
 	capt
 
@@ -3722,6 +3746,8 @@ let create_context com is_macro dump =
 		method_wrappers = PMap.empty;
 		cdebug_files = new_lookup();
 		macro_typedefs = Hashtbl.create 0;
+		ct_delayed = [];
+		ct_depth = 0;
 	} in
 	ignore(alloc_string ctx "");
 	ignore(class_type ctx ctx.base_class [] false);
