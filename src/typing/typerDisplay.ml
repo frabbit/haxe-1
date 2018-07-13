@@ -310,6 +310,8 @@ and display_expr ctx e_ast e dk with_type p =
 		in
 		let pl = loop e in
 		raise_position pl
+	| DMTypeDefinition ->
+		raise_position_of_type e.etype
 	| DMDefault when not (!Parser.had_resume)->
 		begin match fst e_ast,e.eexpr with
 			| EField(e1,s),TField(e2,_) ->
@@ -324,14 +326,10 @@ and display_expr ctx e_ast e dk with_type p =
 		let item = completion_item_of_expr ctx e in
 		raise_fields fields (CRField(item,e.epos)) None
 
-let handle_structure_display ctx e t an =
+let handle_structure_display ctx e fields origin =
 	let p = pos e in
-	let fields = PMap.foldi (fun _ cf acc -> cf :: acc) an.a_fields [] in
+	let fields = PMap.foldi (fun _ cf acc -> cf :: acc) fields [] in
 	let fields = List.sort (fun cf1 cf2 -> -compare cf1.cf_pos.pmin cf2.cf_pos.pmin) fields in
-	let origin = match t with
-		| TType(td,_) -> Self (TTypeDecl td)
-		| _ -> AnonymousStructure an
-	in
 	let tpair ?(values=PMap.empty) t =
 		let ct = DisplayEmitter.completion_type_of_type ctx ~values t in
 		(t,ct)
@@ -399,8 +397,14 @@ let handle_display ctx e_ast dk with_type =
 	| DisplayException(DisplayFields(l,CRTypeHint,p)) when (match fst e_ast with ENew _ -> true | _ -> false) ->
 		let timer = Timer.timer ["display";"toplevel";"filter ctors"] in
 		ctx.pass <- PBuildClass;
-		let l = List.filter (fun item -> match item.ci_kind with
-			| ITType({kind = (Class | Abstract)} as mt,_) when not mt.is_private ->
+		let l = List.filter (fun item ->
+			let is_private_to_current_module mt =
+				(* Remove the _Module nonsense from the package *)
+				let pack = List.rev (List.tl (List.rev mt.pack)) in
+				(pack,mt.module_name) = ctx.m.curmod.m_path
+			in
+			match item.ci_kind with
+			| ITType({kind = (Class | Abstract)} as mt,_) when not mt.is_private || is_private_to_current_module mt ->
 				begin match mt.has_constructor with
 				| Yes -> true
 				| No -> false
@@ -451,7 +455,15 @@ let handle_edisplay ctx e dk with_type =
 		begin match with_type with
 			| WithType t ->
 				begin match follow t with
-					| TAnon an -> handle_structure_display ctx e t an
+					| TAnon an ->
+						let origin = match t with
+							| TType(td,_) -> Self (TTypeDecl td)
+							| _ -> AnonymousStructure an
+						in
+						handle_structure_display ctx e an.a_fields origin
+					| TInst(c,tl) when Meta.has Meta.StructInit c.cl_meta ->
+						let fields = PMap.map (fun cf -> {cf with cf_type = apply_params c.cl_params tl cf.cf_type}) c.cl_fields in
+						handle_structure_display ctx e fields (Self (TClassDecl c))
 					| _ -> handle_display ctx e dk with_type
 				end
 			| _ ->
