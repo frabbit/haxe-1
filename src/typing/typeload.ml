@@ -449,7 +449,7 @@ and load_complex_type ctx allow_display p (t,pn) =
 			init_meta_overloads ctx None cf;
 			if ctx.is_display_file then begin
 				Display.DisplayEmitter.check_display_metadata ctx cf.cf_meta;
-				Display.DisplayEmitter.maybe_display_field ctx (cf.cf_name_pos) cf;
+				Display.DisplayEmitter.maybe_display_field ctx None cf cf.cf_name_pos;
 			end;
 			PMap.add n cf acc
 		in
@@ -614,7 +614,7 @@ let rec type_type_param ?(enum_constructor=false) ctx path get_params p tp =
 	if enum_constructor then c.cl_meta <- (Meta.EnumConstructorParam,[],null_pos) :: c.cl_meta;
 	let t = TInst (c,List.map snd c.cl_params) in
 	if ctx.is_display_file && Display.is_display_position (pos tp.tp_name) then
-		Display.DisplayEmitter.display_type ctx.com.display t (pos tp.tp_name);
+		Display.DisplayEmitter.display_type ctx t (pos tp.tp_name);
 	match tp.tp_constraints with
 	| [] ->
 		n, t
@@ -771,7 +771,7 @@ let handle_path_display ctx path p =
 				| TClassDecl c when snd c.cl_path = st ->
 					ignore(c.cl_build());
 					let cf = PMap.find sf c.cl_statics in
-					Display.DisplayEmitter.display_field ctx.com.display cf p
+					Display.DisplayEmitter.display_field ctx (Some c) cf p
 				| _ ->
 					()
 			) m.m_types;

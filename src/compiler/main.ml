@@ -964,7 +964,7 @@ with
 	| DisplayException(DisplayType (t,p,doc)) ->
 		let doc = match doc with Some _ -> doc | None -> DisplayOutput.find_doc t in
 		raise (DisplayOutput.Completion (DisplayOutput.print_type t p doc))
-	| DisplayException(DisplaySignatures(signatures,display_arg,_)) ->
+	| DisplayException(DisplaySignatures(signatures,_,display_arg)) ->
 		if ctx.com.display.dms_kind = DMSignature then
 			raise (DisplayOutput.Completion (DisplayOutput.print_signature signatures display_arg))
 		else
@@ -982,7 +982,14 @@ with
 				error ctx msg p;
 				None
 		in
-		Option.may (fun fields -> raise (DisplayOutput.Completion (DisplayOutput.print_fields fields))) fields
+		begin match fields with
+		| None -> ()
+		| Some fields ->
+			begin match ctx.com.json_out with
+			| Some (f,_) -> raise (DisplayOutput.Completion (f (Display.DisplayException.to_json (DisplayFields(fields,false)))))
+			| _ -> raise (DisplayOutput.Completion (DisplayOutput.print_fields fields))
+			end
+		end
 	| DisplayException(ModuleSymbols s | Diagnostics s | Statistics s | Metadata s) ->
 		raise (DisplayOutput.Completion s)
 	| EvalExceptions.Sys_exit i | Hlinterp.Sys_exit i ->
