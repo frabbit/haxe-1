@@ -591,7 +591,7 @@ and parse_type_path_or_const = parser
 	| [< '(Kwd True,p) >] -> TPExpr (EConst (Ident "true"),p)
 	| [< '(Kwd False,p) >] -> TPExpr (EConst (Ident "false"),p)
 	| [< e = expr >] -> TPExpr e
-	| [< >] -> serror()
+	| [< >] -> if !in_display then raise Stream.Failure else serror()
 
 and parse_complex_type_next (t : type_hint) s =
 	let make_fun t2 p2 = match t2 with
@@ -874,7 +874,7 @@ and block_with_pos' acc f p s =
 	with
 		| Stream.Failure ->
 			List.rev acc,p
-		| Stream.Error _ ->
+		| Stream.Error _ when !in_display ->
 			let tk , pos = next_token s in
 			(!display_error) (Unexpected tk) pos;
 			block_with_pos acc pos s
