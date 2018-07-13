@@ -219,7 +219,7 @@ let rec load_instance' ctx (t,p) allow_no_params =
 
 				let p1 = TPType (CTPath {tpackage=[]; tname="-In"; tparams=[]; tsub=Some("-In")}, ctpos)  in
 				let t = { t with tparams = [p1] } in
-				load_instance ctx (t,p) allow_no_params ctpos
+				load_instance ctx (t,p) allow_no_params
 			| tps ->
 				let mk_of tm ta =
 					let path = CTPath tm in
@@ -234,12 +234,12 @@ let rec load_instance' ctx (t,p) allow_no_params =
 					| [] -> assert false
 				in
 				let t = loop (List.rev tps) in
-				load_instance ctx (t, p) allow_no_params p
+				load_instance ctx (t, p) allow_no_params
 		end
 	with Not_found ->
 		if t.tname = "HKOf" then
 			let t = { t with tname = "-Of"; tpackage = []; tsub = Some("-Of") } in
-			load_instance ctx (t, p) allow_no_params p
+			load_instance ctx (t, p) allow_no_params
 		else if t.tname = "HKMono" then
 			let tr = ref None in
 			TMono tr
