@@ -2340,7 +2340,7 @@ and type_ident ctx i p mode =
 				if Typeload.is_generic_parameter ctx c && Meta.has Meta.Const c.cl_meta then
 					AKExpr (type_module_type ctx (TClassDecl c) None p)
 				else begin
-					display_error ctx ("Type parameter " ^ i ^ " is only available at compilation and is not a runtime value") p;
+					display_error ctx ("Only @:const type parameters on @:generic classes can be used as value") p;
 					AKExpr (mk (TConst TNull) t_dynamic p)
 				end
 			with Not_found ->
@@ -2849,7 +2849,7 @@ and type_object_decl ctx fl with_type p =
 						cf.cf_type
 				in
 				let e = type_expr ctx e (WithType t) in
-				let e = AbstractCast.cast_or_unify ctx t e p in
+				let e = AbstractCast.cast_or_unify ctx t e e.epos in
 				(try type_eq EqStrict e.etype t; e with Unify_error _ -> mk (TCast (e,None)) t e.epos)
 			with Not_found ->
 				if is_valid then
@@ -2985,7 +2985,7 @@ and type_new ctx path el with_type p =
 	let build_constructor_call c tl =
 		let ct, f = get_constructor ctx c tl p in
 		if (Meta.has Meta.CompilerGenerated f.cf_meta) then display_error ctx (error_msg (No_constructor (TClassDecl c))) p;
-		if not (can_access ctx c f true || is_parent c ctx.curclass) && not ctx.untyped then display_error ctx "Cannot access private constructor" p;
+		if not (can_access ctx c f true || is_parent c ctx.curclass) && not ctx.untyped then display_error ctx (Printf.sprintf "Cannot access private constructor of %s" (s_type_path c.cl_path)) p;
 		(match f.cf_kind with
 		| Var { v_read = AccRequire (r,msg) } -> (match msg with Some msg -> error msg p | None -> error_require r p)
 		| _ -> ());
