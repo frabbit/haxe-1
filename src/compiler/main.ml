@@ -916,7 +916,7 @@ with
 		raise (DisplayOutput.Completion (DisplayOutput.print_fields fields))
 	| Display.DisplayType (t,p,doc) ->
 		let doc = match doc with Some _ -> doc | None -> DisplayOutput.find_doc t in
-		raise (DisplayOutput.Completion (DisplayOutput.print_type t p doc))
+		raise (DisplayOutput.Completion (DisplayOutput.print_type ctx.com t p doc))
 	| Display.DisplaySignatures(signatures,display_arg) ->
 		if ctx.com.display.dms_kind = DMSignature then
 			raise (DisplayOutput.Completion (DisplayOutput.print_signature signatures display_arg))
@@ -951,6 +951,8 @@ with
 		ctx.flush();
 		if !measure_times then Timer.report_times prerr_endline;
 		exit i
+	| DisplayOutput.Completion _ as exc ->
+		raise exc
 	| e when (try Sys.getenv "OCAMLRUNPARAM" <> "b" || CompilationServer.runs() with _ -> true) && not (is_debug_run()) ->
 		error ctx (Printexc.to_string e) null_pos
 

@@ -649,7 +649,7 @@ let handle_display_argument com file_pos pre_compilation did_something =
 		let mode = match smode with
 			| "position" ->
 				Common.define com Define.NoCOpt;
-				DMPosition
+				DMDefinition
 			| "usage" ->
 				Common.define com Define.NoCOpt;
 				DMUsage false
@@ -660,7 +660,7 @@ let handle_display_argument com file_pos pre_compilation did_something =
 				DMPackage
 			| "type" ->
 				Common.define com Define.NoCOpt;
-				DMType
+				DMHover
 			| "toplevel" ->
 				Common.define com Define.NoCOpt;
 				DMToplevel
@@ -677,7 +677,7 @@ let handle_display_argument com file_pos pre_compilation did_something =
 				Common.define com Define.NoCOpt;
 				DMSignature
 			| "" ->
-				DMField
+				DMDefault
 			| _ ->
 				let smode,arg = try ExtString.String.split smode "@" with _ -> pos,"" in
 				match smode with
@@ -687,7 +687,7 @@ let handle_display_argument com file_pos pre_compilation did_something =
 						Common.define com Define.NoCOpt;
 						DMModuleSymbols (Some arg)
 					| _ ->
-						DMField
+						DMDefault
 		in
 		let pos = try int_of_string pos with _ -> failwith ("Invalid format: "  ^ pos) in
 		com.display <- DisplayMode.create mode;
@@ -778,7 +778,6 @@ let process_global_display_mode com tctx = match com.display.dms_kind with
 			| Some cs ->
 				let l = CompilationServer.get_context_files cs ((Define.get_signature com.defines) :: (match com.get_macros() with None -> [] | Some com -> [Define.get_signature com.defines])) in
 				List.fold_left (fun acc (file,data) ->
-					print_endline (Printf.sprintf "%s %b" file (is_display_file file));
 					if (filter <> None || is_display_file file) then
 						(file,DocumentSymbols.collect_module_symbols data) :: acc
 					else
@@ -802,6 +801,16 @@ let find_doc t =
 	in
 	doc
 
+open Genjson
+
 let print_positions com pl = match com.json_out with
 	| None -> print_positions pl
-	| Some(f,_) -> f (JArray (List.map Genjson.generate_pos_as_location pl))
+	| Some(f,_) -> f (JArray (List.map generate_pos_as_location pl))
+
+let print_type com t p doc = match com.json_out with
+	| None -> print_type t p doc
+	| Some(f,_) -> f (JObject [
+		"documentation",jopt jstring doc;
+		"range",generate_pos_as_range p;
+		"type",generate_type (create_context com) t;
+	])

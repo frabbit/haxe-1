@@ -16,9 +16,24 @@ let rec handle_display ctx e_ast dk with_type =
 	let e = match e_ast,with_type with
 	| (EConst (Ident "$type"),_),_ ->
 		let mono = mk_mono() in
-		raise (Display.DisplaySignatures ([((["expression",false,mono],mono),Some "Outputs type of argument as a warning and uses argument as value")],0))
+		let doc = Some "Outputs type of argument as a warning and uses argument as value" in
+		let arg = ["expression",false,mono] in
+		begin match ctx.com.display.dms_kind with
+		| DMSignature ->
+			raise (Display.DisplaySignatures ([((arg,mono),doc)],0))
+		| _ ->
+			raise (Display.DisplayType(TFun(arg,mono),(pos e_ast),doc))
+		end
 	| (EConst (Ident "trace"),_),_ ->
-		raise (Display.DisplaySignatures ([((["value",false,t_dynamic],ctx.com.basic.tvoid),Some "Print given arguments")],0))
+		let doc = Some "Print given arguments" in
+		let arg = ["value",false,t_dynamic] in
+		let ret = ctx.com.basic.tvoid in
+		begin match ctx.com.display.dms_kind with
+		| DMSignature ->
+			raise (Display.DisplaySignatures ([((arg,ret),doc)],0))
+		| _ ->
+			raise (Display.DisplayType(TFun(arg,ret),(pos e_ast),doc))
+		end
 	| (EConst (Ident "_"),p),WithType t ->
 		mk (TConst TNull) t p (* This is "probably" a bind skip, let's just use the expected type *)
 	| _ -> try
@@ -121,7 +136,7 @@ and display_expr ctx e_ast e dk with_type p =
 	match ctx.com.display.dms_kind with
 	| DMResolve _ | DMPackage | DMSignature ->
 		assert false
-	| DMType ->
+	| DMHover ->
 		let rec loop e = match e.eexpr with
 			| TVar(v,_) -> v.v_type,None
 			| TCall({eexpr = TConst TSuper; etype = t},_) -> t,None
@@ -144,32 +159,32 @@ and display_expr ctx e_ast e dk with_type p =
 	| DMUsage _ ->
 		let rec loop e = match e.eexpr with
 		| TField(_,FEnum(_,ef)) ->
-			ef.ef_meta <- (Meta.Usage,[],p) :: ef.ef_meta;
+			Display.reference_position := ef.ef_name_pos;
 		| TField(_,(FAnon cf | FInstance (_,_,cf) | FStatic (_,cf) | FClosure (_,cf))) ->
-			cf.cf_meta <- (Meta.Usage,[],p) :: cf.cf_meta;
+			Display.reference_position := cf.cf_name_pos;
 		| TLocal v | TVar(v,_) ->
-			v.v_meta <- (Meta.Usage,[],p) :: v.v_meta;
+			Display.reference_position := v.v_pos;
 		| TTypeExpr mt ->
 			let ti = t_infos mt in
-			ti.mt_meta <- (Meta.Usage,[],p) :: ti.mt_meta;
+			Display.reference_position := ti.mt_name_pos;
 		| TNew(c,tl,_) ->
 			begin try
 				let _,cf = get_constructor ctx c tl p in
-				cf.cf_meta <- (Meta.Usage,[],p) :: cf.cf_meta;
+				Display.reference_position := cf.cf_name_pos;
 			with Not_found ->
 				()
 			end
 		| TCall({eexpr = TConst TSuper},_) ->
 			begin try
 				let cf = get_super_constructor() in
-				cf.cf_meta <- (Meta.Usage,[],p) :: cf.cf_meta;
+				Display.reference_position := cf.cf_name_pos;
 			with Not_found ->
 				()
 			end
 		| TConst TSuper ->
 			begin match ctx.curclass.cl_super with
 				| None -> ()
-				| Some (c,_) -> c.cl_meta <- (Meta.Usage,[],p) :: c.cl_meta;
+				| Some (c,_) -> Display.reference_position := c.cl_name_pos;
 			end
 		| TCall(e1,_) ->
 			loop e1
@@ -178,7 +193,7 @@ and display_expr ctx e_ast e dk with_type p =
 		in
 		loop e;
 		e
-	| DMPosition ->
+	| DMDefinition ->
 		let rec loop e = match e.eexpr with
 		| TField(_,FEnum(_,ef)) -> [ef.ef_name_pos]
 		| TField(_,(FAnon cf | FInstance (_,_,cf) | FStatic (_,cf) | FClosure (_,cf))) -> [cf.cf_name_pos]
@@ -212,7 +227,7 @@ and display_expr ctx e_ast e dk with_type p =
 		raise (Display.DisplayPosition pl);
 	| DMToplevel ->
 		raise (Display.DisplayToplevel (DisplayToplevel.collect ctx false))
-	| DMField | DMNone | DMModuleSymbols _ | DMDiagnostics _ | DMStatistics ->
+	| DMDefault | DMNone | DMModuleSymbols _ | DMDiagnostics _ | DMStatistics ->
 		let fields = DisplayFields.collect ctx e_ast e dk with_type p in
 		raise (Display.DisplayFields fields)
 
@@ -241,6 +256,6 @@ let handle_structure_display ctx e with_type =
 
 let handle_edisplay ctx e dk with_type =
 	match dk,ctx.com.display.dms_kind with
-	| DKCall,(DMSignature | DMField) -> handle_signature_display ctx e with_type
-	| DKStructure,DMField -> handle_structure_display ctx e with_type
+	| DKCall,(DMSignature | DMDefault) -> handle_signature_display ctx e with_type
+	| DKStructure,DMDefault -> handle_structure_display ctx e with_type
 	| _ -> handle_display ctx e dk with_type
