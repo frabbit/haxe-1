@@ -827,12 +827,29 @@ try
 		Finalization.finalize tctx;
 		t();
 		if not ctx.com.display.dms_display && ctx.has_error then raise Abort;
-		let load_display_module_in_macro () = match display_file_dot_path with
+		let load_display_module_in_macro clear = match display_file_dot_path with
 			| Some cpath ->
 				let p = null_pos in
 				begin try
-					let _ = MacroContext.load_macro_module tctx cpath true p in
+					let open Typecore in
 					let _, mctx = MacroContext.get_macro_context tctx p in
+					(* Tricky stuff: We want to remove the module from our lookups and load it again in
+					   display mode. This covers some cases like --macro typing it in non-display mode (issue #7017). *)
+					if clear then begin
+						begin try
+							let m = Hashtbl.find mctx.g.modules cpath in
+							Hashtbl.remove mctx.g.modules cpath;
+							Hashtbl.remove mctx.g.types_module cpath;
+							List.iter (fun mt ->
+								let ti = t_infos mt in
+								Hashtbl.remove mctx.g.modules ti.mt_path;
+								Hashtbl.remove mctx.g.types_module ti.mt_path;
+							) m.m_types
+						with Not_found ->
+							()
+						end;
+					end;
+					let _ = MacroContext.load_macro_module tctx cpath true p in
 					Finalization.finalize mctx;
 					Some mctx
 				with DisplayException _ | Parser.TypePath _ as exc ->
@@ -846,7 +863,7 @@ try
 		if ctx.com.display.dms_exit_during_typing then begin
 			if ctx.has_next || ctx.has_error then raise Abort;
 			(* If we didn't find a completion point, load the display file in macro mode. *)
-			ignore(load_display_module_in_macro ());
+			ignore(load_display_module_in_macro true);
 			failwith "No completion point was found";
 		end;
 		let t = Timer.timer ["filters"] in
@@ -854,7 +871,7 @@ try
 		com.main <- main;
 		com.types <- types;
 		com.modules <- modules;
-		if ctx.com.display.dms_force_macro_typing then begin match load_display_module_in_macro () with
+		if ctx.com.display.dms_force_macro_typing then begin match load_display_module_in_macro false with
 			| None -> ()
 			| Some mctx ->
 				(* We don't need a full macro flush here because we're not going to run any macros. *)
@@ -927,29 +944,33 @@ with
 		error ctx ("Error: " ^ msg) null_pos
 	| HelpMessage msg ->
 		message ctx (CMInfo(msg,null_pos))
+	| DisplayException(DisplayType _ | DisplayPosition _ | DisplayFields _ | DisplayPackage _  | DisplaySignatures _ as de) when ctx.com.json_out <> None ->
+		begin match ctx.com.json_out with
+		| Some (f,_) -> raise (DisplayOutput.Completion (f (Display.DisplayException.to_json de)))
+		| _ -> assert false
+		end
 	| DisplayException(DisplayPackage pack) ->
-		raise (DisplayOutput.Completion (DisplayOutput.print_package ctx.com pack))
+		raise (DisplayOutput.Completion (String.concat "." pack))
 	| DisplayException(DisplayFields(fields,is_toplevel)) ->
-		let fields = match ctx.com.json_out with
-			| None when !measure_times ->
-				Timer.close_times();
-				(List.map (fun (name,value) ->
-					DisplayTypes.CompletionKind.ITTimer("@TIME " ^ name,value)
-				) (DisplayOutput.get_timer_fields !start_time)) @ fields
-			| _ ->
-				fields
+		let fields = if !measure_times then begin
+			Timer.close_times();
+			(List.map (fun (name,value) ->
+				DisplayTypes.CompletionKind.ITTimer("@TIME " ^ name,value)
+			) (DisplayOutput.get_timer_fields !start_time)) @ fields
+		end else
+			fields
 		in
-		raise (DisplayOutput.Completion (DisplayOutput.print_fields ctx.com fields is_toplevel))
+		raise (DisplayOutput.Completion (if is_toplevel then DisplayOutput.print_toplevel fields else DisplayOutput.print_fields fields))
 	| DisplayException(DisplayType (t,p,doc)) ->
 		let doc = match doc with Some _ -> doc | None -> DisplayOutput.find_doc t in
-		raise (DisplayOutput.Completion (DisplayOutput.print_type ctx.com t p doc))
-	| DisplayException(DisplaySignatures(signatures,display_arg)) ->
+		raise (DisplayOutput.Completion (DisplayOutput.print_type t p doc))
+	| DisplayException(DisplaySignatures(signatures,display_arg,_)) ->
 		if ctx.com.display.dms_kind = DMSignature then
 			raise (DisplayOutput.Completion (DisplayOutput.print_signature signatures display_arg))
 		else
 			raise (DisplayOutput.Completion (DisplayOutput.print_signatures signatures))
 	| DisplayException(DisplayPosition pl) ->
-		raise (DisplayOutput.Completion (DisplayOutput.print_positions ctx.com pl))
+		raise (DisplayOutput.Completion (DisplayOutput.print_positions pl))
 	| Parser.TypePath (p,c,is_import) ->
 		let fields =
 			try begin match c with
@@ -961,7 +982,7 @@ with
 				error ctx msg p;
 				None
 		in
-		Option.may (fun fields -> raise (DisplayOutput.Completion (DisplayOutput.print_fields ctx.com fields false))) fields
+		Option.may (fun fields -> raise (DisplayOutput.Completion (DisplayOutput.print_fields fields))) fields
 	| DisplayException(ModuleSymbols s | Diagnostics s | Statistics s | Metadata s) ->
 		raise (DisplayOutput.Completion s)
 	| EvalExceptions.Sys_exit i | Hlinterp.Sys_exit i ->

@@ -21,7 +21,7 @@ let rec handle_display ctx e_ast dk with_type =
 		let arg = ["expression",false,mono] in
 		begin match ctx.com.display.dms_kind with
 		| DMSignature ->
-			raise_signatures [((arg,mono),doc)] 0
+			raise_signatures [((arg,mono),doc)] 0 0
 		| _ ->
 			raise_type (TFun(arg,mono)) (pos e_ast) doc
 		end
@@ -31,7 +31,7 @@ let rec handle_display ctx e_ast dk with_type =
 		let ret = ctx.com.basic.tvoid in
 		begin match ctx.com.display.dms_kind with
 		| DMSignature ->
-			raise_signatures [((arg,ret),doc)] 0
+			raise_signatures [((arg,ret),doc)] 0 0
 		| _ ->
 			raise_type (TFun(arg,ret)) (pos e_ast) doc
 		end
@@ -93,7 +93,7 @@ and handle_signature_display ctx e_ast with_type =
 				acc
 		in
 		let overloads = match loop [] tl with [] -> tl | tl -> tl in
-		raise_signatures overloads display_arg
+		raise_signatures overloads display_arg 0 (* ? *)
 	in
 	let find_constructor_types t = match follow t with
 		| TInst (c,tl) | TAbstract({a_impl = Some c},tl) ->
@@ -151,8 +151,32 @@ and display_expr ctx e_ast e dk with_type p =
 			| TCall({eexpr = TConst TSuper; etype = t},_) -> t,None
 			| TNew({cl_kind = KAbstractImpl a},tl,_) -> TType(abstract_module_type a tl,[]),None
 			| TNew(c,tl,_) ->
-				let t,_ = get_constructor ctx c tl p in
-				t,None
+				begin match fst e_ast with
+				| EConst (Regexp (r,opt)) ->
+					let present,absent = List.partition (String.contains opt) ['g';'i';'m';'s';'u'] in
+					let doc flag desc = Printf.sprintf "* %s: %s" (String.make 1 flag) desc in
+					let f c = match c with
+						| 'g' -> doc c "global split and replace"
+						| 'i' -> doc c "case insensitive matching"
+						| 'm' -> doc c "multiline matching"
+						| 's' -> doc c "dot also match newlines"
+						| 'u' -> doc c "use UTF-8 matching"
+						| _ -> assert false
+					in
+					let present = List.map f present in
+					let present = match present with [] -> [] | _ -> "\n\nActive flags:\n\n" :: present in
+					let absent = List.map f absent in
+					let absent = match absent with [] -> [] | _ -> "\n\nInactive flags:\n\n" :: absent in
+					(TInst(c,tl)),Some ("Regular expression\n\n" ^ (String.concat "\n" (present @ absent)))
+				| _ ->
+					let t,cf = get_constructor ctx c tl p in
+					let t = match follow t with
+						| TFun(args,_) -> TFun(args,TInst(c,tl))
+						| _ -> t
+					in
+					if Meta.has Meta.CoreApi c.cl_meta then merge_core_doc ctx c;
+					t,cf.cf_doc
+				end
 			| TTypeExpr (TClassDecl {cl_kind = KAbstractImpl a}) -> TType(abstract_module_type a (List.map snd a.a_params),[]),None
 			| TField(e1,FDynamic "bind") when (match follow e1.etype with TFun _ -> true | _ -> false) -> e1.etype,None
 			| TReturn (Some e1) -> loop e1 (* No point in letting the internal Dynamic surface (issue #5655) *)
