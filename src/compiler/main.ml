@@ -951,23 +951,32 @@ with
 	| DisplayException(DisplayHover _ | DisplayPosition _ | DisplayFields _ | DisplayPackage _  | DisplaySignatures _ as de) when ctx.com.json_out <> None ->
 		begin match ctx.com.json_out with
 		| Some (f,_) ->
-			let ctx = DisplayJson.create_json_context() in
+			let ctx = DisplayJson.create_json_context (match de with DisplayFields _ -> true | _ -> false) in
 			f (DisplayException.to_json ctx de)
 		| _ -> assert false
 		end
+	(* | Parser.TypePath (_,_,_,p) when ctx.com.json_out <> None ->
+		begin match com.json_out with
+		| Some (f,_) ->
+			let tctx = Typer.create ctx.com in
+			let fields = DisplayToplevel.collect tctx true Typecore.NoValue in
+			let jctx = Genjson.create_context Genjson.GMMinimum in
+			f (DisplayException.fields_to_json jctx fields CRImport (Some (Parser.cut_pos_at_display p)) false)
+		| _ -> assert false
+		end *)
 	| DisplayException(DisplayPackage pack) ->
 		raise (DisplayOutput.Completion (String.concat "." pack))
 	| DisplayException(DisplayFields(fields,cr,_,_)) ->
 		let fields = if !measure_times then begin
 			Timer.close_times();
 			(List.map (fun (name,value) ->
-				CompletionItem.ITTimer("@TIME " ^ name,value)
+				CompletionItem.make_ci_timer ("@TIME " ^ name) value
 			) (DisplayOutput.get_timer_fields !start_time)) @ fields
 		end else
 			fields
 		in
 		let s = match cr with
-			| CRToplevel
+			| CRToplevel _
 			| CRTypeHint
 			| CRExtends
 			| CRImplements
@@ -978,16 +987,16 @@ with
 			| CRPattern
 			| CRTypeRelation ->
 				DisplayOutput.print_toplevel fields
-			| CRField
+			| CRField _
 			| CRStructureField
 			| CRMetadata
 			| CROverride ->
 				DisplayOutput.print_fields fields
 		in
 		raise (DisplayOutput.Completion s)
-	| DisplayException(DisplayHover (Some t,p,doc)) ->
-		let doc = match doc with Some _ -> doc | None -> DisplayOutput.find_doc t in
-		raise (DisplayOutput.Completion (DisplayOutput.print_type t p doc))
+	| DisplayException(DisplayHover ({hitem = {CompletionItem.ci_type = Some t}} as hover)) ->
+		let doc = CompletionItem.get_documentation hover.hitem in
+		raise (DisplayOutput.Completion (DisplayOutput.print_type t hover.hpos doc))
 	| DisplayException(DisplaySignatures(signatures,_,display_arg)) ->
 		if ctx.com.display.dms_kind = DMSignature then
 			raise (DisplayOutput.Completion (DisplayOutput.print_signature signatures display_arg))
@@ -995,7 +1004,7 @@ with
 			raise (DisplayOutput.Completion (DisplayOutput.print_signatures signatures))
 	| DisplayException(DisplayPosition pl) ->
 		raise (DisplayOutput.Completion (DisplayOutput.print_positions pl))
-	| Parser.TypePath (p,c,is_import) ->
+	| Parser.TypePath (p,c,is_import,pos) ->
 		let fields =
 			try begin match c with
 				| None ->
@@ -1011,13 +1020,16 @@ with
 		| Some fields ->
 			begin match ctx.com.json_out with
 			| Some (f,_) ->
-				let ctx = DisplayJson.create_json_context() in
-				f (DisplayException.to_json ctx (DisplayFields(fields,CRField,None,false)))
+				let ctx = DisplayJson.create_json_context false in
+				let pos = Parser.cut_pos_at_display pos in
+				let kind = CRField ((CompletionItem.make_ci_module (String.concat "." p),pos)) in
+				f (DisplayException.fields_to_json ctx fields kind None false);
 			| _ -> raise (DisplayOutput.Completion (DisplayOutput.print_fields fields))
 			end
 		end
 	| Parser.SyntaxCompletion(kind,pos) ->
-		DisplayOutput.handle_syntax_completion com kind pos
+		DisplayOutput.handle_syntax_completion com kind pos;
+		error ctx ("Error: No completion point was found") null_pos
 	| DisplayException(ModuleSymbols s | Diagnostics s | Statistics s | Metadata s) ->
 		raise (DisplayOutput.Completion s)
 	| EvalExceptions.Sys_exit i | Hlinterp.Sys_exit i ->

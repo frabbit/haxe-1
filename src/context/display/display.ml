@@ -58,6 +58,9 @@ module ExprPreprocessing = struct
 					e
 			| EBlock [] when is_annotated (pos e) ->
 				annotate e DKStructure
+			| EBlock [EDisplay((EConst(Ident s),pn),DKMarked),_] when is_completion ->
+				let e = EObjectDecl [(s,pn,NoQuotes),(EConst (Ident "null"),null_pos)],(pos e) in
+				annotate e DKStructure
 			| EBlock el when is_annotated (pos e) && is_completion ->
 				let el = loop_el el in
 				EBlock el,(pos e)
@@ -74,10 +77,14 @@ module ExprPreprocessing = struct
 			| EArrayDecl el when is_annotated (pos e) && is_completion ->
 				let el = loop_el el in
 				EArrayDecl el,(pos e)
+			| EObjectDecl fl when is_annotated (pos e) && is_completion ->
+				annotate e DKStructure
 			| EDisplay _ ->
 				raise Exit
 			| EConst (String _) when (not (Lexer.is_fmt_string (pos e)) || !Parser.was_auto_triggered) && is_annotated (pos e) && is_completion ->
 				(* TODO: check if this makes any sense *)
+				raise Exit
+			| EConst(Regexp _) when is_annotated (pos e) && is_completion ->
 				raise Exit
 			| _ ->
 				if is_annotated (pos e) then
@@ -93,9 +100,15 @@ module ExprPreprocessing = struct
 	let find_display_call e =
 		let found = ref false in
 		let loop e = match fst e with
-			| ECall _ | ENew _ when not !found && is_display_position (pos e) ->
-				found := true;
-				Parser.mk_display_expr e DKCall
+			| ECall(_,el) | ENew(_,el) when not !found && is_display_position (pos e) ->
+				let call_arg_is_marked () =
+					el = [] || List.exists (fun (e,_) -> match e with EDisplay(_,DKMarked) -> true | _ -> false) el
+				in
+				if not !Parser.was_auto_triggered || call_arg_is_marked () then begin
+					found := true;
+					Parser.mk_display_expr e DKCall
+				end else
+					e
 			| _ -> e
 		in
 		let rec map e = loop (Ast.map_expr map e) in

@@ -20,12 +20,16 @@ module DiagnosticsKind = struct
 		| DKRemovableCode -> 3
 end
 
+type diagnostics_context = {
+	com : Common.context;
+	mutable removable_code : (string * pos * pos) list;
+}
+
 open DiagnosticsKind
 open DisplayTypes
 
-let add_removable_code com s p prange =
-	let di = com.shared.shared_display_information in
-	di.removable_code <- (s,p,prange) :: di.removable_code
+let add_removable_code ctx s p prange =
+	ctx.removable_code <- (s,p,prange) :: ctx.removable_code
 
 let find_unused_variables com e =
 	let vars = Hashtbl.create 0 in
@@ -105,22 +109,27 @@ let check_other_things com e =
 	in
 	loop true e
 
-let prepare_field com cf = match cf.cf_expr with
+let prepare_field dctx cf = match cf.cf_expr with
 	| None -> ()
 	| Some e ->
-		find_unused_variables com e;
-		check_other_things com e;
-		DeprecationCheck.run_on_expr com e
+		find_unused_variables dctx e;
+		check_other_things dctx.com e;
+		DeprecationCheck.run_on_expr dctx.com e
 
 let prepare com global =
+	let dctx = {
+		removable_code = [];
+		com = com;
+	} in
 	List.iter (function
 		| TClassDecl c when global || is_display_file c.cl_pos.pfile ->
-			List.iter (prepare_field com) c.cl_ordered_fields;
-			List.iter (prepare_field com) c.cl_ordered_statics;
-			(match c.cl_constructor with None -> () | Some cf -> prepare_field com cf);
+			List.iter (prepare_field dctx) c.cl_ordered_fields;
+			List.iter (prepare_field dctx) c.cl_ordered_statics;
+			(match c.cl_constructor with None -> () | Some cf -> prepare_field dctx cf);
 		| _ ->
 			()
-	) com.types
+	) com.types;
+	dctx
 
 let is_diagnostics_run p = match (!Parser.display_mode) with
 	| DMDiagnostics true -> true
@@ -129,7 +138,6 @@ let is_diagnostics_run p = match (!Parser.display_mode) with
 
 let secure_generated_code ctx e =
 	if is_diagnostics_run e.epos then mk (TMeta((Meta.Extern,[],e.epos),e)) e.etype e.epos else e
-
 
 module Printer = struct
 	open Json
@@ -148,46 +156,47 @@ module Printer = struct
 			| UISTypo -> 1
 	end
 
-	let print_diagnostics ctx global =
-		let com = ctx.com in
+	open UnresolvedIdentifierSuggestion
+	open CompletionItem
+	open CompletionModuleType
+
+	let print_diagnostics dctx ctx global =
+		let com = dctx.com in
 		let diag = Hashtbl.create 0 in
 		let add dk p sev args =
 			let file = Path.get_real_path p.pfile in
 			let diag = try
 				Hashtbl.find diag file
 			with Not_found ->
-				let d = DynArray.create() in
+				let d = Hashtbl.create 0 in
 				Hashtbl.add diag file d;
 				d
 			in
-			DynArray.add diag (dk,p,sev,args)
+			if not (Hashtbl.mem diag p) then
+				Hashtbl.add diag p (dk,p,sev,args)
 		in
 		let add dk p sev args =
 			if global || is_display_file p.pfile then add dk p sev args
 		in
-		let find_type i =
-			let types = ref [] in
-			Hashtbl.iter (fun _ m ->
-				List.iter (fun mt ->
-					let s_full_type_path (p,s) n = s_type_path (p,s) ^ if (s <> n) then "." ^ n else "" in
-					let tinfos = t_infos mt in
-					if snd tinfos.mt_path = i then
-						types := JObject [
-							"kind",JInt (UnresolvedIdentifierSuggestion.to_int UnresolvedIdentifierSuggestion.UISImport);
-							"name",JString (s_full_type_path m.m_path i)
-						] :: !types
-				) m.m_types;
-			) ctx.g.modules;
-			!types
-		in
 		List.iter (fun (s,p,suggestions) ->
-			let suggestions = List.map (fun (s,_) ->
-				JObject [
-					"kind",JInt (UnresolvedIdentifierSuggestion.to_int UnresolvedIdentifierSuggestion.UISTypo);
-					"name",JString s
-				]
+			let suggestions = ExtList.List.filter_map (fun (s,item,r) ->
+				match item.ci_kind with
+				| ITType(t,_) when r = 0 ->
+					let path = if t.module_name = t.name then (t.pack,t.name) else (t.pack @ [t.module_name],t.name) in
+					Some (JObject [
+						"kind",JInt (to_int UISImport);
+						"name",JString (s_type_path path);
+					])
+				| _ when r = 0 ->
+					(* TODO !!! *)
+					None
+				| _ ->
+					Some (JObject [
+						"kind",JInt (to_int UISTypo);
+						"name",JString s;
+					])
 			) suggestions in
-			add DKUnresolvedIdentifier p DiagnosticsSeverity.Error (JArray (suggestions @ (find_type s)));
+			add DKUnresolvedIdentifier p DiagnosticsSeverity.Error (JArray suggestions);
 		) com.display_information.unresolved_identifiers;
 		PMap.iter (fun p (r,_) ->
 			if not !r then add DKUnusedImport p DiagnosticsSeverity.Warning (JArray [])
@@ -197,16 +206,16 @@ module Printer = struct
 		) com.shared.shared_display_information.diagnostics_messages;
 		List.iter (fun (s,p,prange) ->
 			add DKRemovableCode p DiagnosticsSeverity.Warning (JObject ["description",JString s;"range",if prange = null_pos then JNull else Genjson.generate_pos_as_range prange])
-		) com.shared.shared_display_information.removable_code;
+		) dctx.removable_code;
 		let jl = Hashtbl.fold (fun file diag acc ->
-			let jl = DynArray.fold_left (fun acc (dk,p,sev,jargs) ->
+			let jl = Hashtbl.fold (fun _ (dk,p,sev,jargs) acc ->
 				(JObject [
-					"kind",JInt (to_int dk);
+					"kind",JInt (DiagnosticsKind.to_int dk);
 					"severity",JInt (DiagnosticsSeverity.to_int sev);
 					"range",Genjson.generate_pos_as_range p;
 					"args",jargs
 				]) :: acc
-			) [] diag in
+			) diag [] in
 			(JObject [
 				"file",JString file;
 				"diagnostics",JArray jl

@@ -53,8 +53,8 @@ let json_of_times root =
 let debug_context_sign = ref None
 let supports_resolve = ref false
 
-let create_json_context () =
-	Genjson.create_context (if !supports_resolve then GMMinimum else GMFull)
+let create_json_context may_resolve =
+	Genjson.create_context (if may_resolve && !supports_resolve then GMMinimum else GMFull)
 
 let parse_input com input report_times pre_compilation did_something =
 	let send_string j = raise (DisplayOutput.Completion j) in
@@ -80,6 +80,10 @@ let parse_input com input report_times pre_compilation did_something =
 		let f_error jl =
 			send_json (JsonRpc.error id 0 ~data:(Some (JArray jl)) "Compiler error")
 		in
+		let cs = match CompilationServer.get() with
+			| Some cs -> cs
+			| None -> f_error [jstring "compilation server not running for some reason"]
+		in
 		let params = match params with
 			| Some (JObject fl) -> fl
 			| Some json -> raise_invalid_params json
@@ -101,10 +105,10 @@ let parse_input com input report_times pre_compilation did_something =
 			| JBool b -> b
 			| _ -> raise_haxe_json_error id (BadType(desc,"Bool"))
 		in
-		let get_array desc j = match j with
+		(* let get_array desc j = match j with
 			| JArray a -> a
 			| _ -> raise_haxe_json_error id (BadType(desc,"Array"))
-		in
+		in *)
 		let get_object desc j = match j with
 			| JObject o -> o
 			| _ -> raise_haxe_json_error id (BadType(desc,"Object"))
@@ -112,13 +116,13 @@ let parse_input com input report_times pre_compilation did_something =
 		let get_string_field desc name fl = get_string desc (get_field desc fl name) in
 		let get_int_field desc name fl = get_int desc (get_field desc fl name) in
 		let get_bool_field desc name fl = get_bool desc (get_field desc fl name) in
-		let get_array_field desc name fl = get_array desc (get_field desc fl name) in
-		(* let get_object_field desc name fl = get_object desc (get_field desc fl name) in *)
+		(* let get_array_field desc name fl = get_array desc (get_field desc fl name) in *)
+		let get_object_field desc name fl = get_object desc (get_field desc fl name) in
 		let get_string_param name = get_string_field "params" name params in
 		let get_int_param name = get_int_field "params" name params in
 		let get_bool_param name = get_bool_field "params" name params in
-		let get_array_param name = get_array_field "params" name params in
-		(* let get_object_param name = get_object_field "params" name params in *)
+		(* let get_array_param name = get_array_field "params" name params in *)
+		let get_object_param name = get_object_field "params" name params in
 		let get_opt_param f def = try f() with JsonRpc_error _ -> def in
 		let enable_display mode =
 			com.display <- create mode;
@@ -128,16 +132,19 @@ let parse_input com input report_times pre_compilation did_something =
 		in
 		let read_display_file was_auto_triggered requires_offset is_completion =
 			let file = get_string_param "file" in
+			let file = Path.unique_full_path file in
 			let pos = if requires_offset then get_int_param "offset" else (-1) in
 			TypeloadParse.current_stdin := get_opt_param (fun () ->
 				let s = get_string_param "contents" in
 				Common.define com Define.DisplayStdin; (* TODO: awkward *)
+				(* Remove our current display file from the cache so the server doesn't pick it up *)
+				CompilationServer.remove_files cs file;
 				Some s
 			) None;
 			Parser.was_auto_triggered := was_auto_triggered;
 			let pos = if pos <> (-1) && not is_completion then pos + 1 else pos in
 			Parser.resume_display := {
-				pfile = Path.unique_full_path file;
+				pfile = file;
 				pmin = pos;
 				pmax = pos;
 			}
@@ -182,49 +189,53 @@ let parse_input com input report_times pre_compilation did_something =
 			(* server *)
 			| "server/readClassPaths" ->
 				com.callbacks.after_init_macros <- (fun () ->
-					let cs = CompilationServer.force() in
 					CompilationServer.set_initialized cs;
 					DisplayToplevel.read_class_paths com ["init"];
 					f_result (jstring "class paths read");
 				) :: com.callbacks.after_init_macros;
 			| "server/contexts" ->
-				let cs = CompilationServer.force() in
 				let l = List.map (fun (sign,index) -> jobject [
 					"index",jstring index;
 					"signature",jstring (Digest.to_hex sign);
 				]) (CompilationServer.get_signs cs) in
 				f_result (jarray l)
 			| "server/select" ->
-				let cs = CompilationServer.force() in
 				let i = get_int_param "index" in
 				let (ctx,_) = try CompilationServer.get_sign_by_index cs (string_of_int i) with Not_found -> f_error [jstring "No such context"] in
 				debug_context_sign := Some ctx;
 				f_result (jstring (Printf.sprintf "Context %i selected" i))
 			| "server/modules" ->
-				let cs = CompilationServer.force() in
 				let sign = get_sign () in
 				let l = Hashtbl.fold (fun (_,sign') m acc ->
 					if sign = sign' && m.m_extra.m_kind <> MFake then jstring (s_type_path m.m_path) :: acc else acc
 				) cs.cache.c_modules [] in
 				f_result (jarray l)
 			| "server/module" ->
-				let cs = CompilationServer.force() in
 				let sign = get_sign() in
 				let path = Path.parse_path (get_string_param "path") in
 				let m = try CompilationServer.find_module cs (path,sign) with Not_found -> f_error [jstring "No such module"] in
 				f_result (generate_module () m)
+			| "server/invalidate" ->
+				let file = get_string_param "file" in
+				let file = Path.unique_full_path file in
+				CompilationServer.taint_modules cs file;
+				f_result jnull
 			| "server/configure" ->
-				let l = List.map (fun j ->
-					let fl = get_object "print param" j in
-					let name = get_string_field "print param" "name" fl in
-					let value = get_bool_field "print param" "value" fl in
+				let l = ref (List.map (fun (name,value) ->
+					let value = get_bool "value" value in
 					try
 						ServerMessage.set_by_name name value;
 						jstring (Printf.sprintf "Printing %s %s" name (if value then "enabled" else "disabled"))
 					with Not_found ->
 						f_error [jstring ("Invalid print parame name: " ^ name)]
-				) (get_array_param "print") in
-				f_result (jarray l)
+				) (get_opt_param (fun () -> (get_object_param "print")) [])) in
+				get_opt_param (fun () ->
+					let b = get_bool_param "noModuleChecks" in
+					ServerConfig.do_not_check_modules := b;
+					l := jstring ("Module checks " ^ (if b then "disabled" else "enabled")) :: !l;
+					()
+				) ();
+				f_result (jarray !l)
 			| _ -> raise_method_not_found id name
 		in
 		f();

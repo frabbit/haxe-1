@@ -18,6 +18,9 @@
 *)
 open Ast
 open DisplayTypes.DisplayMode
+open DisplayException
+open DisplayTypes.CompletionResultKind
+open CompletionItem.ClassFieldOrigin
 open Common
 open Type
 open Typecore
@@ -1170,6 +1173,7 @@ and type_ident ctx i p mode =
 
 (* MORDOR *)
 and handle_efield ctx e p mode =
+	let p0 = p in
 	(*
 		given chain of fields as the `path` argument and an `access_mode->access_kind` getter for some starting expression as `e`,
 		return a new `access_mode->access_kind` getter for the whole field access chain.
@@ -1332,7 +1336,10 @@ and handle_efield ctx e p mode =
 							with
 								Not_found ->
 									(* if there was no module name part, last guess is that we're trying to get package completion *)
-									if ctx.in_display then raise (Parser.TypePath (List.map (fun (n,_,_) -> n) (List.rev acc),None,false));
+									if ctx.in_display then begin
+										if ctx.com.json_out = None then raise (Parser.TypePath (List.map (fun (n,_,_) -> n) (List.rev acc),None,false,p))
+										else raise_fields (DisplayToplevel.collect ctx false NoValue) CRTypeHint (Some (Parser.cut_pos_at_display p0)) false;
+									end;
 									raise e)
 		in
 		match path with
@@ -1651,7 +1658,7 @@ and type_object_decl ctx fl with_type p =
 					| Some t -> t
 					| None ->
 						let cf = PMap.find n field_map in
-						if ctx.in_display && Display.is_display_position pn then DisplayEmitter.display_field ctx None cf pn;
+						if ctx.in_display && Display.is_display_position pn then DisplayEmitter.display_field ctx Unknown CFSMember cf pn;
 						cf.cf_type
 				in
 				let e = type_expr ctx e (WithType t) in
@@ -1689,7 +1696,7 @@ and type_object_decl ctx fl with_type p =
 			let e = type_expr ctx e Value in
 			(match follow e.etype with TAbstract({a_path=[],"Void"},_) -> error "Fields of type Void are not allowed in structures" e.epos | _ -> ());
 			let cf = mk_field f e.etype (punion pf e.epos) pf in
-			if ctx.in_display && Display.is_display_position pf then DisplayEmitter.display_field ctx None cf pf;
+			if ctx.in_display && Display.is_display_position pf then DisplayEmitter.display_field ctx Unknown CFSMember cf pf;
 			(((f,pf,qs),e) :: l, if is_valid then begin
 				if String.length f > 0 && f.[0] = '$' then error "Field names starting with a dollar are not allowed" p;
 				PMap.add f cf acc

@@ -32,11 +32,12 @@ type error_msg =
 	| Custom of string
 
 type syntax_completion =
+	| SCComment
 	| SCClassRelation
 	| SCInterfaceRelation
 
 exception Error of error_msg * pos
-exception TypePath of string list * (string * bool) option * bool (* in import *)
+exception TypePath of string list * (string * bool) option * bool (* in import *) * pos
 exception Display of expr
 exception SyntaxCompletion of syntax_completion * pos
 
@@ -126,12 +127,12 @@ let display e = raise (Display e)
 let magic_display_field_name = " - display - "
 let magic_type_path = { tpackage = []; tname = ""; tparams = []; tsub = None }
 
-let type_path sl in_import = match sl with
-	| n :: l when n.[0] >= 'A' && n.[0] <= 'Z' -> raise (TypePath (List.rev l,Some (n,false),in_import));
-	| _ -> raise (TypePath (List.rev sl,None,in_import))
+let type_path sl in_import p = match sl with
+	| n :: l when n.[0] >= 'A' && n.[0] <= 'Z' -> raise (TypePath (List.rev l,Some (n,false),in_import,p));
+	| _ -> raise (TypePath (List.rev sl,None,in_import,p))
 
 let is_resuming_file file =
-	Path.unique_full_path file = !resume_display.pfile
+	do_resume() && Path.unique_full_path file = !resume_display.pfile
 
 let is_resuming p =
 	let p2 = !resume_display in
@@ -141,7 +142,7 @@ let set_resume p =
 	resume_display := { p with pfile = Path.unique_full_path p.pfile }
 
 let encloses_resume p =
-	p.pmin < !resume_display.pmin && p.pmax >= !resume_display.pmax
+	do_resume() && p.pmin < !resume_display.pmin && p.pmax >= !resume_display.pmax
 
 let would_skip_resume p1 s =
 	match Stream.npeek 1 s with
@@ -149,6 +150,8 @@ let would_skip_resume p1 s =
 		is_resuming_file p2.pfile && encloses_resume (punion p1 p2)
 	| _ ->
 		false
+
+let cut_pos_at_display p = { p with pmax = !resume_display.pmax }
 
 let is_dollar_ident e = match fst e with
 	| EConst (Ident n) when n.[0] = '$' ->
@@ -243,3 +246,10 @@ let is_signature_display () =
 
 let check_resume p fyes fno =
 	if is_completion () && is_resuming p then (had_resume := true; fyes()) else fno()
+
+let check_resume_range p s fyes fno =
+	if is_completion () then begin
+		let pnext = next_pos s in
+		if p.pmin < !resume_display.pmin && pnext.pmin >= !resume_display.pmax && is_resuming_file p.pfile then fyes pnext
+		else fno()
+	end else fno()
