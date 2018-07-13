@@ -833,6 +833,13 @@ and type_binop2 ctx op (e1 : texpr) (e2 : Ast.expr) is_assign_op wt p =
 		with Error (Unify _,_) ->
 			e1,AbstractCast.cast_or_unify ctx e1.etype e2 p
 		in
+		if not ctx.com.config.pf_supports_function_equality then begin match e1.eexpr, e2.eexpr with
+		| TConst TNull , _ | _ , TConst TNull -> ()
+		| _ ->
+			match follow e1.etype, follow e2.etype with
+			| TFun _ , _ | _, TFun _ -> ctx.com.warning "Comparison of function values is unspecified on this target, use Reflect.compareMethods instead" p
+			| _ -> ()
+		end;
 		mk_op e1 e2 ctx.t.tbool
 	| OpGt
 	| OpGte
@@ -1338,7 +1345,7 @@ and handle_efield ctx e p mode =
 									(* if there was no module name part, last guess is that we're trying to get package completion *)
 									if ctx.in_display then begin
 										if ctx.com.json_out = None then raise (Parser.TypePath (List.map (fun (n,_,_) -> n) (List.rev acc),None,false,p))
-										else raise_fields (DisplayToplevel.collect ctx false NoValue) CRTypeHint (Some (Parser.cut_pos_at_display p0)) false;
+										else raise_fields (DisplayToplevel.collect ctx None NoValue) CRTypeHint (Some (Parser.cut_pos_at_display p0));
 									end;
 									raise e)
 		in
@@ -1475,9 +1482,9 @@ and type_vars ctx vl p =
 					Some e
 			) in
 			if v.[0] = '$' then display_error ctx "Variables names starting with a dollar are not allowed" p;
-			let v = add_local ctx v t pv in
+			let v = add_local_with_origin ctx v t pv TVarOrigin.TVOLocalVariable in
 			v.v_meta <- (Meta.UserVariable,[],pv) :: v.v_meta;
-			if ctx.in_display && Display.is_display_position pv then
+			if ctx.in_display && DisplayPosition.encloses_display_position pv then
 				DisplayEmitter.display_variable ctx v pv;
 			v,e
 		with
@@ -1498,7 +1505,7 @@ and format_string ctx s p =
 	let min = ref (p.pmin + 1) in
 	let add_expr (enext,p) len =
 		min := !min + len;
-		let enext = if ctx.in_display && Display.is_display_position p then
+		let enext = if ctx.in_display && DisplayPosition.encloses_display_position p then
 			Display.ExprPreprocessing.process_expr ctx.com (enext,p)
 		else
 			enext,p
@@ -1658,7 +1665,7 @@ and type_object_decl ctx fl with_type p =
 					| Some t -> t
 					| None ->
 						let cf = PMap.find n field_map in
-						if ctx.in_display && Display.is_display_position pn then DisplayEmitter.display_field ctx Unknown CFSMember cf pn;
+						if ctx.in_display && DisplayPosition.encloses_display_position pn then DisplayEmitter.display_field ctx Unknown CFSMember cf pn;
 						cf.cf_type
 				in
 				let e = type_expr ctx e (WithType t) in
@@ -1696,7 +1703,7 @@ and type_object_decl ctx fl with_type p =
 			let e = type_expr ctx e Value in
 			(match follow e.etype with TAbstract({a_path=[],"Void"},_) -> error "Fields of type Void are not allowed in structures" e.epos | _ -> ());
 			let cf = mk_field f e.etype (punion pf e.epos) pf in
-			if ctx.in_display && Display.is_display_position pf then DisplayEmitter.display_field ctx Unknown CFSMember cf pf;
+			if ctx.in_display && DisplayPosition.encloses_display_position pf then DisplayEmitter.display_field ctx Unknown CFSMember cf pf;
 			(((f,pf,qs),e) :: l, if is_valid then begin
 				if String.length f > 0 && f.[0] = '$' then error "Field names starting with a dollar are not allowed" p;
 				PMap.add f cf acc
@@ -1809,19 +1816,7 @@ and type_new ctx path el with_type p =
 	| TInst ({cl_kind = KTypeParameter tl} as c,params) ->
 		if not (TypeloadCheck.is_generic_parameter ctx c) then error "Only generic type parameters can be constructed" p;
 		let el = List.map (fun e -> type_expr ctx e Value) el in
-		let ct = (tfun (List.map (fun e -> e.etype) el) ctx.t.tvoid) in
-		let rec loop t = match follow t with
-			| TAnon a ->
-				(try
-					unify ctx (PMap.find "new" a.a_fields).cf_type ct p;
-					true
-				with Not_found ->
-					 false)
-			| TAbstract({a_path = ["haxe"],"Constructible"},_) -> true
-			| TInst({cl_kind = KTypeParameter tl},_) -> List.exists loop tl
-			| _ -> false
-		in
-		if not (List.exists loop tl) then raise_error (No_constructor (TClassDecl c)) p;
+ 		if not (has_constructible_constraint ctx tl el p) then raise_error (No_constructor (TClassDecl c)) p;
 		mk (TNew (c,params,el)) t p
 	| TAbstract({a_impl = Some c} as a,tl) when not (Meta.has Meta.MultiType a.a_meta) ->
 		let el,cf,ct = build_constructor_call c tl in
@@ -1834,7 +1829,7 @@ and type_new ctx path el with_type p =
 		mk (TNew (c,params,el)) t p
 	| _ ->
 		error (s_type (print_context()) t ^ " cannot be constructed") p
-	end with Error(No_constructor _ as err,p) when ctx.com.display.dms_display ->
+	end with Error(No_constructor _ as err,p) when ctx.com.display.dms_kind <> DMNone ->
 		display_error ctx (error_msg err) p;
 		Diagnostics.secure_generated_code ctx (mk (TConst TNull) t p)
 
@@ -1890,13 +1885,13 @@ and type_try ctx e1 catches with_type p =
 		if v.[0] = '$' then display_error ctx "Catch variable names starting with a dollar are not allowed" p;
 		check_unreachable acc t2 (pos e_ast);
 		let locals = save_locals ctx in
-		let v = add_local ctx v t pv in
-		if ctx.is_display_file && Display.is_display_position pv then
+		let v = add_local_with_origin ctx v t pv (TVarOrigin.TVOCatchVariable) in
+		if ctx.is_display_file && DisplayPosition.encloses_display_position pv then
 			DisplayEmitter.display_variable ctx v pv;
 		let e = type_expr ctx e_ast with_type in
 		(* If the catch position is the display position it means we get completion on the catch keyword or some
 		   punctuation. Otherwise we wouldn't reach this point. *)
-		if ctx.is_display_file && Display.is_display_position pc then ignore(TyperDisplay.display_expr ctx e_ast e DKMarked with_type pc);
+		if ctx.is_display_file && DisplayPosition.encloses_display_position pc then ignore(TyperDisplay.display_expr ctx e_ast e DKMarked with_type pc);
 		v.v_type <- t2;
 		locals();
 		if with_type <> NoValue then unify ctx e.etype e1.etype e.epos;
@@ -2025,7 +2020,7 @@ and type_local_function ctx name f with_type p =
 		| None -> None
 		| Some v ->
 			if v.[0] = '$' then display_error ctx "Variable names starting with a dollar are not allowed" p;
-			Some (add_local ctx v ft p) (* TODO: var pos *)
+			Some (add_local_with_origin ctx v ft p (TVarOrigin.TVOLocalFunction)) (* TODO: var pos *)
 	) in
 	let curfun = match ctx.curfun with
 		| FunStatic -> FunStatic

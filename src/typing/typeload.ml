@@ -42,7 +42,7 @@ let check_field_access ctx cff =
 	let rec loop p0 acc l =
 		let check_display p1 =
 			let pmid = {p0 with pmin = p0.pmax; pmax = p1.pmin} in
-			if Display.is_display_position pmid then match acc with
+			if DisplayPosition.encloses_display_position pmid then match acc with
 			| access :: _ -> display_access := Some access;
 			| [] -> ()
 		in
@@ -107,7 +107,7 @@ let load_type_def ctx p t =
 	let no_pack = t.tpackage = [] in
 	(* The type name is the module name or the module sub-type name *)
 	let tname = (match t.tsub with None -> t.tname | Some n -> n) in
-	if tname = "" then raise_fields (DisplayToplevel.collect ctx true NoValue) CRTypeHint None false;
+	if tname = "" then raise_fields (DisplayToplevel.collect ctx None NoValue) CRTypeHint None;
 	try
 		(* If there's a sub-type, there's no reason to look in our module or its imports *)
 		if t.tsub <> None then raise Not_found;
@@ -368,9 +368,9 @@ and load_instance ctx ?(allow_display=false) (t,pn) allow_no_params p =
 		let t = load_instance' ctx (t,pn) allow_no_params p in
 		if allow_display then DisplayEmitter.check_display_type ctx t pn;
 		t
-	with Error (Module_not_found path,_) when (ctx.com.display.dms_kind = DMDefault) && Display.is_display_position pn ->
+	with Error (Module_not_found path,_) when (ctx.com.display.dms_kind = DMDefault) && DisplayPosition.encloses_display_position pn ->
 		let s = s_type_path path in
-		raise_fields (DisplayToplevel.collect ctx false NoValue) CRTypeHint (Some {pn with pmin = pn.pmax - String.length s;}) false
+		raise_fields (DisplayToplevel.collect ctx None NoValue) CRTypeHint (Some {pn with pmin = pn.pmax - String.length s;});
 
 (*
 	build an instance from a complex type
@@ -421,12 +421,12 @@ and load_complex_type ctx allow_display p (t,pn) =
 			let il = List.map (fun (t,pn) ->
 				try
 					load_instance ctx ~allow_display (t,pn) false p
-				with DisplayException(DisplayFields(l,CRTypeHint,p,b)) ->
+				with DisplayException(DisplayFields(l,CRTypeHint,p)) ->
 					let l = List.filter (fun item -> match item.ci_kind with
 						| ITType({kind = Struct},_) -> true
 						| _ -> false
 					) l in
-					raise_fields l CRStructExtension p b
+					raise_fields l CRStructExtension p
 			) tl in
 			let tr = ref None in
 			let t = TMono tr in
@@ -466,7 +466,9 @@ and load_complex_type ctx allow_display p (t,pn) =
 			List.iter (fun a ->
 				match fst a with
 				| APublic -> ()
-				| APrivate -> pub := false;
+				| APrivate ->
+					ctx.com.warning "private structure fields are deprecated" (pos a);
+					pub := false;
 				| ADynamic when (match f.cff_kind with FFun _ -> true | _ -> false) -> dyn := true
 				| AFinal -> final := true
 				| AStatic | AOverride | AInline | ADynamic | AMacro | AExtern as a -> error ("Invalid access " ^ Ast.s_access a) p
@@ -633,9 +635,13 @@ let load_type_hint ?(opt=false) ctx pcur t =
 			try
 				load_complex_type ctx true pcur (t,p)
 			with Error(Module_not_found(([],name)),p) as exc ->
-				if Diagnostics.is_diagnostics_run p then DisplayToplevel.handle_unresolved_identifier ctx name p true;
-				(* Default to Dynamic in display mode *)
-				if ctx.com.display.dms_display then t_dynamic else raise exc
+				if Diagnostics.is_diagnostics_run p then begin
+					delay ctx PForce (fun () -> DisplayToplevel.handle_unresolved_identifier ctx name p true);
+					t_dynamic
+				end else if ctx.com.display.dms_display then begin
+					DisplayEmitter.check_display_type ctx (mk_mono()) p;
+					t_dynamic
+				end	else raise exc
 	in
 	if opt then ctx.t.tnull t else t
 
@@ -684,7 +690,7 @@ let rec type_type_param ?(enum_constructor=false) ctx path get_params p tp =
 	c.cl_meta <- tp.Ast.tp_meta;
 	if enum_constructor then c.cl_meta <- (Meta.EnumConstructorParam,[],null_pos) :: c.cl_meta;
 	let t = TInst (c,List.map snd c.cl_params) in
-	if ctx.is_display_file && Display.is_display_position (pos tp.tp_name) then
+	if ctx.is_display_file && DisplayPosition.encloses_display_position (pos tp.tp_name) then
 		DisplayEmitter.display_type ctx t (pos tp.tp_name);
 	match tp.tp_constraints with
 	| [] ->
@@ -820,10 +826,10 @@ let string_list_of_expr_path (e,p) =
 
 let handle_path_display ctx path p =
 	let open ImportHandling in
-	match ImportHandling.convert_import_to_something_usable !Parser.resume_display path,ctx.com.display.dms_kind with
+	match ImportHandling.convert_import_to_something_usable !DisplayPosition.display_position path,ctx.com.display.dms_kind with
 		| (IDKPackage [_],p),DMDefault ->
-			let fields = DisplayToplevel.collect ctx true Typecore.NoValue in
-			raise_fields fields CRImport (Some p) false
+			let fields = DisplayToplevel.collect ctx None Typecore.NoValue in
+			raise_fields fields CRImport (Some p)
 		| (IDKPackage sl,p),DMDefault ->
 			let sl = match List.rev sl with
 				| s :: sl -> List.rev sl

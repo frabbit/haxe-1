@@ -279,6 +279,7 @@ type t_kind =
 	| ITKeyword of keyword
 	| ITAnonymous of tanon
 	| ITExpression of texpr
+	| ITTypeParameter of tclass
 
 type t = {
 	ci_kind : t_kind;
@@ -303,6 +304,7 @@ let make_ci_metadata s doc = make (ITMetadata(s,doc)) None
 let make_ci_keyword kwd = make (ITKeyword kwd) None
 let make_ci_anon an t = make (ITAnonymous an) (Some t)
 let make_ci_expr e = make (ITExpression e) (Some e.etype)
+let make_ci_type_param c = make (ITTypeParameter c) (Some (TInst(c,[])))
 
 let get_index item = match item.ci_kind with
 	| ITLocal _ -> 0
@@ -318,21 +320,51 @@ let get_index item = match item.ci_kind with
 	| ITKeyword _ -> 10
 	| ITAnonymous _ -> 11
 	| ITExpression _ -> 12
+	| ITTypeParameter _ -> 13
 
-let get_sort_index item = match item.ci_kind with
-	| ITLocal _ -> 0
-	| ITClassField _ -> 0
-	| ITEnumField ef -> ef.efield.ef_index
-	| ITEnumAbstractField _ -> 0
-	| ITType _ -> 0
-	| ITPackage _ -> 0
-	| ITModule _ -> 0
-	| ITLiteral _ -> 0
-	| ITTimer _ -> 0
-	| ITMetadata _ -> 0
-	| ITKeyword _ -> 0
-	| ITAnonymous _ -> 0
-	| ITExpression _ -> 0
+let get_sort_index item p = match item.ci_kind with
+	| ITLocal v ->
+		let i = p.pmin - v.v_pos.pmin in
+		let i = if i < 0 then 0 else i in
+		0,(Printf.sprintf "%05i" i)
+	| ITClassField ccf ->
+		let open ClassFieldOrigin in
+		let i = match ccf.origin,ccf.scope with
+			| Self _,(CFSMember | CFSConstructor) -> 10
+			| Parent _,(CFSMember | CFSConstructor) -> 11
+			| StaticExtension _,_ -> 12
+			| Self _,CFSStatic -> 13
+			| StaticImport _,_ -> 14
+			| _ -> 15
+		in
+		i,ccf.field.cf_name
+	| ITEnumField ef ->
+		20,(Printf.sprintf "%04i" ef.efield.ef_index)
+	| ITEnumAbstractField(_,ccf) ->
+		21,ccf.field.cf_name
+	| ITTypeParameter c ->
+		30,snd c.cl_path
+	| ITType(cmt,is) ->
+		let open ImportStatus in
+		let i = match is with
+			| Imported -> 31
+			| Unimported -> 32
+			| Shadowed -> 33
+		in
+		i,(s_type_path (cmt.pack,cmt.name))
+	| ITPackage(path,_) ->
+		40,s_type_path path
+	| ITModule name ->
+		40,name
+	| ITLiteral name ->
+		50,name
+	| ITKeyword name ->
+		60,s_keyword name
+	| ITAnonymous _
+	| ITExpression _
+	| ITTimer _
+	| ITMetadata _ ->
+		500,""
 
 let legacy_sort item = match item.ci_kind with
 	| ITClassField(cf) | ITEnumAbstractField(_,cf) ->
@@ -356,6 +388,7 @@ let legacy_sort item = match item.ci_kind with
 	| ITKeyword kwd -> 10,s_keyword kwd
 	| ITAnonymous _ -> 11,""
 	| ITExpression _ -> 12,""
+	| ITTypeParameter _ -> 13,""
 
 let get_name item = match item.ci_kind with
 	| ITLocal v -> v.v_name
@@ -370,6 +403,7 @@ let get_name item = match item.ci_kind with
 	| ITKeyword kwd -> s_keyword kwd
 	| ITAnonymous _ -> ""
 	| ITExpression _ -> ""
+	| ITTypeParameter c -> snd c.cl_path
 
 let get_type item = item.ci_type
 
@@ -380,6 +414,7 @@ let get_documentation item = match item.ci_kind with
 	| _ -> None
 
 let to_json ctx item =
+	let open ClassFieldOrigin in
 	let kind,data = match item.ci_kind with
 		| ITLocal v -> "Local",generate_tvar ctx v
 		| ITClassField(cf) | ITEnumAbstractField(_,cf) ->
@@ -387,20 +422,41 @@ let to_json ctx item =
 				| ITClassField _ -> "ClassField"
 				| _ ->  "EnumAbstractField"
 			in
+			let qualifier = match cf.scope,cf.origin with
+				| CFSStatic,(Self mt | Parent mt | StaticExtension mt | StaticImport mt) ->
+					let infos = t_infos mt in
+					jstring (s_type_path (Path.full_dot_path (fst infos.mt_module.m_path) (snd infos.mt_module.m_path) (snd infos.mt_path)))
+				| CFSMember,Self _ ->
+					jstring "this"
+				| CFSMember,Parent _->
+					jstring "super"
+				| _ ->
+					jnull
+			in
 			name,jobject [
 			"field",generate_class_field ctx cf.scope cf.field;
 			"origin",ClassFieldOrigin.to_json ctx cf.origin;
 			"resolution",jobject [
 				"isQualified",jbool cf.is_qualified;
+				"qualifier",qualifier;
 			]
 		]
-		| ITEnumField ef -> "EnumField",jobject [
-			"field",generate_enum_field ctx ef.efield;
-			"origin",ClassFieldOrigin.to_json ctx ef.eorigin;
-			"resolution",jobject [
-				"isQualified",jbool ef.eis_qualified;
+		| ITEnumField ef ->
+			let qualifier = match ef.eorigin with
+				| Self mt | StaticImport mt ->
+					let infos = t_infos mt in
+					jstring (s_type_path (Path.full_dot_path (fst infos.mt_module.m_path) (snd infos.mt_module.m_path) (snd infos.mt_path)))
+				| _ ->
+					jnull
+			in
+			"EnumField",jobject [
+				"field",generate_enum_field ctx ef.efield;
+				"origin",ClassFieldOrigin.to_json ctx ef.eorigin;
+				"resolution",jobject [
+					"isQualified",jbool ef.eis_qualified;
+					"qualifier",qualifier;
+				]
 			]
-		]
 		| ITType(kind,is) -> "Type",CompletionModuleType.to_json ctx kind is
 		| ITPackage(path,contents) ->
 			let generate_package_content (name,kind) = jobject [
@@ -429,6 +485,16 @@ let to_json ctx item =
 		]
 		| ITAnonymous an -> "AnonymousStructure",generate_anon ctx an
 		| ITExpression e -> "Expression",generate_texpr ctx e
+		| ITTypeParameter c ->
+			begin match c.cl_kind with
+			| KTypeParameter tl ->
+				"TypeParameter",jobject [
+					"name",jstring (snd c.cl_path);
+					"meta",generate_metadata ctx c.cl_meta;
+					"constraints",jlist (generate_type ctx) tl;
+				]
+			| _ -> assert false
+			end
 	in
 	jobject [
 		"kind",jstring kind;

@@ -751,12 +751,16 @@ try
 		),"<dir>","set current working directory");
 	] in
 	let args_callback cl =
-		let path,name = Path.parse_path cl in
-		if Path.starts_uppercase name then
-			classes := (path,name) :: !classes
-		else begin
-			force_typing := true;
-			config_macros := (Printf.sprintf "include('%s', true, null, null, true)" cl) :: !config_macros;
+		begin try
+			let path,name = Path.parse_path cl in
+			if Path.starts_uppercase name then
+				classes := (path,name) :: !classes
+			else begin
+				force_typing := true;
+				config_macros := (Printf.sprintf "include('%s', true, null, null, true)" cl) :: !config_macros;
+			end
+		with Failure _ when ctx.com.display.dms_display ->
+			()
 		end
 	in
 	let all_args = (basic_args_spec @ adv_args_spec) in
@@ -786,7 +790,7 @@ try
 	process_ref := process;
 	process ctx.com.args;
 	process_libs();
-	if com.display.dms_display then begin
+	if com.display.dms_kind <> DMNone then begin
 		com.warning <-
 			if com.display.dms_error_policy = EPCollect then
 				(fun s p -> add_diagnostics_message com s p DisplayTypes.DiagnosticsSeverity.Warning)
@@ -795,13 +799,13 @@ try
 		com.error <- error ctx;
 	end;
 	Lexer.old_format := Common.defined com Define.OldErrorFormat;
-	if !Lexer.old_format && Parser.do_resume () then begin
-		let p = !Parser.resume_display in
+	if !Lexer.old_format && !Parser.in_display then begin
+		let p = !DisplayPosition.display_position in
 		(* convert byte position to utf8 position *)
 		try
 			let content = Std.input_file ~bin:true (Path.get_real_path p.pfile) in
 			let pos = UTF8.length (String.sub content 0 p.pmin) in
-			Parser.resume_display := { p with pmin = pos; pmax = pos }
+			DisplayPosition.display_position := { p with pmin = pos; pmax = pos }
 		with _ ->
 			() (* ignore *)
 	end;
@@ -966,7 +970,7 @@ with
 		end *)
 	| DisplayException(DisplayPackage pack) ->
 		raise (DisplayOutput.Completion (String.concat "." pack))
-	| DisplayException(DisplayFields(fields,cr,_,_)) ->
+	| DisplayException(DisplayFields(fields,cr,_)) ->
 		let fields = if !measure_times then begin
 			Timer.close_times();
 			(List.map (fun (name,value) ->
@@ -1023,7 +1027,7 @@ with
 				let ctx = DisplayJson.create_json_context false in
 				let pos = Parser.cut_pos_at_display pos in
 				let kind = CRField ((CompletionItem.make_ci_module (String.concat "." p),pos)) in
-				f (DisplayException.fields_to_json ctx fields kind None false);
+				f (DisplayException.fields_to_json ctx fields kind None);
 			| _ -> raise (DisplayOutput.Completion (DisplayOutput.print_fields fields))
 			end
 		end

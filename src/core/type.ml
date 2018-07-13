@@ -365,6 +365,50 @@ type class_field_scope =
 	| CFSMember
 	| CFSConstructor
 
+module TVarOrigin = struct
+	type t =
+		| TVOLocalVariable
+		| TVOArgument
+		| TVOForVariable
+		| TVOPatternVariable
+		| TVOCatchVariable
+		| TVOLocalFunction
+
+	let to_int = function
+		| TVOLocalVariable -> 0
+		| TVOArgument -> 1
+		| TVOForVariable -> 2
+		| TVOPatternVariable -> 3
+		| TVOCatchVariable -> 4
+		| TVOLocalFunction -> 5
+
+	let to_string = function
+		| TVOArgument -> "Argument"
+		| TVOLocalVariable -> "LocalVariable"
+		| TVOPatternVariable -> "PatternVariable"
+		| TVOLocalFunction -> "LocalFunction"
+		| TVOForVariable -> "ForVariable"
+		| TVOCatchVariable -> "CatchVariable"
+
+	let from_string = function
+		| "Argument" -> TVOArgument
+		| "LocalVariable" -> TVOLocalVariable
+		| "PatternVariable" -> TVOPatternVariable
+		| "LocalFunction" -> TVOLocalFunction
+		| "ForVariable" -> TVOForVariable
+		| "CatchVariable" -> TVOCatchVariable
+		| _ -> raise Not_found
+
+	let encode_in_meta tvo =
+		let name = to_string tvo in
+		(Meta.TVarOrigin,[(EConst(Ident name),null_pos)],null_pos)
+
+	let decode_from_meta meta =
+		match Meta.get Meta.TVarOrigin meta with
+		| _,[(EConst(Ident s),_)],_ -> from_string s
+		| _ -> raise Not_found
+end
+
 (* ======= General utility ======= *)
 
 let log_enabled = ref false
@@ -1934,6 +1978,14 @@ and s_const = function
 	| TThis -> "this"
 	| TSuper -> "super"
 
+and s_field_access s_type fa = match fa with
+	| FStatic (c,f) -> "static(" ^ s_type_path c.cl_path ^ "." ^ f.cf_name ^ ")"
+	| FInstance (c,_,f) -> "inst(" ^ s_type_path c.cl_path ^ "." ^ f.cf_name ^ " : " ^ s_type f.cf_type ^ ")"
+	| FClosure (c,f) -> "closure(" ^ (match c with None -> f.cf_name | Some (c,_) -> s_type_path c.cl_path ^ "." ^ f.cf_name)  ^ ")"
+	| FAnon f -> "anon(" ^ f.cf_name ^ ")"
+	| FEnum (en,f) -> "enum(" ^ s_type_path en.e_path ^ "." ^ f.ef_name ^ ")"
+	| FDynamic f -> "dynamic(" ^ f ^ ")"
+
 and s_expr s_type e =
 	let sprintf = Printf.sprintf in
 	let slist f l = String.concat "," (List.map f l) in
@@ -1953,14 +2005,7 @@ and s_expr s_type e =
 	| TEnumParameter (e1,_,i) ->
 		sprintf "%s[%i]" (loop e1) i
 	| TField (e,f) ->
-		let fstr = (match f with
-			| FStatic (c,f) -> "static(" ^ s_type_path c.cl_path ^ "." ^ f.cf_name ^ ")"
-			| FInstance (c,_,f) -> "inst(" ^ s_type_path c.cl_path ^ "." ^ f.cf_name ^ " : " ^ s_type f.cf_type ^ ")"
-			| FClosure (c,f) -> "closure(" ^ (match c with None -> f.cf_name | Some (c,_) -> s_type_path c.cl_path ^ "." ^ f.cf_name)  ^ ")"
-			| FAnon f -> "anon(" ^ f.cf_name ^ ")"
-			| FEnum (en,f) -> "enum(" ^ s_type_path en.e_path ^ "." ^ f.ef_name ^ ")"
-			| FDynamic f -> "dynamic(" ^ f ^ ")"
-		) in
+		let fstr = s_field_access s_type f in
 		sprintf "%s.%s" (loop e) fstr
 	| TTypeExpr m ->
 		sprintf "TypeExpr %s" (s_type_path (t_path m))

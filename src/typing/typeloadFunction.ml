@@ -62,7 +62,7 @@ let type_function_arg_value ctx t c do_display =
 				| TConst c -> Some c
 				| TCast(e,None) -> loop e
 				| _ ->
-					if not ctx.com.display.dms_display || ctx.com.display.dms_inline && ctx.com.display.dms_error_policy = EPCollect then
+					if ctx.com.display.dms_kind = DMNone || ctx.com.display.dms_inline && ctx.com.display.dms_error_policy = EPCollect then
 						display_error ctx "Parameter default value should be constant" p;
 					None
 			in
@@ -84,9 +84,9 @@ let type_function ctx args ret fmode f do_display p =
 	let fargs = List.map2 (fun (n,c,t) ((_,pn),_,m,_,_) ->
 		if n.[0] = '$' then error "Function argument names starting with a dollar are not allowed" p;
 		let c = type_function_arg_value ctx t c do_display in
-		let v,c = add_local ctx n t pn, c in
-		v.v_meta <- m;
-		if do_display && Display.is_display_position pn then
+		let v,c = add_local_with_origin ctx n t pn (TVarOrigin.TVOArgument), c in
+		v.v_meta <- v.v_meta @ m;
+		if do_display && DisplayPosition.encloses_display_position pn then
 			DisplayEmitter.display_variable ctx v pn;
 		if n = "this" then v.v_meta <- (Meta.This,[],null_pos) :: v.v_meta;
 		v,c

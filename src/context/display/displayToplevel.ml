@@ -117,9 +117,19 @@ end
 
 open CollectionContext
 
-let collect ctx only_types with_type =
+(* +1 for each matching package part. 0 = no common part *)
+let pack_similarity pack1 pack2 =
+	let rec loop count pack1 pack2 = match pack1,pack2 with
+		| [],[] -> count
+		| (s1 :: pack1),(s2 :: pack2) when s1 = s2 -> loop (count + 1) pack1 pack2
+		| _ -> count
+	in
+	loop 0 pack1 pack2
+
+let collect ctx epos with_type =
 	let t = Timer.timer ["display";"toplevel"] in
 	let cctx = CollectionContext.create ctx in
+	let curpack = fst ctx.curclass.cl_path in
 	let packages = Hashtbl.create 0 in
 	let add_package path = Hashtbl.replace packages path true in
 
@@ -153,12 +163,14 @@ let collect ctx only_types with_type =
 					| EAbstract d -> fst d.d_name,List.mem AbPrivate d.d_flags
 					| _ -> raise Exit
 				in
-				let path = (pack,tname) in
-				let path = if tname = name then path else (pack @ [name],tname) in
+				let path = Path.full_dot_path pack name tname in
 				if not (path_exists cctx path) && not is_private then begin
 					add_path cctx path;
-					let is = get_import_status cctx false path in
-					add (make_ci_type (CompletionModuleType.of_type_decl pack name (d,p)) is None) None
+					(* If we share a package, the module's main type shadows everything with the same name. *)
+					let shadowing_name = if pack_similarity curpack pack > 0 && tname = name then (Some name) else None in
+					(* Also, this means we can access it as if it was imported (assuming it's not shadowed by something else. *)
+					let is = get_import_status cctx (shadowing_name <> None) path in
+					add (make_ci_type (CompletionModuleType.of_type_decl pack name (d,p)) is None) shadowing_name
 				end
 			with Exit ->
 				()
@@ -169,7 +181,7 @@ let collect ctx only_types with_type =
 
 	(* Collection starts here *)
 
-	if not only_types then begin
+	if epos <> None then begin
 		(* locals *)
 		PMap.iter (fun _ v ->
 			if not (is_gen_local v) then
@@ -299,8 +311,7 @@ let collect ctx only_types with_type =
 	(* type params *)
 	List.iter (fun (s,t) -> match follow t with
 		| TInst(c,_) ->
-			(* This is weird, might want to use something else for type parameters *)
-			add (make_ci_type (CompletionModuleType.of_module_type (TClassDecl c)) ImportStatus.Imported (Some t)) (Some s)
+			add (make_ci_type_param c) (Some (snd c.cl_path))
 		| _ -> assert false
 	) ctx.type_params;
 
@@ -328,9 +339,14 @@ let collect ctx only_types with_type =
 			CompilationServer.set_initialized cs;
 			read_class_paths ctx.com ["display";"toplevel"];
 		end;
-		(* TODO: sort files so that the ones in the current module's package and its parent packages
-		   are processed first. *)
-		CompilationServer.iter_files cs ctx.com (fun file cfile ->
+		let files = CompilationServer.get_file_list cs ctx.com in
+		(* Sort files by reverse distance of their package to our current package. *)
+		let files = List.map (fun (file,cfile) ->
+			let i = pack_similarity curpack cfile.c_package in
+			(file,cfile),i
+		) files in
+		let files = List.sort (fun (_,i1) (_,i2) -> -compare i1 i2) files in
+		List.iter (fun ((file,cfile),_) ->
 			let module_name = match cfile.c_module_name with
 			| None ->
 				let name = Path.module_name_of_file file in
@@ -345,7 +361,7 @@ let collect ctx only_types with_type =
 			end;
 			Hashtbl.replace ctx.com.module_to_file (cfile.c_package,module_name) file;
 			process_decls cfile.c_package module_name cfile.c_decls
-		)
+		) files
 	end;
 
 	Hashtbl.iter (fun path _ ->
@@ -354,6 +370,13 @@ let collect ctx only_types with_type =
 
 	(* sorting *)
 	let l = DynArray.to_list cctx.items in
+	let l = List.map (fun ci ->
+		let i = get_sort_index ci (Option.default Globals.null_pos epos) in
+		ci,i
+	) l in
+	let sort l =
+		List.map fst (List.sort (fun (_,i1) (_,i2) -> compare i1 i2) l)
+	in
 	let l = match with_type with
 		| WithType t ->
 			let rec comp t' = match t' with
@@ -370,21 +393,19 @@ let collect ctx only_types with_type =
 					| _ ->
 						6 (* incompatible type - probably useless *)
 			in
-			let l = List.map (fun ck ->
-				let s1 = comp (get_type ck) in
-				let s2 = get_sort_index ck in
-				let s3 = get_name ck in
-				ck,(s1,s2,s3)
+			let l = List.map (fun (ck,i1) ->
+				let i2 = comp (get_type ck) in
+				ck,(i2,i1)
 			) l in
-			let l = List.sort (fun (_,i1) (_,i2) -> compare i1 i2) l in
-			List.map fst l
-		| _ -> l
+			sort l
+		| _ ->
+			sort l
 	in
 	t();
 	l
 
 let handle_unresolved_identifier ctx i p only_types =
-	let l = collect ctx only_types NoValue in
+	let l = collect ctx (if only_types then None else Some p) NoValue in
 	let cl = List.map (fun it ->
 		let s = CompletionItem.get_name it in
 		let i = StringError.levenshtein i s in

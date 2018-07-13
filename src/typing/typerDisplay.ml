@@ -36,10 +36,22 @@ let completion_item_of_expr ctx e =
 		let t = DisplayEmitter.patch_type ctx e.etype in
 		make_ci_expr {e with etype = t}
 	in
+	let class_origin static c = match c.cl_kind with
+		| KAbstractImpl a -> Self (TAbstractDecl a)
+		| _ ->
+			if static then Self (TClassDecl c)
+			else if c != ctx.curclass then Parent (TClassDecl c)
+			else Self (TClassDecl c)
+	in
 	let rec loop e = match e.eexpr with
 		| TLocal v | TVar(v,_) -> make_ci_local v (DisplayEmitter.patch_type ctx v.v_type)
-		| TField(_,FStatic(c,cf)) -> of_field e (Self (TClassDecl c)) cf CFSStatic
-		| TField(_,(FInstance(c,_,cf) | FClosure(Some(c,_),cf))) -> of_field e (Self (TClassDecl c)) cf CFSMember
+		| TField(e1,FStatic(c,cf)) ->
+			let origin = match e1.eexpr with
+				| TMeta((Meta.StaticExtension,_,_),_) -> StaticExtension (TClassDecl c)
+				| _ -> class_origin true c
+			in
+			of_field e origin cf CFSStatic
+		| TField(_,(FInstance(c,_,cf) | FClosure(Some(c,_),cf))) -> of_field e (class_origin false c) cf CFSMember
 		| TField(_,FEnum(en,ef)) -> of_enum_field e (Self (TEnumDecl en)) ef
 		| TField(e1,FAnon cf) ->
 			begin match follow e1.etype with
@@ -89,7 +101,7 @@ let completion_item_of_expr ctx e =
 					| TFun(args,_) -> TFun(args,TInst(c,tl))
 					| _ -> t
 				in
-				make_ci_class_field (CompletionClassField.make {cf with cf_type = t} CFSConstructor (Self (TClassDecl c)) true) (DisplayEmitter.patch_type ctx t)
+				make_ci_class_field (CompletionClassField.make {cf with cf_type = t} CFSConstructor (class_origin false c) true) (DisplayEmitter.patch_type ctx t)
 			(* end *)
 		| TCall({eexpr = TConst TSuper; etype = t} as e1,_) ->
 			itexpr e1 (* TODO *)
@@ -98,12 +110,12 @@ let completion_item_of_expr ctx e =
 	in
 	loop e
 
-let raise_toplevel ctx with_type po =
-	let sorted,t = match with_type with
-		| WithType t -> true,Some t
-		| _ -> false,None
+let raise_toplevel ctx with_type po p =
+	let t = match with_type with
+		| WithType t -> Some t
+		| _ -> None
 	in
-	raise_fields (DisplayToplevel.collect ctx false with_type) (CRToplevel t) po sorted
+	raise_fields (DisplayToplevel.collect ctx (Some p) with_type) (CRToplevel t) po
 
 let rec handle_signature_display ctx e_ast with_type =
 	ctx.in_display <- true;
@@ -147,6 +159,14 @@ let rec handle_signature_display ctx e_ast with_type =
 		raise_signatures overloads 0 (* ? *) display_arg
 	in
 	let find_constructor_types t = match follow t with
+		| TInst ({cl_kind = KTypeParameter tl} as c,_) ->
+			let rec loop tl = match tl with
+				| [] -> raise_error (No_constructor (TClassDecl c)) p
+				| t :: tl -> match follow t with
+					| TAbstract({a_path = ["haxe"],"Constructible"},[t]) -> t
+					| _ -> loop tl
+			in
+			[loop tl,None]
 		| TInst (c,tl) | TAbstract({a_impl = Some c},tl) ->
 			let ct,cf = get_constructor ctx c tl p in
 			let tl = (ct,cf.cf_doc) :: List.rev_map (fun cf' -> cf'.cf_type,cf.cf_doc) cf.cf_overloads in
@@ -243,7 +263,7 @@ and display_expr ctx e_ast e dk with_type p =
 		| TField(_,FEnum(_,ef)) -> [ef.ef_name_pos]
 		| TField(_,(FAnon cf | FInstance (_,_,cf) | FStatic (_,cf) | FClosure (_,cf))) -> [cf.cf_name_pos]
 		| TLocal v | TVar(v,_) -> [v.v_pos]
-		| TTypeExpr mt -> [(t_infos mt).mt_pos]
+		| TTypeExpr mt -> [(t_infos mt).mt_name_pos]
 		| TNew(c,tl,_) ->
 			begin try
 				let _,cf = get_constructor ctx c tl p in
@@ -275,29 +295,35 @@ and display_expr ctx e_ast e dk with_type p =
 			| EField(e1,s),TField(e2,_) ->
 				let fields = DisplayFields.collect ctx e1 e2 dk with_type p in
 				let item = completion_item_of_expr ctx e2 in
-				raise_fields fields (CRField(item,e2.epos)) (Some {e.epos with pmin = e.epos.pmax - String.length s;}) false
+				raise_fields fields (CRField(item,e2.epos)) (Some {e.epos with pmin = e.epos.pmax - String.length s;})
 			| _ ->
-				raise_toplevel ctx with_type None
+				raise_toplevel ctx with_type None p
 		end
 	| DMDefault | DMNone | DMModuleSymbols _ | DMDiagnostics _ | DMStatistics ->
 		let fields = DisplayFields.collect ctx e_ast e dk with_type p in
 		let item = completion_item_of_expr ctx e in
-		raise_fields fields (CRField(item,e.epos)) None false
+		raise_fields fields (CRField(item,e.epos)) None
 
-let handle_structure_display ctx e an =
+let handle_structure_display ctx e t an =
 	let p = pos e in
+	let fields = PMap.foldi (fun _ cf acc -> cf :: acc) an.a_fields [] in
+	let fields = List.sort (fun cf1 cf2 -> -compare cf1.cf_pos.pmin cf2.cf_pos.pmin) fields in
+	let origin = match t with
+		| TType(td,_) -> Self (TTypeDecl td)
+		| _ -> AnonymousStructure an
+	in
 	match fst e with
 	| EObjectDecl fl ->
-		let fields = PMap.foldi (fun k cf acc ->
-			if Expr.field_mem_assoc k fl then acc
-			else (make_ci_class_field (CompletionClassField.make cf CFSMember (AnonymousStructure an) true) cf.cf_type) :: acc
-		) an.a_fields [] in
-		raise_fields fields CRStructureField None false
+		let fields = List.fold_left (fun acc cf ->
+			if Expr.field_mem_assoc cf.cf_name fl then acc
+			else (make_ci_class_field (CompletionClassField.make cf CFSMember origin true) cf.cf_type) :: acc
+		) [] fields in
+		raise_fields fields CRStructureField None
 	| EBlock [] ->
-		let fields = PMap.foldi (fun _ cf acc ->
-			make_ci_class_field (CompletionClassField.make cf CFSMember (AnonymousStructure an) true) cf.cf_type :: acc
-		) an.a_fields [] in
-		raise_fields fields CRStructureField None false
+		let fields = List.fold_left (fun acc cf ->
+			make_ci_class_field (CompletionClassField.make cf CFSMember origin true) cf.cf_type :: acc
+		) [] fields in
+		raise_fields fields CRStructureField None
 	| _ ->
 		error "Expected object expression" p
 
@@ -334,16 +360,16 @@ let handle_display ctx e_ast dk with_type =
 		type_expr ctx e_ast with_type
 	with Error (Unknown_ident n,_) when ctx.com.display.dms_kind = DMDefault ->
         if dk = DKDot && ctx.com.json_out = None then raise (Parser.TypePath ([n],None,false,p))
-		else raise_toplevel ctx with_type (Some (Parser.cut_pos_at_display p))
+		else raise_toplevel ctx with_type (Some (Parser.cut_pos_at_display p)) p
 	| Error ((Type_not_found (path,_) | Module_not_found path),_) as err when ctx.com.display.dms_kind = DMDefault ->
 		if ctx.com.json_out = None then	begin try
 			let s = s_type_path path in
-			raise_fields (DisplayFields.get_submodule_fields ctx path) (CRField((make_ci_module s),p)) None false
+			raise_fields (DisplayFields.get_submodule_fields ctx path) (CRField((make_ci_module s),p)) None
 		with Not_found ->
 			raise err
 		end else
-			raise_toplevel ctx with_type (Some (Parser.cut_pos_at_display p))
-	| DisplayException(DisplayFields(l,CRTypeHint,p,b)) when (match fst e_ast with ENew _ -> true | _ -> false) ->
+			raise_toplevel ctx with_type (Some (Parser.cut_pos_at_display p)) p
+	| DisplayException(DisplayFields(l,CRTypeHint,p)) when (match fst e_ast with ENew _ -> true | _ -> false) ->
 		let timer = Timer.timer ["display";"toplevel";"filter ctors"] in
 		ctx.pass <- PBuildClass;
 		let l = List.filter (fun item -> match item.ci_kind with
@@ -363,10 +389,12 @@ let handle_display ctx e_ast dk with_type =
 						false
 					end
 				end
+			| ITTypeParameter {cl_kind = KTypeParameter tl} when has_constructible_constraint ctx tl [] null_pos ->
+				true
 			| _ -> false
 		) l in
 		timer();
-		raise_fields l CRNew p b
+		raise_fields l CRNew p
 	in
 	let is_display_debug = Meta.has (Meta.Custom ":debug.display") ctx.curfield.cf_meta in
 	if is_display_debug then begin
@@ -396,7 +424,7 @@ let handle_edisplay ctx e dk with_type =
 		begin match with_type with
 			| WithType t ->
 				begin match follow t with
-					| TAnon an -> handle_structure_display ctx e an
+					| TAnon an -> handle_structure_display ctx e t an
 					| _ -> handle_display ctx e dk with_type
 				end
 			| _ ->
@@ -405,7 +433,7 @@ let handle_edisplay ctx e dk with_type =
 	| DKPattern,DMDefault ->
 		begin try
 			handle_display ctx e dk with_type
-		with DisplayException(DisplayFields(l,CRToplevel _,p,b)) ->
-			raise_fields l CRPattern p b
+		with DisplayException(DisplayFields(l,CRToplevel _,p)) ->
+			raise_fields l CRPattern p
 		end
 	| _ -> handle_display ctx e dk with_type

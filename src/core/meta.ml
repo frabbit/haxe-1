@@ -149,6 +149,7 @@ type strict_meta =
 	| Sound
 	| SourceFile
 	| StackOnly
+	| StaticExtension
 	| StoredTypedExpr
 	| Strict
 	| Struct
@@ -161,6 +162,7 @@ type strict_meta =
 	| ToString
 	| Transient
 	| TemplatedCall
+	| TVarOrigin
 	| ValueUsed
 	| Volatile
 	| UnifyMinDynamic
@@ -188,6 +190,7 @@ type meta_usage =
 	| TAnyField
 	| TExpr
 	| TTypeParameter
+	| TVariable
 
 type meta_parameter =
 	| HasParam of string
@@ -341,18 +344,20 @@ let get_info = function
 	| Scalar -> ":scalar",("Used by hxcpp to mark a custom coreType abstract",[UsedOn TAbstract; Platform Cpp])
 	| SelfCall -> ":selfCall",("Translates method calls into calling object directly",[UsedOn TClassField; Platforms [Js;Lua]])
 	| Setter -> ":setter",("Generates a native setter function on the given field",[HasParam "Class field name";UsedOn TClassField;Platform Flash])
-	| StackOnly -> ":stackOnly",("Instances of this type can only appear on the stack",[Platform Cpp])
-	| StoredTypedExpr -> ":storedTypedExpr",("Used internally to reference a typed expression returned from a macro",[UsedInternally])
 	| SkipCtor -> ":skipCtor",("Used internally to generate a constructor as if it were a native type (no __hx_ctor)",[Platforms [Java;Cs]; UsedInternally])
 	| SkipReflection -> ":skipReflection",("Used internally to annotate a field that shouldn't have its reflection data generated",[Platforms [Java;Cs]; UsedOn TClassField; UsedInternally])
 	| Sound -> ":sound",( "Includes a given .wav or .mp3 file into the target Swf and associates it with the class (must extend flash.media.Sound)",[HasParam "File path";UsedOn TClass;Platform Flash])
 	| SourceFile -> ":sourceFile",("Source code filename for external class",[Platform Cpp])
+	| StackOnly -> ":stackOnly",("Instances of this type can only appear on the stack",[Platform Cpp])
+	| StaticExtension -> "haxe.internal.static_extension",("Used internally to mark static extension fields",[UsedInternally])
+	| StoredTypedExpr -> ":storedTypedExpr",("Used internally to reference a typed expression returned from a macro",[UsedInternally])
 	| Strict -> ":strict",("Used to declare a native C# attribute or a native Java metadata. Is type checked",[Platforms [Java;Cs]])
 	| Struct -> ":struct",("Marks a class definition as a struct",[Platform Cs; UsedOn TClass])
 	| StructAccess -> ":structAccess",("Marks an extern class as using struct access('.') not pointer('->')",[Platform Cpp; UsedOn TClass])
 	| StructInit -> ":structInit",("Allows one to initialize the class with a structure that matches constructor parameters",[UsedOn TClass])
 	| SuppressWarnings -> ":suppressWarnings",("Adds a SuppressWarnings annotation for the generated Java class",[Platform Java; UsedOn TClass])
 	| TemplatedCall -> ":templatedCall",("Indicates that the first parameter of static call should be treated as a template argument",[Platform Cpp; UsedOn TClassField])
+	| TVarOrigin -> ":haxe.internal.tvar_origin",("Used internally to mark the origin of a variable",[UsedInternally;UsedOn TVariable])
 	| Throws -> ":throws",("Adds a 'throws' declaration to the generated function",[HasParam "Type as String"; Platform Java; UsedOn TClassField])
 	| This -> ":this",("Internally used to pass a 'this' expression to macros",[UsedInternally; UsedOn TExpr])
 	| To -> ":to",("Specifies that the field of the abstract is a cast operation to the type identified in the function",[UsedOn TAbstractField])

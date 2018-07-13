@@ -238,6 +238,13 @@ let inline_default_config cf t =
 	let tparams = fst tparams @ cf.cf_params in
 	tparams <> [], apply_params tparams tmonos
 
+let inline_metadata e meta =
+	let inline_meta e meta = match meta with
+		| (Meta.Deprecated | Meta.Pure),_,_ -> mk (TMeta(meta,e)) e.etype e.epos
+		| _ -> e
+	in
+	List.fold_left inline_meta e meta
+
 let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=false) force =
 	(* perform some specific optimization before we inline the call since it's not possible to detect at final optimization time *)
 	try
@@ -619,11 +626,7 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 				let el_v = List.map (fun (v,eo) -> mk (TVar (v,eo)) ctx.t.tvoid e.epos) vl in
 				mk (TBlock (el_v @ [e])) tret e.epos
 		) in
-		let inline_meta e meta = match meta with
-			| (Meta.Deprecated | Meta.Pure),_,_ -> mk (TMeta(meta,e)) e.etype e.epos
-			| _ -> e
-		in
-		let e = List.fold_left inline_meta e cf.cf_meta in
+		let e = inline_metadata e cf.cf_meta in
 		let e = Diagnostics.secure_generated_code ctx e in
 		if Meta.has (Meta.Custom ":inlineDebug") ctx.meta then begin
 			let se t = s_expr_pretty true t true (s_type (print_context())) in
@@ -1293,7 +1296,7 @@ let optimize_completion_expr e args =
 			let el = List.fold_left (fun acc e ->
 				typing_side_effect := false;
 				let e = loop e in
-				if !typing_side_effect || Display.is_display_position (pos e) then begin told := true; e :: acc end else acc
+				if !typing_side_effect || DisplayPosition.encloses_display_position (pos e) then begin told := true; e :: acc end else acc
 			) [] el in
 			old();
 			typing_side_effect := !told;
@@ -1323,11 +1326,11 @@ let optimize_completion_expr e args =
 		| EReturn _ ->
 			typing_side_effect := true;
 			map e
-		| ESwitch (e1,cases,def) when Display.is_display_position p ->
+		| ESwitch (e1,cases,def) when DisplayPosition.encloses_display_position p ->
 			let e1 = loop e1 in
 			hunt_idents e1;
 			(* Prune all cases that aren't our display case *)
-			let cases = List.filter (fun (_,_,_,p) -> Display.is_display_position p) cases in
+			let cases = List.filter (fun (_,_,_,p) -> DisplayPosition.encloses_display_position p) cases in
 			(* Don't throw away the switch subject when we optimize in a case expression because we might need it *)
 			let cases = List.map (fun (el,eg,eo,p) ->
 				List.iter hunt_idents el;
@@ -1372,6 +1375,14 @@ let optimize_completion_expr e args =
 			typing_side_effect := true;
 			let e1 = loop e1 in
 			(ECheckType(e1,th),p)
+		| EMeta(m,e1) ->
+			begin try
+				let e1 = loop e1 in
+				(EMeta(m,e1),(pos e))
+			with Return e1 ->
+				let e1 = (EMeta(m,e1),(pos e)) in
+				raise (Return e1)
+			end
 		| EDisplay(_,DKStructure) ->
 			raise (Return e0)
 		| EDisplay (s,call) ->

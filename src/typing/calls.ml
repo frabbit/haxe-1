@@ -425,6 +425,7 @@ let rec acc_get ctx g p =
 	| AKUsing (et,c,cf,e) when ctx.in_display ->
 		(* Generate a TField node so we can easily match it for position/usage completion (issue #1968) *)
 		let ec = type_module_type ctx (TClassDecl c) None p in
+		let ec = {ec with eexpr = (TMeta((Meta.StaticExtension,[],null_pos),ec))} in
 		let t = match follow et.etype with
 			| TFun (_ :: args,ret) -> TFun(args,ret)
 			| _ -> et.etype
@@ -459,11 +460,13 @@ let rec acc_get ctx g p =
 		(* do not create a closure for static calls *)
 		let cmode = (match fmode with FStatic _ -> fmode | FInstance (c,tl,f) -> FClosure (Some (c,tl),f) | _ -> assert false) in
 		ignore(follow f.cf_type); (* force computing *)
-		(match f.cf_expr with
+		begin match f.cf_expr with
 		| None when ctx.com.display.dms_display ->
 			mk (TField (e,cmode)) t p
 		| None ->
 			error "Recursive inline is not supported" p
+		| Some _ when not (ctx.com.display.dms_inline) ->
+			mk (TField (e,cmode)) t p
 		| Some { eexpr = TFunction _ } ->
 			let chk_class c = (c.cl_extern || f.cf_extern) && not (Meta.has Meta.Runtime f.cf_meta) in
 			let wrap_extern c =
@@ -510,7 +513,10 @@ let rec acc_get ctx g p =
 			end
 		| Some e ->
 			let rec loop e = Type.map_expr loop { e with epos = p } in
-			loop e)
+			let e = loop e in
+			let e = Optimizer.inline_metadata e f.cf_meta in
+			e
+		end
 	| AKMacro _ ->
 		assert false
 

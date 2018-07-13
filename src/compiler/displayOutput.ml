@@ -75,7 +75,7 @@ let print_fields fields =
 			"literal",s,s_type (print_context()) t,None
 		| ITLocal v -> "local",v.v_name,s_type (print_context()) v.v_type,None
 		| ITKeyword kwd -> "keyword",Ast.s_keyword kwd,"",None
-		| ITExpression _ | ITAnonymous _ -> assert false
+		| ITExpression _ | ITAnonymous _ | ITTypeParameter _ -> assert false
 	in
 	let fields = List.sort (fun k1 k2 -> compare (legacy_sort k1) (legacy_sort k2)) fields in
 	let fields = List.map convert fields in
@@ -124,6 +124,8 @@ let print_toplevel il =
 			Buffer.add_string b (Printf.sprintf "<i k=\"literal\">%s</i>\n" s)
 		| ITTimer(s,_) ->
 			Buffer.add_string b (Printf.sprintf "<i k=\"timer\">%s</i>\n" s)
+		| ITTypeParameter c ->
+			Buffer.add_string b (Printf.sprintf "<i k=\"type\" p=\"%s\"%s>%s</i>\n" (s_type_path c.cl_path) ("") (snd c.cl_path));
 		| ITMetadata _ | ITModule _ | ITKeyword _ | ITAnonymous _ | ITExpression _ ->
 			(* compat: don't add *)
 			()
@@ -546,7 +548,7 @@ let handle_display_argument com file_pos pre_compilation did_something =
 		Parser.display_mode := mode;
 		if not com.display.dms_full_typing then Common.define_value com Define.Display (if smode <> "" then smode else "1");
 		Parser.use_doc := true;
-		Parser.resume_display := {
+		DisplayPosition.display_position := {
 			pfile = Path.unique_full_path file;
 			pmin = pos + !offset;
 			pmax = pos + !offset;
@@ -581,7 +583,7 @@ let process_display_file com classes =
 				classes := [];
 				com.main_class <- None;
 			end;
-			let real = Path.get_real_path (!Parser.resume_display).pfile in
+			let real = Path.get_real_path (!DisplayPosition.display_position).pfile in
 			let path = match get_module_path_from_file_path com real with
 			| Some path ->
 				if com.display.dms_kind = DMPackage then raise_package (fst path);
@@ -634,7 +636,7 @@ let process_global_display_mode com tctx = match com.display.dms_kind with
 			| Some cs ->
 				let l = CompilationServer.get_context_files cs ((Define.get_signature com.defines) :: (match com.get_macros() with None -> [] | Some com -> [Define.get_signature com.defines])) in
 				List.fold_left (fun acc (file,cfile) ->
-					if (filter <> None || is_display_file file) then
+					if (filter <> None || DisplayPosition.is_display_file file) then
 						(file,DocumentSymbols.collect_module_symbols (filter = None) (cfile.c_package,cfile.c_decls)) :: acc
 					else
 						acc
@@ -666,10 +668,10 @@ let handle_syntax_completion com kind p = match com.json_out with
 		| Parser.SCClassRelation ->
 			let l = [make_ci_keyword Extends;make_ci_keyword Implements] in
 			let ctx = Genjson.create_context GMFull in
-			f(fields_to_json ctx l CRTypeRelation None false)
+			f(fields_to_json ctx l CRTypeRelation None)
 		| Parser.SCInterfaceRelation ->
 			let l = [make_ci_keyword Extends] in
 			let ctx = Genjson.create_context GMFull in
-			f(fields_to_json ctx l CRTypeRelation None false)
+			f(fields_to_json ctx l CRTypeRelation None)
 		| Parser.SCComment ->
 			()

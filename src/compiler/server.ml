@@ -28,7 +28,9 @@ type context = {
 }
 
 let s_version =
-	Printf.sprintf "%d.%d.%d%s" version_major version_minor version_revision (match Version.version_extra with None -> "" | Some v -> " " ^ v)
+	let pre = Option.map_default (fun pre -> "-" ^ pre) "" version_pre in
+	let build = Option.map_default (fun (_,build) -> "+" ^ build) "" Version.version_extra in
+	Printf.sprintf "%d.%d.%d%s%s" version_major version_minor version_revision pre build
 
 let default_flush ctx = match ctx.com.json_out with
 	| None ->
@@ -113,7 +115,7 @@ let rec wait_loop process_params verbose accept =
 	let current_stdin = ref None in
 	TypeloadParse.parse_hook := (fun com2 file p ->
 		let ffile = Path.unique_full_path file in
-		let is_display_file = ffile = (!Parser.resume_display).pfile in
+		let is_display_file = ffile = (!DisplayPosition.display_position).pfile in
 
 		match is_display_file, !current_stdin with
 		| true, Some stdin when Common.defined com2 Define.DisplayStdin ->
@@ -412,12 +414,12 @@ let rec wait_loop process_params verbose accept =
 				let sign = Define.get_signature ctx.com.defines in
 				ServerMessage.defines ctx.com "";
 				ServerMessage.signature ctx.com "" sign;
-				ServerMessage.display_position ctx.com "" (!Parser.resume_display);
+				ServerMessage.display_position ctx.com "" (!DisplayPosition.display_position);
 				Parser.display_error := (fun e p -> has_parse_error := true; ctx.com.error (Parser.error_msg e) p);
 				(* Special case for diagnostics: It's not treated as a display mode, but we still want to invalidate the
 				   current file in order to run diagnostics on it again. *)
 				if ctx.com.display.dms_display || (match ctx.com.display.dms_kind with DMDiagnostics _ -> true | _ -> false) then begin
-					let file = (!Parser.resume_display).pfile in
+					let file = (!DisplayPosition.display_position).pfile in
 					let fkey = (file,sign) in
 					(* force parsing again : if the completion point have been changed *)
 					CompilationServer.remove_file cs fkey;
@@ -454,6 +456,7 @@ let rec wait_loop process_params verbose accept =
 				Parser.reset_state();
 				return_partial_type := false;
 				measure_times := false;
+				Hashtbl.clear DeprecationCheck.warned_positions;
 				close_times();
 				stats.s_files_parsed := 0;
 				stats.s_classes_built := 0;
