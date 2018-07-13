@@ -347,12 +347,12 @@ let rec load_instance' ctx (t,pn) allow_no_params p =
 					| [],["Rest",_] when is_generic_build ->
 						[]
 					| [],(name,t) :: tl when ctx.com.display.dms_error_policy = EPIgnore ->
-						t :: loop [] tl is_rest (name == "-Of")
+						t :: loop [] tl is_rest is_of
 					| [],_ ->
 						error ("Not enough type parameters for " ^ s_type_path path) p
 					| t :: tl,[] ->
-						if is_rest then
-							t :: loop tl [] true false
+						if is_rest || is_of then
+							t :: loop tl [] is_rest is_of
 						else if ctx.com.display.dms_error_policy = EPIgnore then
 							[]
 						else
