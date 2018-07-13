@@ -1320,10 +1320,33 @@ let add_constructor ctx c force_constructor p =
 		(* nothing to do *)
 		()
 
-let check_struct_init_constructor ctx c p = match c.cl_constructor with
+let get_method_args field = 
+	match field.cf_expr with
+		| Some { eexpr = TFunction { tf_args = args } } -> args
+		| _ -> raise Not_found
+
+let get_struct_init_super_info ctx c p =
+	match c.cl_super with
+		| Some ({ cl_constructor = Some ctor } as csup, cparams) -> 
+			let args = (try get_method_args ctor with Not_found -> []) in
+			let tl,el = 
+				List.fold_left (fun (args,exprs) (v,value) ->
+					let opt = match value with Some _ -> true | None -> false in
+					let t = if opt then ctx.t.tnull v.v_type else v.v_type in
+					(v.v_name,opt,t) :: args,(mk (TLocal v) v.v_type p) :: exprs
+				) ([],[]) args
+			in
+			let super_expr = mk (TCall (mk (TConst TSuper) (TInst (csup,cparams)) p, el)) ctx.t.tvoid p in
+			(args,Some super_expr,tl)
+		| _ -> 
+			[],None,[]
+
+let check_struct_init_constructor ctx c p =
+	match c.cl_constructor with
 	| Some _ ->
 		()
 	| None ->
+		let super_args,super_expr,super_tl = get_struct_init_super_info ctx c p in
 		let params = List.map snd c.cl_params in
 		let ethis = mk (TConst TThis) (TInst(c,params)) p in
 		let args,el,tl = List.fold_left (fun (args,el,tl) cf -> match cf.cf_kind with
@@ -1338,12 +1361,13 @@ let check_struct_init_constructor ctx c p = match c.cl_constructor with
 			| Method _ ->
 				args,el,tl
 		) ([],[],[]) (List.rev c.cl_ordered_fields) in
+		let el = match super_expr with Some e -> e :: el | None -> el in
 		let tf = {
-			tf_args = args;
+			tf_args = args @ super_args;
 			tf_type = ctx.t.tvoid;
 			tf_expr = mk (TBlock el) ctx.t.tvoid p
 		} in
-		let e = mk (TFunction tf) (TFun(tl,ctx.t.tvoid)) p in
+		let e = mk (TFunction tf) (TFun(tl @ super_tl,ctx.t.tvoid)) p in
 		let cf = mk_field "new" e.etype p null_pos in
 		cf.cf_expr <- Some e;
 		cf.cf_type <- e.etype;
@@ -2909,9 +2933,9 @@ module ClassInitializer = struct
 					let dup = if fctx.is_static then PMap.exists cf.cf_name c.cl_fields || has_field cf.cf_name c.cl_super else PMap.exists cf.cf_name c.cl_statics in
 					if not cctx.is_native && not c.cl_extern && dup then error ("Same field name can't be use for both static and instance : " ^ cf.cf_name) p;
 					if fctx.is_override then c.cl_overrides <- cf :: c.cl_overrides;
-					let is_var f = match cf.cf_kind with | Var _ -> true | _ -> false in
+					let is_var cf = match cf.cf_kind with | Var _ -> true | _ -> false in
 					if PMap.mem cf.cf_name (if fctx.is_static then c.cl_statics else c.cl_fields) then
-						if ctx.com.config.pf_overload && Meta.has Meta.Overload cf.cf_meta && not (is_var f) then
+						if ctx.com.config.pf_overload && Meta.has Meta.Overload cf.cf_meta && not (is_var cf) then
 							let mainf = PMap.find cf.cf_name (if fctx.is_static then c.cl_statics else c.cl_fields) in
 							if is_var mainf then display_error ctx "Cannot declare a variable with same name as a method" mainf.cf_pos;
 							(if not (Meta.has Meta.Overload mainf.cf_meta) then display_error ctx ("Overloaded methods must have @:overload metadata") mainf.cf_pos);
@@ -2944,9 +2968,11 @@ module ClassInitializer = struct
 			| _ ->
 				()
 		end;
-		(* add_constructor does not deal with overloads correctly *)
-		if not ctx.com.config.pf_overload then add_constructor ctx c cctx.force_constructor p;
-		if Meta.has Meta.StructInit c.cl_meta then check_struct_init_constructor ctx c p;
+		if Meta.has Meta.StructInit c.cl_meta then 
+			check_struct_init_constructor ctx c p
+		else
+			(* add_constructor does not deal with overloads correctly *)
+			if not ctx.com.config.pf_overload then add_constructor ctx c cctx.force_constructor p;
 		(* check overloaded constructors *)
 		(if ctx.com.config.pf_overload && not cctx.is_lib then match c.cl_constructor with
 		| Some ctor ->
