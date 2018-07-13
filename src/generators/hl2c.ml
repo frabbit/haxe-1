@@ -144,6 +144,7 @@ let dyn_value_field t =
 	| HUI8 -> "ui8"
 	| HUI16 -> "ui16"
 	| HI32 -> "i"
+	| HI64 -> "i64"
 	| HF32 -> "f"
 	| HF64 -> "d"
 	| HBool -> "b"
@@ -356,6 +357,7 @@ let generate_reflection ctx =
 		| HUI8 | HUI16 | HBool | HI32 -> "i"
 		| HF32 -> "f"
 		| HF64 -> "d"
+		| HI64 -> "i64"
 		| _ -> "p"
 	in
 	let make_wrap_name args t =
@@ -460,6 +462,7 @@ let generate_function ctx f =
 		| HUI8 | HUI16 | HI32 | HBool -> "i"
 		| HF32 -> "f"
 		| HF64 -> "d"
+		| HI64 -> "i64"
 		| _ -> "p"
 	in
 
@@ -825,6 +828,8 @@ let generate_function ctx f =
 			(match rtype v with
 			| HUI8 | HUI16 | HI32 | HBool ->
 				sexpr "%s->v.i = %s" (reg r) (reg v)
+			| HI64 ->
+				sexpr "%s->v.i64 = %s" (reg r) (reg v)
 			| HF32 ->
 				sexpr "%s->v.f = %s" (reg r) (reg v)
 			| HF64 ->

@@ -67,8 +67,8 @@ class Boot {
 	}
 
 	/**
-		Returns root namespace based on a value of `--php-prefix` compiler flag.
-		Returns empty string if no `--php-prefix` provided.
+		Returns root namespace based on a value of `-D php-prefix=value` compiler flag.
+		Returns empty string if no `-D php-prefix=value` provided.
 	**/
 	public static function getPrefix() : String {
 		return Syntax.code('self::PHP_PREFIX');
@@ -245,7 +245,7 @@ class Boot {
 					| "print" | "private" | "protected" | "public" | "require" | "require_once" | "return" | "static" | "switch"
 					| "throw" | "trait" | "try" | "unset" | "use" | "var" | "while" | "xor" | "yield" | "__class__" | "__dir__"
 					| "__file__" | "__function__" | "__line__" | "__method__" | "__trait__" | "__namespace__" | "int" | "float"
-					| "bool" | "string" | "true" | "false" | "null" | "parent" | "void" | "iterable":
+					| "bool" | "string" | "true" | "false" | "null" | "parent" | "void" | "iterable" | "object":
 						part += '_hx';
 				case _:
 			}

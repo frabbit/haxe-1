@@ -294,9 +294,6 @@ let rec unify_min_raise ctx (el:texpr list) : t =
 					let t = apply_params cl.cl_params params (TInst (csup,pl)) in
 					loop t);
 				tl := t :: !tl;
-			| TEnum(en,(_ :: _ as tl2)) ->
-				tl := (TEnum(en,List.map (fun _ -> t_dynamic) tl2)) :: !tl;
-				tl := t :: !tl;
 			| TType (td,pl) ->
 				loop (apply_params td.t_params pl td.t_type);
 				(* prioritize the most generic definition *)
@@ -2768,8 +2765,14 @@ and format_string ctx s p =
 		let scode = String.sub s (pos + 1) slen in
 		if warn_escape then warn (pos + 1) slen;
 		min := !min + 2;
-		if slen > 0 then
-			add_expr (ParserEntry.parse_expr_string ctx.com.defines scode { p with pmin = !pmin + pos + 2; pmax = !pmin + send + 1 } error true) slen;
+		if slen > 0 then begin
+			let e =
+				let ep = { p with pmin = !pmin + pos + 2; pmax = !pmin + send + 1 } in
+				try ParserEntry.parse_expr_string ctx.com.defines scode ep error true
+				with Exit -> error "Invalid interpolated expression" ep
+			in
+			add_expr e slen
+		end;
 		min := !min + 1;
 		parse (send + 1) (send + 1)
 	in
