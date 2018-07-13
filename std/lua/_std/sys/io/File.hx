@@ -38,7 +38,13 @@ class File {
 
 	public static function append( path : String, binary : Bool = true ) : FileOutput {
 		return new FileOutput(Io.open(path, "a"));
+	}
 
+	public static function update( path : String, binary : Bool = true ) : FileOutput {
+		if (!FileSystem.exists(path)) {
+			write(path).close();
+		}
+		return new FileOutput(Io.open(path, binary ? "r+b" : "r+"));
 	}
 
 	public static function copy( srcPath : String, dstPath : String ) : Void {

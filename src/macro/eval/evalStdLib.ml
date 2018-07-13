@@ -951,6 +951,10 @@ module StdFile = struct
 		create_out path binary [Open_append]
 	)
 
+	let update = vfun2 (fun path binary ->
+		create_out path binary [Open_rdonly; Open_wronly]
+	)
+
 	let getBytes = vfun1 (fun path ->
 		let path = decode_string path in
 		try encode_bytes (Bytes.unsafe_of_string (Std.input_file ~bin:true path)) with Sys_error _ -> exc_string ("Could not read file " ^ path)
@@ -1682,6 +1686,18 @@ module StdResource = struct
 
 	let getBytes = vfun1 (fun name ->
 		try encode_bytes (Bytes.unsafe_of_string (Hashtbl.find ((get_ctx()).curapi.MacroApi.get_com()).resources (decode_string name))) with Not_found -> vnull
+	)
+end
+
+module StdSha1 = struct
+	let encode = vfun1 (fun s ->
+		let s = decode_string s in
+		encode_string (Sha1.to_hex (Sha1.string s))
+	)
+
+	let make = vfun1 (fun b ->
+		let b = decode_bytes b in
+		encode_bytes (Bytes.unsafe_of_string (Sha1.to_bin (Sha1.string (Bytes.unsafe_to_string b))))
 	)
 end
 
@@ -2824,6 +2840,7 @@ let init_standard_library builtins =
 		"read",StdFile.read;
 		"saveBytes",StdFile.saveBytes;
 		"saveContent",StdFile.saveContent;
+		"update",StdFile.update;
 		"write",StdFile.write;
 	] [];
 	init_fields builtins (["sys";"io"],"FileInput") [] [
@@ -2949,6 +2966,10 @@ let init_standard_library builtins =
 		"listNames",StdResource.listNames;
 		"getString",StdResource.getString;
 		"getBytes",StdResource.getBytes;
+	] [];
+	init_fields builtins (["haxe";"crypto"],"Sha1") [
+		"encode",StdSha1.encode;
+		"make",StdSha1.make;
 	] [];
 	init_fields builtins (["sys";"net";"_Socket"],"NativeSocket") [
 		"select",StdSocket.select;
