@@ -176,12 +176,13 @@ module CompletionModuleType = struct
 
 	let to_json ctx cm is =
 		let fields =
-			("pack",jlist jstring cm.pack) ::
-			("name",jstring cm.name) ::
-			("moduleName",jstring cm.module_name) ::
-			("isPrivate",jbool cm.is_private) ::
+			("path",jobject [
+				("pack",jlist jstring cm.pack);
+				("moduleName",jstring cm.module_name);
+				("typeName",jstring cm.name);
+				("importStatus",jint (ImportStatus.to_int is));
+			]) ::
 			("kind",jint (to_int cm.kind)) ::
-			("importStatus",jint (ImportStatus.to_int is)) ::
 			(match ctx.generation_mode with
 			| GMFull | GMWithoutDoc ->
 				("pos",generate_pos ctx cm.pos) ::
@@ -262,14 +263,13 @@ module PackageContentKind = struct
 end
 
 module CompletionType = struct
-	type ct_path = {
-		ct_dot_path : path;
-		ct_import_status : ImportStatus.t;
-	}
 
-	and ct_path_with_params = {
-		ct_path : ct_path;
+	type ct_path_with_params = {
+		ct_pack : string list;
+		ct_type_name : string;
+		ct_module_name : string;
 		ct_params : t list;
+		ct_import_status : ImportStatus.t;
 	}
 
 	and ct_function_argument = {
@@ -304,15 +304,13 @@ module CompletionType = struct
 		| CTAnonymous of ct_anonymous
 		| CTDynamic of t option
 
-	let generate_path path =
-		jobject [
-			"pack",jarray (List.map jstring (fst path.ct_dot_path));
-			"name",jstring (snd path.ct_dot_path);
-			"importStatus",jint (ImportStatus.to_int path.ct_import_status);
-		]
-
 	let rec generate_path_with_params ctx pwp = jobject [
-		"path",generate_path pwp.ct_path;
+		"path",jobject [
+			"pack",jlist jstring pwp.ct_pack;
+			"moduleName",jstring pwp.ct_module_name;
+			"typeName",jstring pwp.ct_type_name;
+			"importStatus",jint (ImportStatus.to_int pwp.ct_import_status);
+		];
 		"params",jlist (generate_type ctx) pwp.ct_params;
 	]
 
@@ -562,11 +560,11 @@ let to_json ctx item =
 				"kind",jint (PackageContentKind.to_int kind);
 			] in
 			"Package",jobject [
-				"path",generate_path path;
+				"path",generate_package_path (fst path @ [snd path]);
 				"contents",jlist generate_package_content contents;
 			]
 		| ITModule path -> "Module",jobject [
-			"path",generate_path path;
+			"path",generate_module_path path;
 		]
 		| ITLiteral s -> "Literal",jobject [
 			"name",jstring s;

@@ -1141,58 +1141,77 @@ let generate_class ctx c =
 
 let generate_enum ctx e =
 	let p = s_path ctx e.e_path in
+	let dotp = dot_path e.e_path in
+	let has_enum_feature = has_feature ctx "has_enum" in
 	let ename = List.map (fun s -> Printf.sprintf "\"%s\"" (Ast.s_escape s)) (fst e.e_path @ [snd e.e_path]) in
 	if ctx.js_flatten then
 		print ctx "var "
 	else
 		generate_package_create ctx e.e_path;
 	print ctx "%s = " p;
-	if has_feature ctx "Type.resolveEnum" then print ctx "$hxClasses[\"%s\"] = " (dot_path e.e_path);
-	print ctx "{";
-	if has_feature ctx "js.Boot.isEnum" then print ctx " __ename__ : %s," (if has_feature ctx "Type.getEnumName" then "[" ^ String.concat "," ename ^ "]" else "true");
-	print ctx " __constructs__ : [%s] }" (String.concat "," (List.map (fun s -> Printf.sprintf "\"%s\"" s) e.e_names));
-	ctx.separator <- true;
 	let as_objects = not (Common.defined ctx.com Define.JsEnumsAsArrays) in
-	if as_objects then begin
-		newline ctx;
-		print ctx "$hxEnums[\"%s\"] = %s" p p
-	end;
-	newline ctx;
+	(if as_objects then
+		print ctx "$hxEnums[\"%s\"] = " dotp
+	else if has_feature ctx "Type.resolveEnum" then
+		print ctx "$hxClasses[\"%s\"] = " (dot_path e.e_path));
+	spr ctx "{";
+	if has_feature ctx "js.Boot.isEnum" then print ctx " __ename__ : %s," (if has_feature ctx "Type.getEnumName" then "[" ^ String.concat "," ename ^ "]" else "true");
+	print ctx " __constructs__ : [%s]" (String.concat "," (List.map (fun s -> Printf.sprintf "\"%s\"" s) e.e_names));
+	let bend =
+		if not as_objects then begin
+			spr ctx " }";
+			ctx.separator <- true;
+			newline ctx;
+			fun () -> ()
+		end else begin
+			open_block ctx
+		end;
+	in
 	List.iter (fun n ->
 		let f = PMap.find n e.e_constrs in
-		print ctx "%s%s = " p (field f.ef_name);
+		if as_objects then begin
+			newprop ctx;
+			print ctx "%s: " (anon_field f.ef_name)
+		end else
+			print ctx "%s%s = " p (field f.ef_name);
 		(match f.ef_type with
 		| TFun (args,_) ->
 			let sargs = String.concat "," (List.map (fun (n,_,_) -> ident n) args) in begin
-			if as_objects then
-				let sfields = String.concat "," (List.map (fun (n,_,_) -> (ident n) ^ ":" ^ (ident n) ) args) in
-				print ctx "function(%s) { var $x = {_hx_index:%d,%s,__enum__:\"%s\"};" sargs f.ef_index sfields p;
-			else
-				print ctx "function(%s) { var $x = [\"%s\",%d,%s]; $x.__enum__ = %s;" sargs f.ef_name f.ef_index sargs p;
-			end;
-			if has_feature ctx "has_enum" then
-				spr ctx " $x.toString = $estr;";
-			spr ctx " return $x; }";
 			if as_objects then begin
+				let sfields = String.concat "," (List.map (fun (n,_,_) -> (ident n) ^ ":" ^ (ident n) ) args) in
 				let sparams = String.concat "," (List.map (fun (n,_,_) -> "\"" ^ (ident n) ^ "\"" ) args) in
-				newline ctx;
-				print ctx "%s%s.__params__ = [%s];" p (field f.ef_name) sparams
-			end;
-			ctx.separator <- true;
+				print ctx "($_=function(%s) { return {_hx_index:%d,%s,__enum__:\"%s\"" sargs f.ef_index sfields dotp;
+				if has_enum_feature then
+					spr ctx ",toString:$estr";
+				print ctx "}; },$_.__params__ = [%s],$_)" sparams
+			end else begin
+				print ctx "function(%s) { var $x = [\"%s\",%d,%s]; $x.__enum__ = %s;" sargs f.ef_name f.ef_index sargs p;
+				if has_enum_feature then
+					spr ctx " $x.toString = $estr;";
+				spr ctx " return $x; }";
+			end end;
 		| _ ->
 			if as_objects then
-				print ctx "{_hx_index:%d};" f.ef_index
-			else
+				print ctx "{_hx_index:%d,__enum__:\"%s\"%s}" f.ef_index dotp (if has_enum_feature then ",toString:$estr" else "")
+			else begin
 				print ctx "[\"%s\",%d]" f.ef_name f.ef_index;
-			newline ctx;
-			if has_feature ctx "has_enum" then begin
-				print ctx "%s%s.toString = $estr" p (field f.ef_name);
 				newline ctx;
-			end;
-			print ctx "%s%s.__enum__ = %s" p (field f.ef_name) (if as_objects then "\"" ^ p ^"\"" else p);
+				if has_feature ctx "has_enum" then begin
+					print ctx "%s%s.toString = $estr" p (field f.ef_name);
+					newline ctx;
+				end;
+				print ctx "%s%s.__enum__ = %s" p (field f.ef_name) p;
+			end
 		);
-		newline ctx
+		if not as_objects then
+			newline ctx
 	) e.e_names;
+	bend();
+	if as_objects then begin
+		spr ctx "\n}";
+		ctx.separator <- true;
+		newline ctx;
+	end;
 	if has_feature ctx "Type.allEnums" then begin
 		let ctors_without_args = List.filter (fun s ->
 			let ef = PMap.find s e.e_constrs in
@@ -1453,13 +1472,21 @@ let generate com =
 	if (not ctx.js_modern) && (ctx.es_version < 5) then
 		spr ctx "var console = $global.console || {log:function(){}};\n";
 
+	let enums_as_objects = not (Common.defined com Define.JsEnumsAsArrays) in
+
 	(* TODO: fix $estr *)
 	let vars = [] in
-	let vars = (if has_feature ctx "Type.resolveClass" || has_feature ctx "Type.resolveEnum" then ("$hxClasses = " ^ (if ctx.js_modern then "{}" else "$hxClasses || {}")) :: vars else vars) in
+	let vars = (if has_feature ctx "Type.resolveClass" || (not enums_as_objects && has_feature ctx "Type.resolveEnum") then ("$hxClasses = " ^ (if ctx.js_modern then "{}" else "$hxClasses || {}")) :: vars else vars) in
 	let vars = if has_feature ctx "has_enum"
 		then ("$estr = function() { return " ^ (ctx.type_accessor (TClassDecl { null_class with cl_path = ["js"],"Boot" })) ^ ".__string_rec(this,''); }") :: vars
 		else vars in
-	let vars = if not (Common.defined com Define.JsEnumsAsArrays) then "$hxEnums = {}" :: vars else vars in
+	let vars = if enums_as_objects then "$hxEnums = {}" :: vars else vars in
+	let vars,has_dollar_underscore =
+		if List.exists (function TEnumDecl { e_extern = false } -> true | _ -> false) com.types then
+			"$_" :: vars,true
+		else
+			vars,false
+	in
 	(match List.rev vars with
 	| [] -> ()
 	| vl ->
@@ -1497,7 +1524,10 @@ let generate com =
 		newline ctx;
 	end;
 	if has_feature ctx "use.$bind" then begin
-		print ctx "var $_, $fid = 0";
+		if has_dollar_underscore then
+			print ctx "var $fid = 0"
+		else
+			print ctx "var $_, $fid = 0";
 		newline ctx;
 		(if ctx.es_version < 5 then
 			print ctx "function $bind(o,m) { if( m == null ) return null; if( m.__id__ == null ) m.__id__ = $fid++; var f; if( o.hx__closures__ == null ) o.hx__closures__ = {}; else f = o.hx__closures__[m.__id__]; if( f == null ) { f = function(){ return f.method.apply(f.scope, arguments); }; f.scope = o; f.method = m; o.hx__closures__[m.__id__] = f; } return f; }"

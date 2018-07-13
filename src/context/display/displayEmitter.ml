@@ -14,6 +14,40 @@ open Common
 open Display
 open DisplayPosition
 
+let sort_fields l with_type p =
+	let l = List.map (fun ci ->
+		let i = get_sort_index ci (Option.default Globals.null_pos p) in
+		ci,i
+	) l in
+	let sort l =
+		List.map fst (List.sort (fun (_,i1) (_,i2) -> compare i1 i2) l)
+	in
+	let l = match with_type with
+		| WithType t when (match follow t with TMono _ -> false | _ -> true) ->
+			let rec comp t' = match t' with
+				| None -> 9
+				| Some (t',_) ->
+				if type_iseq t' t then 0 (* equal types - perfect *)
+				else if t' == t_dynamic then 5 (* dynamic isn't good, but better than incompatible *)
+				else try Type.unify t' t; 1 (* assignable - great *)
+				with Unify_error _ -> match follow t' with
+					| TFun(_,tr) ->
+						if type_iseq tr t then 2 (* function returns our exact type - alright *)
+						else (try Type.unify tr t; 3 (* function returns compatible type - okay *)
+						with Unify_error _ -> 7) (* incompatible function - useless *)
+					| _ ->
+						6 (* incompatible type - probably useless *)
+			in
+			let l = List.map (fun (ck,i1) ->
+				let i2 = comp (get_type ck) in
+				ck,(i2,i1)
+			) l in
+			sort l
+		| _ ->
+			sort l
+	in
+	l
+
 let completion_type_of_type ctx ?(values=PMap.empty) t =
 	let get_import_status path =
 		try
@@ -22,12 +56,11 @@ let completion_type_of_type ctx ?(values=PMap.empty) t =
 		with _ ->
 			Unimported
 	in
-	let ctpath path = {
-		ct_dot_path = path;
-		ct_import_status = get_import_status path;
-	} in
-	let rec ppath path tl = {
-		ct_path = ctpath path;
+	let rec ppath mpath tpath tl = {
+		ct_pack = fst tpath;
+		ct_module_name = snd mpath;
+		ct_type_name = snd tpath;
+		ct_import_status = get_import_status tpath;
 		ct_params = List.map (from_type PMap.empty) tl;
 	}
 	and funarg value (name,opt,t) = {
@@ -46,20 +79,20 @@ let completion_type_of_type ctx ?(values=PMap.empty) t =
 			from_type values (lazy_type r)
 		| TInst({cl_kind = KTypeParameter _} as c,_) ->
 			CTInst ({
-				ct_path = {
-					ct_dot_path = c.cl_path;
-					ct_import_status = Imported;
-				};
+				ct_pack = fst c.cl_path;
+				ct_module_name = snd c.cl_module.m_path;
+				ct_type_name = snd c.cl_path;
+				ct_import_status = Imported;
 				ct_params = [];
 			})
 		| TInst(c,tl) ->
-			CTInst (ppath c.cl_path tl)
+			CTInst (ppath c.cl_module.m_path c.cl_path tl)
 		| TEnum(en,tl) ->
-			CTEnum (ppath en.e_path tl)
+			CTEnum (ppath en.e_module.m_path en.e_path tl)
 		| TType(td,tl) ->
-			CTTypedef (ppath td.t_path tl)
+			CTTypedef (ppath td.t_module.m_path td.t_path tl)
 		| TAbstract(a,tl) ->
-			CTAbstract (ppath a.a_path tl)
+			CTAbstract (ppath a.a_module.m_path a.a_path tl)
 		| TFun(tl,t) when not (PMap.is_empty values) ->
 			let get_arg n = try Some (PMap.find n values) with Not_found -> None in
 			CTFunction {
@@ -214,8 +247,10 @@ let check_field_modifiers ctx c cf override display_modifier =
 			let missing_fields = List.fold_left (fun fields cf -> PMap.remove cf.cf_name fields) all_fields c.cl_ordered_fields in
 			let l = PMap.fold (fun (c,cf) fields ->
 				let origin = Parent (TClassDecl c) in
+				ignore(follow cf.cf_type);
 				let ct = completion_type_of_type ctx ~values:(get_value_meta cf.cf_meta) cf.cf_type in
 				make_ci_class_field (CompletionClassField.make cf CFSMember origin true) (cf.cf_type,ct) :: fields
 			) missing_fields [] in
+			let l = sort_fields l NoValue None in
 			raise_fields l CROverride None
 		| _ -> ()

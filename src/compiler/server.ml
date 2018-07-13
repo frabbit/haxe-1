@@ -28,9 +28,8 @@ type context = {
 }
 
 let s_version =
-	(* let pre = Option.map_default (fun pre -> "-" ^ pre) "" version_pre in
-	let build = Option.map_default (fun (_,build) -> "+" ^ build) "" Version.version_extra in *)
-	let pre,build = "","" in
+	let pre = Option.map_default (fun pre -> "-" ^ pre) "" version_pre in
+	let build = Option.map_default (fun (_,build) -> "+" ^ build) "" Version.version_extra in
 	Printf.sprintf "%d.%d.%d%s%s" version_major version_minor version_revision pre build
 
 let default_flush ctx = match ctx.com.json_out with
@@ -315,7 +314,11 @@ let rec wait_loop process_params verbose accept =
 					None
 				else try
 					if m.m_extra.m_mark <= start_mark then begin
-						if not (has_policy NoCheckShadowing) then check_module_path();
+						(* Workaround for preview.4 Java issue *)
+						begin match m.m_extra.m_kind with
+							| MExtern -> check_module_path()
+							| _ -> if not (has_policy NoCheckShadowing) then check_module_path();
+						end;
 						if not (has_policy NoCheckFileTimeModification) then check_file();
 					end;
 					m.m_extra.m_mark <- mark;
