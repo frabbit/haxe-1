@@ -6,6 +6,7 @@ open EvalHash
 open EvalValue
 open EvalEncode
 open EvalMisc
+open EvalExceptions
 
 type debug_connection = {
 	wait : context -> (env -> value) -> env -> value;
@@ -14,6 +15,8 @@ type debug_connection = {
 }
 
 exception BreakHere
+
+let createInstance_ref : value ref = Obj.magic ()
 
 (* Breakpoints *)
 
@@ -121,6 +124,9 @@ let get_variable capture_infos scopes name env =
 let resolve_ident ctx env s =
 	let key = hash_s s in
 	try
+		(* 0. Extra locals *)
+		IntMap.find key env.env_extra_locals
+	with Not_found -> try
 		(* 1. Variable *)
 		get_variable env.env_info.capture_infos env.env_debug.scopes s env
 	with Not_found -> try
@@ -140,10 +146,24 @@ let resolve_ident ctx env s =
 	with Not_found -> try
 		(* 4. Type *)
 		VPrototype (IntMap.find key ctx.static_prototypes)
+	with Not_found -> try
+		(* 5. Toplevel *)
+		EvalField.field_raise ctx.toplevel key
 	with Not_found ->
-		raise Exit
+		vnull
 
 let rec expr_to_value ctx env e =
+	let safe_call f a =
+		let old = ctx.debug.debug_state in
+		ctx.debug.debug_state <- DbgContinue;
+		try
+			let r = f a in
+			ctx.debug.debug_state <- old;
+			r
+		with exc ->
+			ctx.debug.debug_state <- old;
+			raise exc
+	in
 	let rec loop e = match fst e with
 		| EConst cst ->
 			begin match cst with
@@ -217,9 +237,17 @@ let rec expr_to_value ctx env e =
 				raise Exit
 			end
 		| ECall(e1,el) ->
-			let v1 = loop e1 in
-			let vl = List.map loop el in
-			call_value v1 vl
+			begin match fst e1 with
+			| EField(ethis,s) ->
+				let vthis = loop ethis in
+				let v1 = EvalField.field vthis (hash_s s) in
+				let vl = List.map loop el in
+				safe_call (EvalPrinting.call_value_on vthis v1) vl
+			| _ ->
+				let v1 = loop e1 in
+				let vl = List.map loop el in
+				safe_call (call_value v1) vl
+			end
 		| EBlock el ->
 			let rec loop2 el = match el with
 				| [] -> VNull
@@ -238,8 +266,48 @@ let rec expr_to_value ctx env e =
 			if is_true v1 then loop e2 else loop e3
 		| EParenthesis e1 | EMeta(_,e1) | EUntyped e1 | ECast(e1,None) | ECheckType(e1,_) ->
 			loop e1
-		| EWhile _ | ETry _ | ESwitch _ | ENew _ | EVars _ | EFunction _ | EFor _ | EDisplay _
-		| EDisplayNew _ | EReturn _ | EContinue | EBreak | EThrow _  | ECast(_,Some _) ->
+		| EReturn e1 ->
+			let v1 = Option.map_default loop vnull e1 in
+			raise (Return v1)
+		| EContinue ->
+			raise Continue
+		| EBreak ->
+			raise Break
+		| EThrow e1 ->
+			let v1 = loop e1 in
+			throw v1 (pos e)
+		| EVars vl ->
+			List.iter (fun ((n,_),_,eo) ->
+				match eo with
+				| Some e ->
+					env.env_extra_locals <- IntMap.add (hash_s n) (loop e) env.env_extra_locals
+				| _ ->
+					()
+			) vl;
+			vnull
+		| EWhile(e1,e2,flag) ->
+			let rec loop2 () =
+				if is_true (loop e1) then begin
+					ignore(loop e2);
+					loop2()
+				end
+			in
+			if flag = DoWhile then ignore(loop e2);
+			loop2();
+			vnull
+		| ENew((tp,_),el) ->
+			let rec loop2 v sl = match sl with
+				| [] -> v
+				| s :: sl ->
+					loop2 (EvalField.field v (hash_s s)) sl
+			in
+			let v1 = loop2 ctx.toplevel tp.tpackage in
+			let v1 = loop2 v1 [match tp.tsub with None -> tp.tname | Some s -> s] in
+			let vl = List.map loop el in
+			let vc = loop2 ctx.toplevel ["Type";"createInstance"] in
+			safe_call (call_value vc) [v1;encode_array vl]
+		| ETry _ | ESwitch _ | EFunction _ | EFor _ | EDisplay _
+		| EDisplayNew _ | ECast(_,Some _) ->
 			raise Exit
 	in
 	loop e
