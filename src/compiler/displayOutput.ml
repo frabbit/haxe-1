@@ -60,7 +60,9 @@ let print_fields fields =
 		| ITModule s -> "type",s,"",None
 		| ITMetadata(s,doc) -> "metadata",s,"",doc
 		| ITTimer(name,value) -> "timer",name,"",Some value
-		| ITGlobal _ | ITLiteral _ | ITLocal _ -> assert false
+		| ITGlobal(_,s,t) -> "global",s,s_type (print_context()) t,None
+		| ITLiteral(s,t) -> "literal",s,s_type (print_context()) t,None
+		| ITLocal v -> "local",v.v_name,s_type (print_context()) v.v_type,None
 	in
 	let fields = List.sort (fun k1 k2 -> compare (legacy_sort k1) (legacy_sort k2)) fields in
 	let fields = List.map convert fields in
@@ -111,7 +113,7 @@ let print_toplevel il =
 			Buffer.add_string b (Printf.sprintf "<i k=\"type\" p=\"%s\"%s%s>%s</i>\n" (s_type_path infos.mt_path) import ("") name);
 		| ITPackage s ->
 			Buffer.add_string b (Printf.sprintf "<i k=\"package\">%s</i>\n" s)
-		| ITLiteral s ->
+		| ITLiteral(s,_) ->
 			Buffer.add_string b (Printf.sprintf "<i k=\"literal\">%s</i>\n" s)
 		| ITTimer(s,_) ->
 			Buffer.add_string b (Printf.sprintf "<i k=\"timer\">%s</i>\n" s)
@@ -660,11 +662,14 @@ let handle_display_argument com file_pos pre_compilation did_something =
 		let pos, smode = try ExtString.String.split pos "@" with _ -> pos,"" in
 		Parser.is_completion := false;
 		Parser.had_resume := false;
+		let offset = ref 0 in
 		let mode = match smode with
 			| "position" ->
+				offset := 1;
 				Common.define com Define.NoCOpt;
 				DMDefinition
 			| "usage" ->
+				offset := 1;
 				Common.define com Define.NoCOpt;
 				DMUsage false
 			(*| "rename" ->
@@ -673,10 +678,11 @@ let handle_display_argument com file_pos pre_compilation did_something =
 			| "package" ->
 				DMPackage
 			| "type" ->
+				offset := 1;
 				Common.define com Define.NoCOpt;
 				DMHover
 			| "toplevel" ->
-				Common.define com Define.NoCOpt;
+				Parser.is_completion := true;
 				DMDefault
 			| "module-symbols" ->
 				Common.define com Define.NoCOpt;
@@ -710,11 +716,10 @@ let handle_display_argument com file_pos pre_compilation did_something =
 		Common.display_default := mode;
 		Common.define_value com Define.Display (if smode <> "" then smode else "1");
 		Parser.use_doc := true;
-		Parser.legacy_display := true;
 		Parser.resume_display := {
 			pfile = Path.unique_full_path file;
-			pmin = pos;
-			pmax = pos;
+			pmin = pos + !offset;
+			pmax = pos + !offset;
 		}
 
 let process_display_file com classes =
@@ -833,9 +838,9 @@ let print_type com t p doc = match com.json_out with
 		"type",generate_type (create_context ()) t;
 	])
 
-let print_fields com fields = match com.json_out with
+let print_fields com fields is_toplevel = match com.json_out with
 	| None ->
-		print_fields fields
+		if is_toplevel then print_toplevel fields else print_fields fields
 	| Some(f,_) ->
 		let j = List.map (CompletionKind.to_json (Genjson.create_context ())) fields in
 		f (jarray j)

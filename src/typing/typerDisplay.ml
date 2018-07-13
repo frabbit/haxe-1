@@ -42,7 +42,7 @@ let rec handle_display ctx e_ast dk with_type =
 		raise (Parser.TypePath ([n],None,false))
 	| Error (Type_not_found (path,_),_) as err ->
 		begin try
-			raise (Display.DisplayFields (DisplayFields.get_submodule_fields ctx path))
+			raise (Display.DisplayFields (DisplayFields.get_submodule_fields ctx path,false))
 		with Not_found ->
 			raise err
 		end
@@ -226,30 +226,23 @@ and display_expr ctx e_ast e dk with_type p =
 		let pl = loop e in
 		raise (Display.DisplayPosition pl);
 	| DMDefault when not (!Parser.had_resume)->
-		raise (Display.DisplayToplevel (DisplayToplevel.collect ctx false))
+		raise (Display.DisplayFields (DisplayToplevel.collect ctx false with_type,true))
 	| DMDefault | DMNone | DMModuleSymbols _ | DMDiagnostics _ | DMStatistics ->
 		let fields = DisplayFields.collect ctx e_ast e dk with_type p in
-		raise (Display.DisplayFields fields)
+		raise (Display.DisplayFields(fields,false))
 
-let handle_structure_display ctx e with_type =
+let handle_structure_display ctx e fields =
 	let p = pos e in
 	match fst e with
 	| EObjectDecl fl ->
-		let fail () = [] in
-		let fields = match with_type with
-		| WithType t ->
-			begin match follow t with
-			| TAnon an ->
-				let fields = PMap.foldi (fun k cf acc ->
-					if Expr.field_mem_assoc k fl then acc
-					else (DisplayTypes.CompletionKind.ITClassMember cf) :: acc
-				) an.a_fields [] in
-				fields
-			| _ -> fail()
-			end
-		| _ -> fail()
-		in
-		raise (Display.DisplayFields fields)
+		let fields = PMap.foldi (fun k cf acc ->
+			if Expr.field_mem_assoc k fl then acc
+			else (DisplayTypes.CompletionKind.ITClassMember cf) :: acc
+		) fields [] in
+		raise (Display.DisplayFields(fields,false))
+	| EBlock [] ->
+		let fields = PMap.foldi (fun _ cf acc -> DisplayTypes.CompletionKind.ITClassMember cf :: acc) fields [] in
+		raise (Display.DisplayFields(fields,false))
 	| _ ->
 		error "Expected object expression" p
 
@@ -257,5 +250,14 @@ let handle_structure_display ctx e with_type =
 let handle_edisplay ctx e dk with_type =
 	match dk,ctx.com.display.dms_kind with
 	| DKCall,(DMSignature | DMDefault) -> handle_signature_display ctx e with_type
-	| DKStructure,DMDefault -> handle_structure_display ctx e with_type
+	| DKStructure,DMDefault ->
+		begin match with_type with
+			| WithType t ->
+				begin match follow t with
+					| TAnon an -> handle_structure_display ctx e an.a_fields
+					| _ -> handle_display ctx e dk with_type
+				end
+			| _ ->
+				handle_display ctx e dk with_type
+		end
 	| _ -> handle_display ctx e dk with_type

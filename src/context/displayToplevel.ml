@@ -58,7 +58,7 @@ let explore_class_paths ctx class_paths recusive f_pack f_module f_type =
 	in
 	List.iter (fun dir -> loop dir []) class_paths
 
-let collect ctx only_types =
+let collect ctx only_types with_type =
 	let acc = DynArray.create () in
 	let add x = DynArray.add acc x in
 
@@ -112,6 +112,12 @@ let collect ctx only_types =
 		List.iter enum_ctors ctx.m.curmod.m_types;
 		List.iter enum_ctors (List.map fst ctx.m.module_types);
 
+		begin match with_type with
+			| WithType t ->
+				(try enum_ctors (module_type_of_type t) with Exit -> ())
+			| _ -> ()
+		end;
+
 		(* imported globals *)
 		PMap.iter (fun _ (mt,s,_) ->
 			try
@@ -127,13 +133,20 @@ let collect ctx only_types =
 		) ctx.m.module_globals;
 
 		(* literals *)
-		add (ITLiteral "null");
-		add (ITLiteral "true");
-		add (ITLiteral "false");
-		add (ITLiteral "this");
-		match ctx.curclass.cl_super with
-			| Some _ -> add (ITLiteral "super")
-			| None -> ()
+		add (ITLiteral("null",t_dynamic));
+		add (ITLiteral("true",ctx.com.basic.tbool));
+		add (ITLiteral("false",ctx.com.basic.tbool));
+		begin match ctx.curfun with
+			| FunMember | FunConstructor | FunMemberClassLocal ->
+				let t = TInst(ctx.curclass,List.map snd ctx.curclass.cl_params) in
+				add (ITLiteral("this",t));
+				begin match ctx.curclass.cl_super with
+					| Some(c,tl) -> add (ITLiteral("super",TInst(c,tl)))
+					| None -> ()
+				end
+			| _ ->
+				()
+		end
 	end;
 
 	let module_types = ref [] in
@@ -207,10 +220,28 @@ let collect ctx only_types =
 		add (ITType (module_type_of_type t,RMTypeParameter))
 	) ctx.type_params;
 
-	DynArray.to_list acc
+	let l = DynArray.to_list acc in
+	match with_type with
+		| WithType t ->
+			let rec comp t' =
+				if type_iseq t' t then 0 (* equal types - perfect *)
+				else if t' == t_dynamic then 5 (* dynamic isn't good, but better than incompatible *)
+				else try Type.unify t' t; 1 (* assignable - great *)
+				with Unify_error _ -> match follow t' with
+					| TFun(_,tr) ->
+						if type_iseq tr t then 2 (* function returns our exact type - alright *)
+						else (try Type.unify tr t; 3 (* function returns compatible type - okay *)
+						with Unify_error _ -> 7) (* incompatible function - useless *)
+					| _ ->
+						6 (* incompatible type - probably useless *)
+			in
+			let l = List.map (fun ck -> ck,comp (DisplayTypes.CompletionKind.get_type ck)) l in
+			let l = List.sort (fun (_,i1) (_,i2) -> compare i1 i2) l in
+			List.map fst l
+		| _ -> l
 
 let handle_unresolved_identifier ctx i p only_types =
-	let l = collect ctx only_types in
+	let l = collect ctx only_types NoValue in
 	let cl = List.map (fun it ->
 		let s = DisplayTypes.CompletionKind.get_name it in
 		(s,it),StringError.levenshtein i s
