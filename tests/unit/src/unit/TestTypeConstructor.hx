@@ -202,7 +202,7 @@ class TestTypeConstructor extends Test {
 
 
 
- 	private static function typeConstructorWithConstraints<M:(Filterable<M,_>, MappableTD<M,_>)> (m:M<Int>):M<Int>
+ 	private static function typeConstructorWithConstraints<M:Filterable<M,_> & MappableTD<M,_>> (m:M<Int>):M<Int>
  	{
  		return m.map(function (x) return x+1).filter(function (x) return x > 2);
 	}
