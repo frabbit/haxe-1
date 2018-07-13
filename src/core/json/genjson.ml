@@ -10,6 +10,7 @@ type generation_mode =
 
 type context = {
 	generation_mode : generation_mode;
+	generate_abstract_impl : bool;
 }
 
 let jnull = Json.JNull
@@ -466,8 +467,24 @@ and generate_class_field' ctx cfs cf =
 		generate_adt ctx None name args
 	in
 	let expr = match ctx.generation_mode with
-		| GMFull | GMWithoutDoc -> jopt (generate_texpr ctx) cf.cf_expr
-		| GMMinimum -> jnull
+		| GMFull | GMWithoutDoc ->
+			let value = match cf.cf_kind with
+				| Method _ -> None
+				| Var _ ->
+					try
+						begin match Meta.get Meta.Value cf.cf_meta with
+							| (_,[e],_) -> Some e
+							| _ -> None
+						end
+					with Not_found ->
+						None
+			in
+			begin match value with
+				| None -> jnull
+				| Some e -> jobject ["string",jstring (Ast.s_expr e)]
+			end
+		| GMMinimum ->
+			jnull
 	in
 	[
 		"name",jstring cf.cf_name;
@@ -586,9 +603,15 @@ let generate_abstract ctx a =
 			"field",classfield_ref ctx cf;
 		]
 	in
+	let impl = match a.a_impl with
+		| None -> jnull
+		| Some c ->
+			if ctx.generate_abstract_impl then jobject (generate_class ctx c)
+			else class_ref ctx c
+	in
 	[
 		"type",generate_type ctx a.a_this;
-		"impl",jopt (class_ref ctx) a.a_impl;
+		"impl",impl;
 		"binops",jlist generate_binop a.a_ops;
 		"unops",jlist generate_unop a.a_unops;
 		"from",generate_casts a.a_from_field a.a_from;
@@ -621,6 +644,7 @@ let generate_module ctx m =
 
 let create_context gm = {
 	generation_mode = gm;
+	generate_abstract_impl = false;
 }
 
 let generate types file =
