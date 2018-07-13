@@ -118,3 +118,5 @@ hk-test/cpp
 hk-test/java
 hk-test/hl
 hk-test/main.n
+.DS_Store
+tests/sourcemaps/bin

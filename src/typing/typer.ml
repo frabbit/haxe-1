@@ -309,7 +309,7 @@ let rec unify_min_raise ctx (el:texpr list) : t =
 	| [] -> mk_mono()
 	| [e] -> e.etype
 	| _ ->
-		let rec chk_null e = is_null e.etype ||
+		let rec chk_null e = is_null e.etype || is_explicit_null e.etype ||
 			match e.eexpr with
 			| TConst TNull -> true
 			| TBlock el ->
@@ -4345,7 +4345,7 @@ let rec create com =
 			| "Null" ->
 				let mk_null t =
 					try
-						if not (is_null ~no_lazy:true t) then TAbstract (a,[t]) else t
+						if not (is_null ~no_lazy:true t || is_explicit_null t) then TAbstract (a,[t]) else t
 					with Exit ->
 						(* don't force lazy evaluation *)
 						let r = ref (lazy_available t_dynamic) in
