@@ -179,7 +179,7 @@ and parse_type_decl s =
 		| [< n , p1 = parse_class_flags; name = type_name; tl = parse_constraint_params >] ->
 			let rec loop had_display p0 acc =
 				let check_display p0 p1 =
-					if not had_display && encloses_display_position p1 then syntax_completion (if List.mem HInterface n then SCInterfaceRelation else SCClassRelation) p0
+					if not had_display && !in_display_file && encloses_display_position p1 then syntax_completion (if List.mem HInterface n then SCInterfaceRelation else SCClassRelation) p0
 				in
 				match s with parser
 				| [< '(Kwd Extends,p1); t,b = parse_type_path_or_resume p1 >] ->
@@ -450,7 +450,7 @@ and parse_class_flags = parser
 
 and parse_complex_type_at p = parser
 	| [< t = parse_complex_type >] -> t
-	| [< s >] -> if would_skip_display_position p s then CTPath { tpackage = []; tname = ""; tparams = []; tsub = None },p else serror()
+	| [< s >] -> if would_skip_display_position p s then CTPath magic_type_path,p else serror()
 
 and parse_type_hint = parser
 	| [< '(DblDot,p1); s >] ->
@@ -501,7 +501,7 @@ and parse_structural_extension = parser
 					| [< '(Comma,_) >] -> ()
 					| [< >] -> ()
 				end;
-				{ tpackage = []; tname = ""; tparams = []; tsub = None },null_pos
+				magic_type_path,null_pos
 			end else raise Stream.Failure
 
 and parse_complex_type_inner allow_named = parser
@@ -824,7 +824,7 @@ and parse_constraint_param = parser
 and parse_type_path_or_resume p1 s =
 	let pnext = next_pos s in
 	let check_resume exc =
-		if encloses_display_position (punion p1 pnext) then
+		if !in_display_file && encloses_display_position (punion p1 pnext) then
 			(magic_type_path,punion_next p1 s),true
 		else
 			raise exc
