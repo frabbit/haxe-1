@@ -373,12 +373,6 @@ let rec type_ident_raise ctx i p mode =
 		let c , t , f = class_field ctx ctx.curclass (List.map snd ctx.curclass.cl_params) i p in
 		field_access ctx mode f (match c with None -> FAnon f | Some (c,tl) -> FInstance (c,tl,f)) t (get_this ctx p) p
 	with Not_found -> try
-		(* lookup using on 'this' *)
-		if ctx.curfun = FunStatic then raise Not_found;
-		(match using_field ctx mode (mk (TConst TThis) ctx.tthis p) i p with
-		| AKUsing (et,c,f,_) -> AKUsing (et,c,f,get_this ctx p)
-		| _ -> assert false)
-	with Not_found -> try
 		(* static variable lookup *)
 		let f = PMap.find i ctx.curclass.cl_statics in
 		if Meta.has Meta.Impl f.cf_meta && not (Meta.has Meta.Impl ctx.curfield.cf_meta) && not (Meta.has Meta.Enum f.cf_meta) then
@@ -1001,7 +995,7 @@ and type_binop2 ctx op (e1 : texpr) (e2 : Ast.expr) is_assign_op wt p =
 			| [] ->
 				raise Not_found
 		in
-		loop (if left then a.a_ops else List.filter (fun (_,cf) -> not (Meta.has Meta.Impl cf.cf_meta)) a.a_ops)
+		loop a.a_ops
 	in
 	try
 		begin match follow e1.etype with
