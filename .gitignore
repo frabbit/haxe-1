@@ -120,3 +120,4 @@ hk-test/hl
 hk-test/main.n
 .DS_Store
 tests/sourcemaps/bin
+/*_plugin.ml

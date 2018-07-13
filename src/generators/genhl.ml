@@ -842,12 +842,17 @@ let alloc_var ctx v new_var =
 		Hashtbl.add ctx.m.mvars v.v_id r;
 		r
 
+
+let push_op ctx o =
+	DynArray.add ctx.m.mdebug ctx.m.mcurpos;
+	DynArray.add ctx.m.mops o
+
 let op ctx o =
 	match o with
-	| OMov (a,b) when a = b -> ()
+	| OMov (a,b) when a = b ->
+		()
 	| _ ->
-		DynArray.add ctx.m.mdebug ctx.m.mcurpos;
-		DynArray.add ctx.m.mops o
+		push_op ctx o
 
 let set_op ctx pos o =
 	DynArray.set ctx.m.mops pos o
@@ -955,11 +960,13 @@ let real_name v =
 	| "_gthis" -> "this"
 	| name -> name
 
-let is_gen_local v =
-	String.length v.v_name >= 2 && String.unsafe_get v.v_name 0 = '_' && String.unsafe_get v.v_name 1 = 'g'
+let is_gen_local ctx v =
+	if has_meta Meta.CompilerGenerated v.v_meta || has_meta Meta.ForLoopVariable v.v_meta then true
+	else if String.length v.v_name >= 2 && String.unsafe_get v.v_name 0 = '_' && String.unsafe_get v.v_name 1 = 'g' then true
+	else false
 
 let add_assign ctx v =
-	if is_gen_local v then () else
+	if is_gen_local ctx v then () else
 	let name = real_name v in
 	ctx.m.massign <- (alloc_string ctx name, current_pos ctx - 1) :: ctx.m.massign
 
@@ -1519,7 +1526,7 @@ and eval_expr ctx e =
 			match captured_index ctx v with
 			| None ->
 				let r = alloc_var ctx v true in
-				op ctx (OMov (r,ri));
+				push_op ctx (OMov (r,ri));
 				add_assign ctx v;
 			| Some idx ->
 				op ctx (OSetEnumField (ctx.m.mcaptreg, idx, ri));
@@ -2307,7 +2314,7 @@ and eval_expr ctx e =
 				r
 			| ALocal (v,l) ->
 				let r = value() in
-				op ctx (OMov (l, r));
+				push_op ctx (OMov (l, r));
 				add_assign ctx v;
 				r
 			| AArray (ra,(at,vt),ridx) ->
@@ -2379,7 +2386,8 @@ and eval_expr ctx e =
 			(match get_access ctx e1 with
 			| ALocal (v,l) ->
 				let r = eval_to ctx { e with eexpr = TBinop (bop,e1,e2) } (to_type ctx e1.etype) in
-				op ctx (OMov (l, r));
+				push_op ctx (OMov (l, r));
+				add_assign ctx v;
 				r
 			| acc ->
 				gen_assign_op ctx acc e1 (fun r ->
@@ -2513,6 +2521,7 @@ and eval_expr ctx e =
 		let ret = jump_back ctx in
 		let j = jump_expr ctx cond false in
 		ignore(eval_expr ctx eloop);
+		set_curpos ctx { e.epos with pmin = e.epos.pmax };
 		ret();
 		j();
 		List.iter (fun f -> f (current_pos ctx)) ctx.m.mbreaks;
@@ -2532,6 +2541,7 @@ and eval_expr ctx e =
 		let j = jump_expr ctx cond false in
 		start();
 		ignore(eval_expr ctx eloop);
+		set_curpos ctx { e.epos with pmin = e.epos.pmax };
 		ret();
 		j();
 		List.iter (fun f -> f (current_pos ctx)) ctx.m.mbreaks;
@@ -3245,7 +3255,22 @@ let generate_type ctx t =
 		List.iter (generate_static ctx c) c.cl_ordered_statics;
 		(match c.cl_constructor with
 		| None -> ()
-		| Some f -> generate_member ctx c f);
+		| Some f ->
+			let merge_inits e =
+				match e with
+				| Some ({ eexpr = TFunction ({ tf_expr = { eexpr = TBlock el } as ef } as f) } as e) ->
+					let merge ei =
+						let rec loop ei =
+							let ei = Type.map_expr loop ei in
+							{ ei with epos = e.epos }
+						in
+						if ei.epos.pmin < e.epos.pmin || ei.epos.pmax > e.epos.pmax then loop ei else ei
+					in
+					Some { e with eexpr = TFunction({ f with tf_expr = { ef with eexpr = TBlock (List.map merge el) }}) }
+				| _ ->
+					e
+ 			in
+			generate_member ctx c { f with cf_expr = merge_inits f.cf_expr });
 		List.iter (generate_member ctx c) c.cl_ordered_fields;
 	| TEnumDecl _ | TTypeDecl _ | TAbstractDecl _ ->
 		()
