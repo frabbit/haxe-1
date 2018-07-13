@@ -157,7 +157,7 @@ class TypeTools {
 	}
 
 
-	#if (macro || display)
+	#if (neko || eval || display)
 
 	/**
 		Follows all typedefs of `t` to reach the actual type.
