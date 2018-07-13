@@ -113,3 +113,8 @@ tests/unit/pypy3-*
 tmp.tmp
 
 dev-display.hxml
+
+hk-test/cpp
+hk-test/java
+hk-test/hl
+hk-test/main.n
