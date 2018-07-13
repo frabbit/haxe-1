@@ -1602,8 +1602,10 @@ let macro_api ccom get_api =
 			with Exit -> vnull
 		);
 		"duplicate_type", vfun1 (fun t ->
-			let t = decode_type t in
-			encode_type (dup t)
+			try
+				let t = decode_type t in
+				encode_type (dup t)
+			with Exit -> vnull
 		);
 		"unify", vfun2 (fun t1 t2 ->
 			let e1 = mk (TObjectDecl []) (decode_type t1) Globals.null_pos in

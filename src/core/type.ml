@@ -982,6 +982,7 @@ and unapply_in1 t ta  =
 	unapply_in1_custom t ta false
 
 and unapply_in1_custom t ta right =
+	let t_orig = t in
 	let unapply_in1 t ta = unapply_in1_custom t ta right in
 	(* replaces/unnapplies the leftmost In type and returns the unapplied list and a flag which
 	   indicates if an In type was really replaced
@@ -991,9 +992,12 @@ and unapply_in1_custom t ta right =
 			| t :: [] when is_in_type t -> ta::[]
 			| t :: tl when is_in_type t ->
 				let only_trailing_ins = List.for_all is_in_type tl in
-				if not only_trailing_ins && (not right) then
+				if not only_trailing_ins && (not right) then begin
+					Printf.printf "%s\n" (s_type (print_context()) t_orig);
+					Printf.printf "%s\n" (s_type (print_context()) t);
+					Printf.printf "%s\n" (s_type (print_context()) ta);
 					assert false
-				else
+				end else
 					ta::tl
 			| t :: tl when not (is_in_type t) ->
 				(* t could be Option<_> *)
