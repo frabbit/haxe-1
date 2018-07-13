@@ -3835,11 +3835,13 @@ let make_generic ctx ps pt p =
 	in
 	let name =
 		String.concat "_" (List.map2 (fun (s,_) t ->
+			let rec subst s = "_" ^ string_of_int (Char.code (String.get (Str.matched_string s) 0)) ^ "_" in
+			let ident_safe = Str.global_substitute (Str.regexp "[^a-zA-Z0-9_]") subst in
 			let s_type_path_underscore (p,s) = match p with [] -> s | _ -> String.concat "_" p ^ "_" ^ s in
 			let rec loop top t = match follow t with
 				| t when is_in_type t -> "_hx_In_"
 				| t when is_of_type t -> "_hx_Of_"
-				| TInst(c,tl) -> (s_type_path_underscore c.cl_path) ^ (loop_tl tl)
+				| TInst(c,tl) -> (ident_safe (s_type_path_underscore c.cl_path)) ^ (loop_tl tl)
 				| TEnum(en,tl) -> (s_type_path_underscore en.e_path) ^ (loop_tl tl)
 				| TAbstract(a,tl) -> (s_type_path_underscore a.a_path) ^ (loop_tl tl)
 				| _ when not top -> "_" (* allow unknown/incompatible types as type parameters to retain old behavior *)
