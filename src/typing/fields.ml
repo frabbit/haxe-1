@@ -457,13 +457,6 @@ let rec type_field ?(resume=false) ctx e i p mode =
 		ctx.opened <- x :: ctx.opened;
 		r := Some t;
 		field_access ctx mode f (FAnon f) (Type.field_type f) e p
-	(*| TApply(t1, t2) ->
-		begin try
-			let t = unapply_in_constraints_in_apply t1 t2 in
-			if is_apply_type t then raise Not_found else type_field ~resume:true ctx {e with etype = t} i p mode
-		with Not_found ->
-			try using_field ctx mode e i p with Not_found -> no_field()
-		end*)
 	| TAbstract({ a_path=([],"-Apply")}, [t1; t2]) ->
 		begin try
 			let t = unapply_in_constraints_in_apply t1 t2 in

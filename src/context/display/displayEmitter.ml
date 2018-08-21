@@ -75,8 +75,6 @@ let completion_type_of_type ctx ?(values=PMap.empty) t =
 				| None -> CTMono
 				| Some t -> from_type values t
 			end
-		(*| TApply(t1,t2)->
-			from_type values (apply_type_as_abstract t1 t2)*)
 		| TLazy r ->
 			from_type values (lazy_type r)
 		| TInst({cl_kind = KTypeParameter _} as c,_) ->
