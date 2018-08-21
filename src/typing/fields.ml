@@ -519,12 +519,6 @@ let rec type_field ?(resume=false) ctx e i p mode =
 			| MSet, _ ->
 				error "This operation is unsupported" p)
 		with Not_found -> try
-			match a,pl with
-			| {a_path=[], "-Of"},[tm;ta] ->
-				let t = unapply_in_constraints tm ta in
-				if is_of_type t then raise Not_found else type_field ~resume:true ctx {e with etype = t} i p mode
-			| _ -> raise Not_found
-		with Not_found -> try
 			if does_forward a false then
 				type_field ~resume:true ctx {e with etype = apply_params a.a_params pl a.a_this} i p mode
 			else

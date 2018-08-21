@@ -1749,16 +1749,6 @@ let macro_api ccom get_api =
 			enable_type_log (decode_bool b);
 			vnull
 		);
-		"normalize_of", vfun1 (fun t ->
-			let t = decode_type t in
-			encode_type (normalize_of_type t)
-		);
-		"reduce_of", vfun1 (fun t ->
-			let t = decode_type t in
-			let t2 = reduce_of t in
-			encode_type t2
-			(*encode_obj OContext_getPosInfos ["min",vint p.Globals.pmin;"max",vint p.Globals.pmax;"file",encode_string p.Globals.pfile]*)
-		);
 		"make_position", vfun3 (fun min max file ->
 			encode_pos { Globals.pmin = decode_int min; Globals.pmax = decode_int max; Globals.pfile = decode_string file }
 		);

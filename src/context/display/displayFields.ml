@@ -122,9 +122,9 @@ let collect ctx e_ast e dk with_type p =
 				end else
 					acc
 			) fields items
-		| TAbstract({a_path=[], "-Of"} as a,([tm;ta] as pl) ) ->
-			let t = unapply_in_constraints tm ta in
-			if is_of_type t then PMap.empty else loop items t
+		| TApply(t1, t2) ->
+			let t = unapply_in_constraints_in_apply t1 t2 in
+			if is_apply_type t then PMap.empty else loop items t
 		| TAbstract({a_impl = Some c} as a,tl) ->
 			(* Abstracts should show all their @:impl fields minus the constructor. *)
 			let items = List.fold_left (fun acc cf ->

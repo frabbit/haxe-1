@@ -80,54 +80,8 @@ let rec get_underlying_type a pl =
 	with Not_found ->
 		if Meta.has Meta.CoreType a.a_meta then
 			t_dynamic
-		else match a.a_path,pl with
-				| ([],"-Of"),[tm;ta] ->
-					(*match tm with
-					| TInst({ cl_kind = KGenericInstance(_,_)},[]) ->
-						t_dynamic
-					| _ ->
-
-						(try
-							let x = unapply_in1 tm (reduce_of ta) in
-							if is_of_type x then t_dynamic else follow x
-						with _ -> t_dynamic)*)
-					(*let st = s_type (print_context()) in
-					Printf.printf "1: %s\n" (st (mk_of tm ta));*)
-					begin match try_reduce_of (mk_of tm ta) with
-					| Some (TAbstract({ a_path=([],"-Of")},[tm;_]) as t) ->
-						(*let st = s_type (print_context()) in
-						Printf.printf "2: %s\n" (st t);*)
-						begin match follow tm with
-						| TInst({ cl_kind = KGenericInstance(_,_)},[]) ->
-							t_dynamic
-						| _ -> t_dynamic
-						end
-					| Some t ->
-						begin match follow t with
-						| TInst({ cl_kind = KGenericInstance(_,tl)},[]) as t ->
-							t_dynamic
-							(*if List.exists (fun t -> is_in_type t) tl then
-								t_dynamic
-							else
-								t_dynamic*)
-
-						| _ ->
-							(*let st = s_type (print_context()) in
-							Printf.printf "3: %s\n" (st t);*)
-							follow t
-						end
-					| None -> t_dynamic
-					end
-
-					(*let x, applied = unapply_in tm (reduce_of ta) in
-					if applied then
-						follow x
-					else
-						(* not reducible Of type like Of<M, Int> or Of<Of<M, A>, B>, fall
-						   back to dynamic *)
-						t_dynamic*)
-				| _ ->
-					maybe_recurse (apply_params a.a_params pl a.a_this)
+		else
+			maybe_recurse (apply_params a.a_params pl a.a_this)
 
 
 let rec follow_with_abstracts t = match follow t with
