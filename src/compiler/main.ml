@@ -457,6 +457,7 @@ and usage_string arg_spec usage =
 	) (List.filter (fun (cat', _, _, _, _, _) -> (if List.mem cat' cat_order then cat' else "Miscellaneous") = cat) args))) cats)))
 
 and init ctx =
+	init_type_log ();
 	let usage = Printf.sprintf
 		"Haxe Compiler %s - (C)2005-2018 Haxe Foundation\nUsage: haxe%s <target> [options] [hxml files...]\n\n"
 		s_version (if Sys.os_type = "Win32" then ".exe" else "")

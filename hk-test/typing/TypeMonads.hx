@@ -64,9 +64,9 @@ class TypeMonads {
 		var arrayMonad = new ArrayMonad();
 		var optionMonad = new OptionMonad();
 
-		Log.enable(true);
+		//Log.enable(true);
 		withMonad(a, _ -> true, _ -> ["foo"], arrayMonad);
-		Log.enable(false);
+		//Log.enable(false);
 		withMonad(b, _ -> true, _ -> Some("foo"), optionMonad);
 
 	}

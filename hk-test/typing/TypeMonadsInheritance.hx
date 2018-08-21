@@ -68,9 +68,9 @@ class TypeMonadsInheritance {
 	public static function main () {
 		var a = new Array1([1,2,3]);
 		var b = new Option1(Some(1));
-		Log.enable(true);
+		//Log.enable(true);
 		withMonad(a, _ -> true, _ -> new Array1(["foo"]));
-		Log.enable(false);
+		//Log.enable(false);
 		withMonad(b, _ -> true, _ -> new Option1(Some("foo")));
 
 	}

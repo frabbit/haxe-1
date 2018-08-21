@@ -140,6 +140,8 @@ class TypeTools {
 				toComplexType(f());
 			case TAbstract(_.get() => baseType, params):
 				TPath(toTypePath(baseType, params));
+			case TApply(t1, t2):
+				throw "not implemented";
 			default:
 				throw "Invalid type";
 		}
@@ -294,6 +296,8 @@ class TypeTools {
 				}
 			case TEnum(_, []) | TInst(_, []) | TType(_, []):
 				t;
+			case TApply(t1, t2):
+				TApply(f(t1), f(t2));
 			case TEnum(en, tl):
 				TEnum(en, tl.map(f));
 			case TInst(cl, tl):
@@ -342,6 +346,9 @@ class TypeTools {
 				if (t != t2) f(t2);
 			case TLazy(ft):
 				f(ft());
+			case TApply(t1, t2):
+				f(t1);
+				f(t2);
 			case TAnonymous(an):
 				for (field in an.get().fields) f(field.type);
 			case TFun(args, ret):

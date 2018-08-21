@@ -24,6 +24,7 @@ private typedef Container<M,T> = {
 class TypeTypedef {
 	static function main () {
 
+
 		//Log.enable(true);
 		var a:Mappable<Array<_>,Int> = [1];
 		//Log.enable(false);
@@ -43,7 +44,9 @@ class TypeTypedef {
 	}
 
 	public static function test () {
+
 		var a = [1,2,3];
+
 		var r = mapAndFilter(a);
 		trace(r.length);
 

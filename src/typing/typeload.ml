@@ -221,6 +221,21 @@ let rec load_instance' ctx (t,p) allow_no_params =
 				let t = { t with tparams = [p1] } in
 				load_instance ctx (t,p) allow_no_params
 			| tps ->
+				let mk_apply tm ta =
+					let path = CTPath tm in
+					let tp = TPType (path,p) in
+					let params = [tp; ta] in
+					{ tpackage=[]; tname="-Apply"; tsub=Some("-Apply"); tparams = params}
+				in
+				let rec loop tps =
+					match tps with
+					| [tp] -> mk_apply { t with tparams = []} tp
+					| tp :: tps -> mk_apply (loop tps) tp
+					| [] -> assert false
+				in
+				let t = loop (List.rev tps) in
+				load_instance ctx (t, p) allow_no_params
+			| tps ->
 				let mk_of tm ta =
 					let path = CTPath tm in
 					let tp = TPType (path,p) in
@@ -238,8 +253,13 @@ let rec load_instance' ctx (t,p) allow_no_params =
 		end
 	with Not_found ->
 		if t.tname = "HKOf" then
-			let t = { t with tname = "-Of"; tpackage = []; tsub = Some("-Of") } in
+			let t = { t with tname = "-Apply"; tpackage = []; tsub = Some("-Apply") } in
 			load_instance ctx (t, p) allow_no_params
+		else if t.tname = "HKOf" then
+			let t = { t with tname = "-Of"; tpackage = []; tsub = Some("-Of") } in
+			error "Don't use HKOf" p;
+			load_instance ctx (t, p) allow_no_params
+
 		else if t.tname = "HKMono" then
 			let tr = ref None in
 			TMono tr
@@ -247,6 +267,16 @@ let rec load_instance' ctx (t,p) allow_no_params =
 			!t_in
 		else begin
 			let types, path, f, is_generic, is_generic_build = match t with
+				| {tname = "-Apply"; tsub = Some("-Apply"); tpackage = []} ->
+					let (ap_path, ap_params) = apply_type_params in
+					let apply_type params = match params with
+						| a::b::[] ->
+							TApply(a,b)
+						| tl ->
+							let len = (List.length tl) in
+							error ("Invalid number of parameters for Apply (" ^ (string_of_int len) ^ ")") p
+					in
+					ap_params, ap_path, apply_type, false, false
 				| {tname = "-Of"; tsub = Some("-Of"); tpackage = []} ->
 					let a = of_type in
 					let build_of params =

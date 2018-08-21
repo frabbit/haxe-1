@@ -218,7 +218,7 @@ and mark_t dce p t =
 			List.iter (mark_t dce p) pl;
 			if not (Meta.has Meta.CoreType a.a_meta) then
 				mark_t dce p (Abstract.get_underlying_type a pl)
-		| TLazy _ | TDynamic _ | TType _ | TAnon _ | TMono _ -> ()
+		| TLazy _ | TDynamic _ | TType _ | TAnon _ | TMono _ | TApply _ -> ()
 		end;
 		dce.t_stack <- List.tl dce.t_stack
 	end

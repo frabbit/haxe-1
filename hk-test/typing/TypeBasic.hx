@@ -11,6 +11,7 @@ enum EThree<A,B,C> {}
 class TypeBasic {
 	static function main () {
 
+
 		var c:HKOf<Array<_>, Int> = (null:Array<Int>);
     	var c:HKOf<HKOf<Either<_,_>, Int>, Int> = (null:Either<Int, Int>);
 
@@ -99,14 +100,15 @@ class TypeBasic {
 
 		var a:HKOf<HKOf<_ -> _ -> Void, Int>, String> = (null:HKOf<HKOf<HKMono, Int>, String>);
 
+		//Log.enable(true);
+		//var a:Array<Array<Int>> = (null:HKOf<HKOf<HKMono, HKMono>, Int>);
+		//Log.enable(false);
+		//var a:Array<Array<Array<Int>>> = (null:HKOf<HKOf<HKOf<HKMono, HKMono>, HKMono>, Int>);
 
-		var a:Array<Array<Int>> = (null:HKOf<HKOf<HKMono, HKMono>, Int>);
-		var a:Array<Array<Array<Int>>> = (null:HKOf<HKOf<HKOf<HKMono, HKMono>, HKMono>, Int>);
 
+		//var a:Array<Array<Array<Array<Int>>>> = (null:HKOf<HKOf<HKOf<HKOf<HKMono, HKMono>, HKMono>, HKMono>, Int>);
 
-		var a:Array<Array<Array<Array<Int>>>> = (null:HKOf<HKOf<HKOf<HKOf<HKMono, HKMono>, HKMono>, HKMono>, Int>);
-
-		var a:Array<Array<Array<Array<Array<Array<Int>>>>>> = (null:HKOf<HKOf<HKOf<HKOf<HKOf<HKOf<HKMono, HKMono>, HKMono>, HKMono>,HKMono>, HKMono>, Int>);
+		//var a:Array<Array<Array<Array<Array<Array<Int>>>>>> = (null:HKOf<HKOf<HKOf<HKOf<HKOf<HKOf<HKMono, HKMono>, HKMono>, HKMono>,HKMono>, HKMono>, Int>);
 
 		var a:Array<Array<_>> = (null:HKOf<Array<_>, HKMono>);
 
@@ -120,7 +122,7 @@ class TypeBasic {
 
 		//var a:(Int -> Void)->Void = (null:HKOf<HKMono, _ -> Void>);
 
-		var a:HKOf<HKMono, Int -> Void> = (null:(Int -> Void)->Void);
+		//var a:HKOf<HKMono, Int -> Void> = (null:(Int -> Void)->Void);
 
 		//var a:HKOf<HKOf<Array<_>, Int>, String> = (null:HKOf<Array<_>, Int>);
 
@@ -128,8 +130,8 @@ class TypeBasic {
 
 
 
-		Log.enable(true);
-		Log.enable(false);
+		//Log.enable(true);
+		//Log.enable(false);
 
 	}
 

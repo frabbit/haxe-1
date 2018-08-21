@@ -7,10 +7,11 @@ import typing.TypeEitherT;
 import typing.TypeFuncT;
 import typing.TypeAllTypes;
 import typing.TypeMonadsInheritance;
+import typing.TypeNestedImplements;
 class Main {
 
 	public static function main () {
-
+		//Log.enable(true);
 
 		//Macros.test();
 
