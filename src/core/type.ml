@@ -1,20 +1,20 @@
 (*
-The Haxe Compiler
-Copyright (C) 2005-2018  Haxe Foundation
+	The Haxe Compiler
+	Copyright (C) 2005-2018  Haxe Foundation
 
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License
-as published by the Free Software Foundation; either version 2
-of the License, or (at your option) any later version.
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
 
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 *)
 
 open Ast
@@ -344,12 +344,6 @@ and build_state =
 	| Building of tclass list
 	| BuildMacro of (unit -> unit) list ref
 
-and lifted_type =
-	| LTNested of t * (lifted_type list)
-	| LTFunc of t * (lifted_type list) * (lifted_type option)
-	| LTLeaf of t
-	| LTNestedMono of t * (lifted_type list)
-
 type basic_types = {
 	mutable tvoid : t;
 	mutable tint : t;
@@ -451,10 +445,6 @@ let log_type prefix (t:t) =
 let log_type_forced prefix (t:t) =
 	log_type' prefix t ~force:true
 
-
-
-
-
 let log_object prefix t f =
 	let enabled = !log_enabled in
 	if enabled then
@@ -491,9 +481,9 @@ let rec t_dynamic = TDynamic t_dynamic
 let mk_anon fl = TAnon { a_fields = fl; a_status = ref Closed; }
 
 (* We use this for display purposes because otherwise we never see the Dynamic type that
-is defined in StdTypes.hx. This is set each time a typer is created, but this is fine
-because Dynamic is the same in all contexts. If this ever changes we'll have to review
-how we handle this. *)
+	is defined in StdTypes.hx. This is set each time a typer is created, but this is fine
+	because Dynamic is the same in all contexts. If this ever changes we'll have to review
+	how we handle this. *)
 let t_dynamic_def = ref t_dynamic
 
 let tfun pl r = TFun (List.map (fun t -> "",false,t) pl,r)
@@ -603,30 +593,6 @@ let null_abstract = {
 	a_array = [];
 	a_resolve = None;
 }
-
-let apply_type_params =
-	let mk_tp x =
-		let c = { null_class with
-			cl_kind = KTypeParameter [];
-			cl_path = (["-Apply"],x);
-		} in
-		x, TInst (c, [])
-	in
-	let ap_path = ([], "-Apply") in
-	let ap_params = [mk_tp "M"; mk_tp "A"] in
-	(ap_path, ap_params)
-
-let apply_type_as_abstract t1 t2 =
-	let mk_tp x =
-		let c = { null_class with
-			cl_kind = KTypeParameter [];
-			cl_path = (["-ApplyAbstract"],x);
-		} in
-		x, TInst (c, [])
-	in
-	let a_path = ([], "-ApplyAbstract") in
-	let a_params = [mk_tp "M"; mk_tp "A"] in
-	TAbstract({ null_abstract with a_path = a_path; a_params = a_params; a_private = false }, [t1;t2])
 
 let apply_type =
 	let mk_tp x =
@@ -851,7 +817,6 @@ and t_in_abstract =
 
 and t_in = ref t_in_abstract
 
-
 and from_apply t =
 	begin match (from_apply_option t) with
 	| Some t -> t
@@ -883,10 +848,6 @@ and unapply_right_1 (tl:t list) = match (tl) with
 			(fst x), (!t_in)::(snd x)
 		else
 			(Some t), (!t_in)::tl)
-
-
-
-
 
 and to_apply t = match to_apply_option t with
 	| Some t -> t
@@ -929,20 +890,20 @@ and to_apply_option t =
 	| t -> None
 	end
 
-and apply_left tl tx = match tl with
-| [] -> None
-| t :: tl ->
-if is_in_type t then
-	Some(tx :: tl)
-else begin
-	match apply_left tl tx with
-	| Some tl -> Some (t :: tl)
-	| None -> None
-end
+and apply_left_in_params tl tx = match tl with
+	| [] -> None
+	| t :: tl ->
+		if is_in_type t then
+			Some(tx :: tl)
+		else begin
+			match apply_left_in_params tl tx with
+			| Some tl -> Some (t :: tl)
+			| None -> None
+		end
 
-and apply_do_apply_left t1 t2 =
+and apply_left t1 t2 =
 	let apply_params tl t2 mk =
-		begin match apply_left tl t2 with
+		begin match apply_left_in_params tl t2 with
 		| Some t -> Some (mk t)
 		| None -> None
 		end
@@ -979,10 +940,11 @@ and apply_do_apply_left t1 t2 =
 		apply_params tl t2 mk
 	| _ -> None
 	end
+
 and from_apply_option t =
 	begin match follow1 t with
 	| TAbstract({a_path=[],"-Apply"},[t1;t2]) ->
-		apply_do_apply_left t1 t2
+		apply_left t1 t2
 	| t -> Some(t)
 	end
 
@@ -995,7 +957,6 @@ and is_apply_type t = match t with
 		| _ -> false)
 	| t -> false
 
-
 and unapply_in_constraints_in_apply tm ta =
 	let rec loop t =
 		match follow t with
@@ -1005,7 +966,7 @@ and unapply_in_constraints_in_apply tm ta =
 			let new_kind = match c.cl_kind with
 			| KTypeParameter tp ->
 				let unapply t =
-					let t1 = apply_do_apply_left t ta in
+					let t1 = apply_left t ta in
 					begin match t1 with
 					| Some t1 -> t1
 					| None -> t

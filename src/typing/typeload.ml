@@ -268,7 +268,7 @@ let rec load_instance' ctx (t,p) allow_no_params =
 		else begin
 			let types, path, f, is_generic, is_generic_build = match t with
 				| {tname = "-Apply"; tsub = Some("-Apply"); tpackage = []} ->
-					let (ap_path, ap_params) = apply_type_params in
+					let a = apply_type in
 					let apply_type params = match params with
 						| a::b::[] ->
 							mk_apply_type a b
@@ -276,7 +276,7 @@ let rec load_instance' ctx (t,p) allow_no_params =
 							let len = (List.length tl) in
 							error ("Invalid number of parameters for Apply (" ^ (string_of_int len) ^ ")") p
 					in
-					ap_params, ap_path, apply_type, false, false
+					a.a_params, a.a_path, apply_type, false, false
 				| _ ->
 					let mt = load_type_def ctx p t in
 					let is_generic,is_generic_build = match mt with
