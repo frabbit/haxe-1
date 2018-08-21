@@ -62,7 +62,6 @@ type t =
 	| TDynamic of t
 	| TLazy of tlazy ref
 	| TAbstract of tabstract * tparams
-	(*| TApply of t * t*)
 
 and tlazy =
 	| LAvailable of t
@@ -641,7 +640,6 @@ let apply_type =
 	let a_params = [mk_tp "M"; mk_tp "A"] in
 	{ null_abstract with a_path = a_path; a_params = a_params; a_private = false }
 
-
 let mk_apply_type t1 t2 = TAbstract(apply_type, [t1;t2])
 
 let add_dependency m mdep =
@@ -687,8 +685,6 @@ let map loop t =
 		t
 	| TEnum (e,tl) ->
 		TEnum (e, List.map loop tl)
-	(*| TApply(t1, t2) ->
-		TApply( loop t1, loop t2)*)
 	| TInst (c,tl) ->
 		TInst (c, List.map loop tl)
 	| TType (t2,tl) ->
@@ -758,8 +754,6 @@ let apply_params cparams params t =
 			(match tl with
 			| [] -> t
 			| _ -> TEnum (e,List.map loop tl))
-		(*| TApply (t1,t2) ->
-			TApply(loop t1, loop t2)*)
 		| TType (t2,tl) ->
 			(match tl with
 			| [] -> t
@@ -825,10 +819,6 @@ let rec follow t =
 		(match from_apply_option t with
 		| Some t -> follow t
 		| None -> t)
-	(*| TApply(_, _) ->
-		(match from_apply_option t with
-		| Some t -> follow t
-		| None -> t)*)
 	| TLazy f ->
 		follow (lazy_type f)
 	| TType (t,tl) ->
@@ -910,7 +900,6 @@ and to_apply_option t =
 		end
 	in
 	begin match follow1 t with
-	(*| TApply (_,_) -> *)
 	| TAbstract({a_path=[],"-Apply"},[_;_]) -> (Some t)
 	| TEnum (_, [] ) | TInst (_, [] ) | TAbstract (_, []) -> None
 	| TEnum (e, tl) ->
@@ -988,25 +977,17 @@ and apply_do_apply_left t1 t2 =
 		let params_rev = ret::(List.rev args) in
 		let tl = List.rev params_rev in
 		apply_params tl t2 mk
-	(*| TApply(_, _) ->
-		begin match from_apply_option t1 with
-		| Some t -> from_apply_option (TApply(t, t2))
-		| None -> None
-		end*)
 	| _ -> None
 	end
 and from_apply_option t =
 	begin match follow1 t with
 	| TAbstract({a_path=[],"-Apply"},[t1;t2]) ->
 		apply_do_apply_left t1 t2
-	(*| TApply(t1, t2) ->
-		apply_do_apply_left t1 t2*)
 	| t -> Some(t)
 	end
 
 and is_apply_type t = match t with
 	| TAbstract({a_path=[],"-Apply"},[_;_]) -> true
-	(*| TApply(_,_) -> true*)
 	| TLazy f -> is_apply_type (lazy_type f)
 	| TMono r ->
 		(match !r with
@@ -1018,8 +999,6 @@ and is_apply_type t = match t with
 and unapply_in_constraints_in_apply tm ta =
 	let rec loop t =
 		match follow t with
-		(*| TApply (tm1, ta1) ->
-			loop (unapply_in_constraints_in_apply tm1 ta1)*)
 		| TAbstract({a_path=[],"-Apply"},[tm1;ta1]) ->
 			loop (unapply_in_constraints_in_apply tm1 ta1)
 		| TInst (c,params) ->
@@ -1051,7 +1030,6 @@ and link e a b =
 		| TEnum (_,tl) -> List.exists loop tl
 		| TInst (_,tl) | TType (_,tl) | TAbstract (_,tl) -> List.exists loop tl
 		| TFun (tl,t) -> List.exists (fun (_,_,t) -> loop t) tl || loop t
-		(*| TApply(t1, t2) -> loop t1 || loop t2*)
 		| TDynamic t2 ->
 			if t == t2 then
 				false
@@ -1389,20 +1367,12 @@ and s_type ctx t =
 	| TType (t,tl) ->
 		s_type_path t.t_path ^ s_type_params ctx tl
 	(*useful for debugging*)
-	| TAbstract({a_path=[],"-Apply"},[t1;t2]) ->
-		"Apply(" ^ (s_type ctx t1) ^ ", " ^ (s_type ctx t2) ^ ")"
+	(*| TAbstract({a_path=[],"-Apply"},[t1;t2]) ->
+		"Apply(" ^ (s_type ctx t1) ^ ", " ^ (s_type ctx t2) ^ ")"*)
 	| TAbstract({a_path=[],"-Apply"},[t1;t2]) as t ->
 		(match from_apply_option t with
 		| Some t -> s_type ctx t
 		| None -> (s_type ctx t1) ^ "<" ^ (s_type ctx t2) ^ ">")
-
-	(*| TApply(t1, t2) as t ->
-		"Apply(" ^ (s_type ctx t1) ^ ", " ^ (s_type ctx t2) ^ ")"
-
-	| TApply(t1, t2) as t ->
-		(match from_apply_option t with
-		| Some t -> s_type ctx t
-		| None -> (s_type ctx t1) ^ "<" ^ (s_type ctx t2) ^ ">")*)
 
 	| TAbstract (a,tl) ->
 		s_type_path a.a_path ^ s_type_params ctx tl
@@ -2257,17 +2227,6 @@ let rec type_eq param a b =
 			type_eq param b1 b2;
 			end
 		end
-	(*| TApply(a1, b1), TApply(a2, b2) ->
-		begin match from_apply_option a, from_apply_option b with
-		| Some a, Some b -> type_eq param a b
-		| Some _, None -> error [cannot_unify a b]
-		| None, Some _ -> error [cannot_unify a b]
-		| None, None ->
-			begin
-			type_eq param a1 a2;
-			type_eq param b1 b2;
-			end
-		end*)
 	| a, TAbstract({a_path=[],"-Apply"},[_;_]) ->
 		begin match to_apply_option a with
 		| Some a -> type_eq param a b
@@ -2282,20 +2241,6 @@ let rec type_eq param a b =
 			| Some a -> type_eq param a b
 			| None -> error [cannot_unify a b]
 		end
-	(*| a, TApply(_, _) ->
-		begin match to_apply_option a with
-		| Some a -> type_eq param a b
-		| None -> match from_apply_option b with
-			| Some b -> type_eq param a b
-			| None -> error [cannot_unify a b]
-		end
-	| TApply(_, _), b ->
-		begin match to_apply_option b with
-		| Some b -> type_eq param a b
-		| None -> match from_apply_option a with
-			| Some a -> type_eq param a b
-			| None -> error [cannot_unify a b]
-		end*)
 
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) ->
 		if a1 != a2 && not (param = EqCoreType && a1.a_path = a2.a_path) then error [cannot_unify a b];
@@ -2398,10 +2343,6 @@ let rec unify a b =
 		unify_apply a b
 	| _, TAbstract({a_path=[],"-Apply"},[_;_]) ->
 		unify_apply a b
-	(*| TApply(_, _), _ ->
-		unify_apply a b
-	| _, TApply(_, _) ->
-		unify_apply a b*)
 	| TType (t,tl) , _ ->
 		rec_stack unify_stack (a,b)
 			(fun(a2,b2) -> fast_eq a a2 && fast_eq b b2)
@@ -2700,18 +2641,6 @@ and unify_apply a b =
 				unify b1 b2;
 				log_message "try unify_apply2 success" "true";
 			end
-		(*| (Some TApply(a1, b1)), (Some TApply(a2, b2)), _, _ ->
-			begin
-				log_type "try unify_apply2 A" a;
-				log_type "try unify_apply2 A1" a1;
-				log_type "try unify_apply2 B1" b1;
-				log_type "try unify_apply2 B" b;
-				log_type "try unify_apply2 A2" a2;
-				log_type "try unify_apply2 B2" b2;
-				unify a1 a2;
-				unify b1 b2;
-				log_message "try unify_apply2 success" "true";
-			end*)
 		| _ ->
 			begin
 
@@ -2909,7 +2838,6 @@ and unify_type_params a b tl1 tl2 =
 					loop t1 t2
 			with Unify_error l ->
 				let st = s_type (print_context()) in
-				(*Printf.printf "INVARIANT %s => %s | %b => %b | %b\n" (st t1) (st t2) (is_of_type t1) (is_of_type t2) (t1 == t2) ;*)
 				let err = cannot_unify a b in
 				error (err :: (Invariant_parameter (t1,t2)) :: l)
 	) tl1 tl2
