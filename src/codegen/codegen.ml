@@ -99,9 +99,9 @@ let update_cache_dependencies t =
 			| _ -> ())
 		| TLazy f ->
 			check_t m (lazy_type f)
-		| TApply(t1,t2) ->
+		(*| TApply(t1,t2) ->
 			check_t m t1;
-			check_t m t2;
+			check_t m t2;*)
 		| TDynamic t ->
 			if t == t_dynamic then
 				()

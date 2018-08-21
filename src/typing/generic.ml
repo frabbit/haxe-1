@@ -40,7 +40,7 @@ let make_generic ctx ps pt p =
 			let s_type_path_underscore (p,s) = match p with [] -> s | _ -> String.concat "_" p ^ "_" ^ s in
 			let rec loop top t = match follow t with
 				| t when is_in_type t -> "_hx_In_"
-				| t when is_of_type t -> "_hx_Of_"
+				| t when is_apply_type t -> "_hx_Apply_"
 				| TInst(c,tl) -> (match c.cl_kind with
 					| KExpr e -> ident_safe (Ast.s_expr e)
 					| _ -> (ident_safe (s_type_path_underscore c.cl_path)) ^ (loop_tl tl))

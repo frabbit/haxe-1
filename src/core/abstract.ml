@@ -41,7 +41,7 @@ let underlying_type_stack = ref []
 
 let rec get_underlying_type a pl =
 	let maybe_recurse t =
-		if is_of_type t || is_of_type (follow t) then
+		if is_apply_type t || is_apply_type (follow t) then
 			t_dynamic
 		else begin
 			underlying_type_stack := (TAbstract(a,pl)) :: !underlying_type_stack;

@@ -271,18 +271,12 @@ let rec load_instance' ctx (t,p) allow_no_params =
 					let (ap_path, ap_params) = apply_type_params in
 					let apply_type params = match params with
 						| a::b::[] ->
-							TApply(a,b)
+							mk_apply_type a b
 						| tl ->
 							let len = (List.length tl) in
 							error ("Invalid number of parameters for Apply (" ^ (string_of_int len) ^ ")") p
 					in
 					ap_params, ap_path, apply_type, false, false
-				| {tname = "-Of"; tsub = Some("-Of"); tpackage = []} ->
-					let a = of_type in
-					let build_of params =
-						TAbstract (a, params)
-					in
-					a.a_params, a.a_path, build_of, false, false
 				| _ ->
 					let mt = load_type_def ctx p t in
 					let is_generic,is_generic_build = match mt with

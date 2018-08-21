@@ -1120,8 +1120,8 @@ and encode_type t =
 			loop (lazy_type f)
 		| TAbstract (a, pl) ->
 			8, [encode_abref a; encode_tparams pl]
-		| TApply(t1, t2) ->
-			9, [encode_type t1; encode_type t2]
+		(*| TApply(t1, t2) ->
+			9, [encode_type t1; encode_type t2]*)
 	in
 	let tag, pl = loop t in
 	encode_enum IType tag pl
@@ -1164,7 +1164,7 @@ and decode_type t =
 	| 6, [t] -> if t = vnull then t_dynamic else TDynamic (decode_type t)
 	| 7, [f] -> TLazy (decode_lazytype f)
 	| 8, [a; pl] -> TAbstract (decode_ref a, List.map decode_type (decode_array pl))
-	| 9, [t1; t2] -> TApply(decode_type t1, decode_type t2)
+	(*| 9, [t1; t2] -> TApply(decode_type t1, decode_type t2)*)
 	| _ -> raise Invalid_expr
 
 and decode_type_decl t =

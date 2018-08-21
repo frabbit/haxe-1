@@ -122,7 +122,10 @@ let collect ctx e_ast e dk with_type p =
 				end else
 					acc
 			) fields items
-		| TApply(t1, t2) ->
+		(*| TApply(t1, t2) ->
+			let t = unapply_in_constraints_in_apply t1 t2 in
+			if is_apply_type t then PMap.empty else loop items t*)
+		| TAbstract({a_path=[],"-Apply"},[t1;t2]) ->
 			let t = unapply_in_constraints_in_apply t1 t2 in
 			if is_apply_type t then PMap.empty else loop items t
 		| TAbstract({a_impl = Some c} as a,tl) ->

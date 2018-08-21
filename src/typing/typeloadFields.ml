@@ -565,6 +565,7 @@ let bind_type (ctx,cctx,fctx) cf r p =
 		match t with
 		| TFun (args,ret) -> is_full_type ret && List.for_all (fun (_,_,t) -> is_full_type t) args
 		| TMono r -> (match !r with None -> false | Some t -> is_full_type t)
+		(*| TApply(t1, t2) -> is_full_type t1*)
 		| TAbstract _ | TInst _ | TEnum _ | TLazy _ | TDynamic _ | TAnon _ | TType _ -> true
 	in
 	let force_macro () =

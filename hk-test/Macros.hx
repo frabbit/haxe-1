@@ -11,8 +11,8 @@ class Macros {
 	#if macro
 
 
-	static var reduceOf:Type->Type = @:privateAccess Context.load("reduce_of", 1);
-	static var normalizeOf:Type->Type = @:privateAccess Context.load("normalize_of", 1);
+	//static var reduceOf:Type->Type = @:privateAccess Context.load("reduce_of", 1);
+	//static var normalizeOf:Type->Type = @:privateAccess Context.load("normalize_of", 1);
 
 	#end
 

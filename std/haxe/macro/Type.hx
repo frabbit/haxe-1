@@ -102,8 +102,6 @@ enum Type {
 		@see https://haxe.org/manual/types-abstract.html
 	**/
 	TAbstract( t : Ref<AbstractType>, params : Array<Type> );
-
-	TApply( t1 : Type, t2 : Type );
 }
 
 /**
