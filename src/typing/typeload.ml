@@ -235,31 +235,11 @@ let rec load_instance' ctx (t,p) allow_no_params =
 				in
 				let t = loop (List.rev tps) in
 				load_instance ctx (t, p) allow_no_params
-			| tps ->
-				let mk_of tm ta =
-					let path = CTPath tm in
-					let tp = TPType (path,p) in
-					let params = [tp; ta] in
-					{ tpackage=[]; tname="-Of"; tsub=Some("-Of"); tparams = params}
-				in
-				let rec loop tps =
-					match tps with
-					| [tp] -> mk_of { t with tparams = []} tp
-					| tp :: tps -> mk_of (loop tps) tp
-					| [] -> assert false
-				in
-				let t = loop (List.rev tps) in
-				load_instance ctx (t, p) allow_no_params
 		end
 	with Not_found ->
-		if t.tname = "HKOf" then
+		if t.tname = "HKApply" then
 			let t = { t with tname = "-Apply"; tpackage = []; tsub = Some("-Apply") } in
 			load_instance ctx (t, p) allow_no_params
-		else if t.tname = "HKOf" then
-			let t = { t with tname = "-Of"; tpackage = []; tsub = Some("-Of") } in
-			error "Don't use HKOf" p;
-			load_instance ctx (t, p) allow_no_params
-
 		else if t.tname = "HKMono" then
 			let tr = ref None in
 			TMono tr

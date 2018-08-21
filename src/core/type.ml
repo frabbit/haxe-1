@@ -2150,10 +2150,6 @@ let rec type_eq param a b =
 			(fun (a2,b2) -> fast_eq a a2 && fast_eq b b2)
 			(fun() -> type_eq param a (apply_params t.t_params tl t.t_type))
 			(fun l -> error (cannot_unify a b :: l))
-	(*| TAbstract({a_path=[],"-In"},_), b when (param = EqLeftBoth) ->
-		()
-	| a, TInst({cl_path=[],"-In"},_) when (param = EqLeftBoth) ->
-		()*)
 	| TEnum (e1,tl1) , TEnum (e2,tl2) ->
 		if e1 != e2 && not (param = EqCoreType && e1.e_path = e2.e_path) then error [cannot_unify a b];
 		List.iter2 (type_eq param) tl1 tl2
@@ -2249,13 +2245,6 @@ let type_iseq a b =
 	with
 		Unify_error _ -> false
 
-let type_iseq2 a b =
-	try
-		type_eq EqRightDynamic a b;
-		true
-	with
-		Unify_error _ -> false
-
 let type_iseq_strict a b =
 	try
 		type_eq EqDoNotFollowNull a b;
@@ -2278,12 +2267,6 @@ let print_stacks() =
 	print_endline "abstract_cast_stack";
 	List.iter (fun (a,b) -> Printf.printf "\t%s , %s\n" (st a) (st b)) !abstract_cast_stack
 	end
-
-
-let isKTypeParameter t =
-	match follow1 t with
-	| TInst ({ cl_kind = KTypeParameter ctl } as c,pl) -> true
-	| _ -> false
 
 let rec unify a b =
 	if a == b then
@@ -2340,10 +2323,6 @@ let rec unify a b =
 		error [cannot_unify a b]
 	| TAbstract (a1,tl1) , TAbstract (a2,tl2) ->
 		unify_abstracts a b a1 tl1 a2 tl2
-	(*| TInst( { cl_kind = KGenericInstance(c, tl)}, []), b ->
-		unify (TInst(c, tl)) b
-	| a, TInst( { cl_kind = KGenericInstance(c, tl)}, []) ->
-		unify a (TInst(c, tl))*)
 	| TInst (c1,tl1) , TInst (c2,tl2) ->
 		let rec loop c tl =
 			let default () =
@@ -2393,7 +2372,6 @@ let rec unify a b =
 				| _ ->
 					default ()
 			)
-
 		in
 		if not (loop c1 tl1) then error [cannot_unify a b]
 	| TFun (l1,r1) , TFun (l2,r2) when List.length l1 = List.length l2 ->
@@ -2409,15 +2387,7 @@ let rec unify a b =
 			) l2 l1 (* contravariance *)
 		with
 			Unify_error l ->
-				let msg = if !i = 0 then
-					begin
-						log_type_forced "try ret A" a;
-						log_type_forced "try ret B" b;
-						log_type_forced "try ret R1" r1;
-						log_type_forced "try ret R2" r2;
-						"Cannot unify return types"
-					end
-				else "Cannot unify argument " ^ (string_of_int !i) in
+				let msg = if !i = 0 then "Cannot unify return types" else "Cannot unify argument " ^ (string_of_int !i) in
 				error (cannot_unify a b :: Unify_custom msg :: l))
 	| TInst (c,tl) , TAnon an ->
 		if PMap.is_empty an.a_fields then (match c.cl_kind with
@@ -2576,44 +2546,41 @@ let rec unify a b =
 		error [cannot_unify a b]
 
 and unify_apply a b =
-	let err str =
+	let err () =
 		let st = s_type (print_context ()) in
-		error [Unify_custom (str ^ "\ncannot unify " ^ (st a) ^ " with " ^ (st b)) ]
+		error [Unify_custom ("cannot unify " ^ (st a) ^ " with " ^ (st b)) ]
 	in
 	match (from_apply_option a), (from_apply_option b) with
 	| Some a1, Some b1 ->
 		begin
-		log_type "try unify_apply1 A1" a1;
-		log_type "try unify_apply1 B1" b1;
+		(* log_type "try unify_apply1 A1" a1; *)
+		(* log_type "try unify_apply1 B1" b1; *)
 		unify a1 b1;
-		log_message "try unify_apply1 success" "true";
+		(* log_message "try unify_apply1 success" "true"; *)
 		end
 	| _ ->
 		begin match (to_apply_option a), (to_apply_option b), a, b with
 		| (Some (TAbstract({a_path=[],"-Apply"},[a1;b1])) ), (Some (TAbstract({a_path=[],"-Apply"},[a2;b2]))), _, _ ->
 			begin
-				log_type "try unify_apply2 A" a;
-				log_type "try unify_apply2 A1" a1;
-				log_type "try unify_apply2 B1" b1;
-				log_type "try unify_apply2 B" b;
-				log_type "try unify_apply2 A2" a2;
-				log_type "try unify_apply2 B2" b2;
+				(* log_type "try unify_apply2 A" a; *)
+				(* log_type "try unify_apply2 A1" a1; *)
+				(* log_type "try unify_apply2 B1" b1; *)
+				(* log_type "try unify_apply2 B" b; *)
+				(* log_type "try unify_apply2 A2" a2; *)
+				(* log_type "try unify_apply2 B2" b2; *)
 				unify a1 a2;
 				unify b1 b2;
-				log_message "try unify_apply2 success" "true";
+				(* log_message "try unify_apply2 success" "true"; *)
 			end
 		| _ ->
 			begin
-
-				log_type "error unify_apply3 A" a;
-				log_type "error unify_apply3 A fromApply" (from_apply a);
-				log_type "error unify_apply3 A toApply" (to_apply a);
-				log_type "error unify_apply3 B" b;
-				log_type "error unify_apply3 B fromApply" (from_apply b);
-				log_type "error unify_apply3 B toApply" (to_apply b);
-
-
-				err "error"
+				(* log_type "error unify_apply3 A" a; *)
+				(* log_type "error unify_apply3 A fromApply" (from_apply a); *)
+				(* log_type "error unify_apply3 A toApply" (to_apply a); *)
+				(* log_type "error unify_apply3 B" b; *)
+				(* log_type "error unify_apply3 B fromApply" (from_apply b); *)
+				(* log_type "error unify_apply3 B toApply" (to_apply b); *)
+				err ()
 			end
 		end
 

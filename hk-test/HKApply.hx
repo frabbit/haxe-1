@@ -1,0 +1,1 @@
+@:coreType abstract HKApply<M,A> {}
