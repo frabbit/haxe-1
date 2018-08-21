@@ -5,7 +5,6 @@ import types.inheritance.Functor;
 import haxe.ds.Option;
 
 
-#if cpp @:generic #end
 private class Array1<T> implements Monad<Array1<_>, T> {
 	var a:Array<T>;
 	public function new (a:Array<T>) {
@@ -32,7 +31,6 @@ private class Array1<T> implements Monad<Array1<_>, T> {
 	}
 }
 
-#if cpp @:generic #end
 private class Option1<T> implements Monad<Option1<_>, T> {
 	var a:Option<T>;
 	public function new (a:Option<T>) {
@@ -59,7 +57,6 @@ private class Option1<T> implements Monad<Option1<_>, T> {
 
 class TypeMonadsInheritance {
 
-	#if cpp @:generic #end
 	#if !java inline #end
 	static function withMonad <M:Monad<M,_>,T,A,B>(x:M<T>, f:T->A, f2:A->M<B>):M<B> {
 		return x.map(f).flatMap(f2);

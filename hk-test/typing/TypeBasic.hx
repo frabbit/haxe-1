@@ -20,7 +20,7 @@ class TypeBasic {
     	var c:Array<HKApply<Either<_,_>, Int>> = (null:Array<Either<Int, _>>);
 
 
-		var d:HKApply<HKApply<HKMono, Int>, String> = (null:Int->String);
+		var d:HKApply<HKApply<HKMono, String>, Int> = (null:String->Int);
 
 		var a:Void -> HKApply<Array<_>, Int> = (null:Void->Array<Int>);
 

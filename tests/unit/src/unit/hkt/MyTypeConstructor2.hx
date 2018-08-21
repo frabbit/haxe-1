@@ -213,10 +213,29 @@ class OptionAsApplicative<A> extends OptionAsFunctor<A> implements Applicative<O
 	public function apply<A, B>(fab:Option<A->B>, fa:Option<A>):Option<B> {
 		return null; //Applicatives.defaultApply(this, fab, fa);
 	}
-
 }
 
-class ApplicativeComposition<F, G> implements Applicative<F<G<_>>> {
+abstract Compose<F, G, A>(F<G<A>>) {
+	public inline function new (f) this = f;
+
+	public inline function unwrap ():F<G<A>> return this;
+}
+
+class FunctorComposition<F,G> implements Functor<Compose<F,G, _>> {
+	var fF:Functor<F>;
+	var fG:Functor<G>;
+
+	public function new (fF:Functor<F>, fG:Functor<G>) {
+		this.fF = fF;
+		this.fG = fG;
+	}
+
+	public function map<A,B>(f:Compose<F, G, A>, b:A->B):Compose<F, G, B> {
+		return new Compose(fF.map(f.unwrap(), fG.map.bind(_, b)));
+	}
+}
+
+class ApplicativeComposition<F, G> implements Applicative<Compose<F, G, _>> {
 	var appF:Applicative<F>;
 	var appG:Applicative<G>;
 
@@ -225,24 +244,25 @@ class ApplicativeComposition<F, G> implements Applicative<F<G<_>>> {
 		this.appG = appG;
 	}
 
-	public function map2<A,B,C>(fa:F<G<A>>, fb:F<G<B>>, f:A->B->C):F<G<C>> {
-		return appF.map2( fa, fb, (ga, gb) -> appG.map2(ga, gb, (a, b) -> f(a,b) ) );
+	public function map2<A,B,C>(fa:Compose<F, G, A>, fb:Compose<F, G, B>, f:A->B->C):Compose<F, G, C> {
+
+		return new Compose(appF.map2( fa.unwrap(), fb.unwrap(), (ga, gb) -> appG.map2(ga, gb, (a, b) -> f(a,b) ) ));
 	}
 
-	public function map<A,B>(f:F<G<A>>, b:A->B):F<G<B>> {
+	public function map<A,B>(f:Compose<F, G, A>, b:A->B):Compose<F, G, B> {
 
-		return null; // Applicatives.defaultMap(this,f,b);
+		return Applicatives.defaultMap(this,f,b);
 	}
 
 
 
-	public function pure<A>(a:Lazy<A>):F<G<A>> return appF.pure(Lazy.mk(() -> appG.pure(a)));
+	public function pure<A>(a:Lazy<A>):Compose<F, G, A> return new Compose(appF.pure(Lazy.mk(() -> appG.pure(a))));
 
-	public function traverse<A,B>(as:List<A>, f:A->F<G<B>>):F<G<List<B>>> {
+	public function traverse<A,B>(as:List<A>, f:A->Compose<F, G, B>):Compose<F, G, List<B>> {
 		return null; //return Applicatives.defaultTraverse(this,as,f);
 	}
 	//derived
-	public function apply<A, B>(fab:F<G<A->B>>, fa:F<G<A>>):F<G<B>> return null; //Applicatives.defaultApply(this, fab, fa);
+	public function apply<A, B>(fab:Compose<F, G, A->B>, fa:Compose<F, G, A>):Compose<F, G, B> return null; //Applicatives.defaultApply(this, fab, fa);
 
 }
 
@@ -290,7 +310,7 @@ class Applicatives {
 
 
 
-	public static function compose <F, G>(F:Applicative<F>, G:Applicative<G> ):Applicative<F<G<_>>>
+	public static function compose <F, G>(F:Applicative<F>, G:Applicative<G> ):Applicative<Compose<F,G, _>>
 	{
 		return new ApplicativeComposition(F, G);
 	}
@@ -298,9 +318,14 @@ class Applicatives {
 
 
 }
-/*
 
-class ApplicativeComposition3<F, G, H> implements Applicative<F<G<H<_>>>> {
+abstract Compose3<F, G, H, A>(F<G<H<A>>>) {
+	public inline function new (f) this = f;
+
+	public inline function unwrap ():F<G<H<A>>> return this;
+}
+
+class ApplicativeComposition3<F, G, H> implements Applicative<Compose3<F, G, H, _>> {
 	var appF:Applicative<F>;
 	var appG:Applicative<G>;
 	var appH:Applicative<H>;
@@ -311,19 +336,17 @@ class ApplicativeComposition3<F, G, H> implements Applicative<F<G<H<_>>>> {
 		this.appH = appH;
 	}
 
-
-
-	public function map2<A,B,C>(fa:F<G<H<A>>>, fb:F<G<H<B>>>, f:A->B->C):F<G<H<C>>> {
-		return appF.map2( fa, fb,
+	public function map2<A,B,C>(fa:Compose3<F, G, H, A>, fb:Compose3<F, G, H, B>, f:A->B->C):Compose3<F, G, H, C> {
+		return new Compose3(appF.map2( fa.unwrap(), fb.unwrap(),
 			(ga, gb) -> appG.map2(ga, gb,
 				(ha, hb) -> appH.map2(ha, hb,
 					 (a, b) -> f(a,b)
 				)
 			)
-		);
+		));
 	}
 
-	public function map<A,B>(f:F<G<H<A>>>, b:A->B):F<G<H<B>>> {
+	public function map<A,B>(f:Compose3<F, G, H, A>, b:A->B):Compose3<F, G, H, B> {
 		return Applicatives.defaultMap(
 			this,
 			f,
@@ -331,9 +354,9 @@ class ApplicativeComposition3<F, G, H> implements Applicative<F<G<H<_>>>> {
 		);
 	}
 
-	public function pure<A>(a:Lazy<A>):F<G<H<A>>> return appF.pure(Lazy.mk(() -> appG.pure(Lazy.mk(() -> appH.pure(a)))));
+	public function pure<A>(a:Lazy<A>):Compose3<F, G, H, A> return new Compose3(appF.pure(Lazy.mk(() -> appG.pure(Lazy.mk(() -> appH.pure(a))))));
 
-	public function traverse<A,B>(as:List<A>, f:A->F<G<H<B>>>):F<G<H<List<B>>>> {
+	public function traverse<A,B>(as:List<A>, f:A->Compose3<F, G, H, B>):Compose3<F, G, H, List<B>> {
 		return Applicatives.defaultTraverse(
 			this,
 			as,
@@ -341,8 +364,8 @@ class ApplicativeComposition3<F, G, H> implements Applicative<F<G<H<_>>>> {
 		);
 	}
 	//derived
-	public function apply<A, B>(fab:F<G<H<A->B>>>, fa:F<G<H<A>>>):F<G<H<B>>> return Applicatives.defaultApply(this, fab, fa);
+	public function apply<A, B>(fab:Compose3<F, G, H, A->B>, fa:Compose3<F, G, H, A>):Compose3<F, G, H, B> return Applicatives.defaultApply(this, fab, fa);
 
 }
 
-*/
+

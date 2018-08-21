@@ -2556,7 +2556,6 @@ and unify_apply a b =
 		(* log_type "try unify_apply1 A1" a1; *)
 		(* log_type "try unify_apply1 B1" b1; *)
 		unify a1 b1;
-		(* log_message "try unify_apply1 success" "true"; *)
 		end
 	| _ ->
 		begin match (to_apply_option a), (to_apply_option b), a, b with
@@ -2570,7 +2569,6 @@ and unify_apply a b =
 				(* log_type "try unify_apply2 B2" b2; *)
 				unify a1 a2;
 				unify b1 b2;
-				(* log_message "try unify_apply2 success" "true"; *)
 			end
 		| _ ->
 			begin
