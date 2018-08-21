@@ -33,9 +33,9 @@ let completion_item_of_expr ctx e =
 		let ct = DisplayEmitter.completion_type_of_type ctx ~values t in
 		(t,ct)
 	in
-	let of_field e origin cf scope =
+	let of_field e origin cf scope make_ci =
 		let is_qualified = retype e cf.cf_name e.etype in
-		make_ci_class_field (CompletionClassField.make cf scope origin is_qualified) (tpair ~values:(get_value_meta cf.cf_meta) e.etype)
+		make_ci (CompletionClassField.make cf scope origin is_qualified) (tpair ~values:(get_value_meta cf.cf_meta) e.etype)
 	in
 	let of_enum_field e origin ef =
 		let is_qualified = retype e ef.ef_name e.etype in
@@ -45,19 +45,20 @@ let completion_item_of_expr ctx e =
 		let t = tpair e.etype in
 		make_ci_expr e t
 	in
-	let class_origin c = match c.cl_kind with
-		| KAbstractImpl a -> Self (TAbstractDecl a)
-		| _ -> Self (TClassDecl c)
-	in
 	let rec loop e = match e.eexpr with
 		| TLocal v | TVar(v,_) -> make_ci_local v (tpair ~values:(get_value_meta v.v_meta) v.v_type)
 		| TField(e1,FStatic(c,cf)) ->
+			let decl = decl_of_class c in
 			let origin = match c.cl_kind,e1.eexpr with
-				| KAbstractImpl a,_ when Meta.has Meta.Impl cf.cf_meta -> Self (TAbstractDecl a)
-				| _,TMeta((Meta.StaticExtension,_,_),_) -> StaticExtension (TClassDecl c)
-				| _ -> Self (TClassDecl c)
+				| KAbstractImpl _,_ when Meta.has Meta.Impl cf.cf_meta -> Self decl
+				| _,TMeta((Meta.StaticExtension,_,_),_) -> StaticExtension decl
+				| _ -> Self decl
 			in
-			of_field e origin cf CFSStatic
+			let make_ci = match c.cl_kind with
+				| KAbstractImpl a when Meta.has Meta.Enum cf.cf_meta -> make_ci_enum_abstract_field a
+				| _ -> make_ci_class_field
+			in
+			of_field e origin cf CFSStatic make_ci
 		| TField(e1,(FInstance(c,_,cf) | FClosure(Some(c,_),cf))) ->
 			let origin = match follow e1.etype with
 			| TInst(c',_) when c != c' ->
@@ -65,7 +66,7 @@ let completion_item_of_expr ctx e =
 			| _ ->
 				Self (TClassDecl c)
 			in
-			of_field e origin cf CFSMember
+			of_field e origin cf CFSMember make_ci_class_field
 		| TField(_,FEnum(en,ef)) -> of_enum_field e (Self (TEnumDecl en)) ef
 		| TField(e1,FAnon cf) ->
 			begin match follow e1.etype with
@@ -74,7 +75,7 @@ let completion_item_of_expr ctx e =
 						| TType(td,_) -> Self (TTypeDecl td)
 						| _ -> AnonymousStructure an
 					in
-					of_field e origin cf CFSMember
+					of_field e origin cf CFSMember make_ci_class_field
 				| _ -> itexpr e
 			end
 		| TTypeExpr (TClassDecl {cl_kind = KAbstractImpl a}) ->
@@ -115,7 +116,7 @@ let completion_item_of_expr ctx e =
 					| TFun(args,_) -> TFun(args,TInst(c,tl))
 					| _ -> t
 				in
-				make_ci_class_field (CompletionClassField.make cf CFSConstructor (class_origin c) true) (tpair ~values:(get_value_meta cf.cf_meta) t)
+				make_ci_class_field (CompletionClassField.make cf CFSConstructor (Self (decl_of_class c)) true) (tpair ~values:(get_value_meta cf.cf_meta) t)
 			(* end *)
 		| TCall({eexpr = TConst TSuper; etype = t} as e1,_) ->
 			itexpr e1 (* TODO *)
@@ -124,16 +125,18 @@ let completion_item_of_expr ctx e =
 	in
 	loop e
 
-let raise_toplevel ctx with_type po p =
+let get_expected_type ctx with_type =
 	let t = match with_type with
 		| WithType t -> Some t
 		| _ -> None
 	in
-	let ct = match t with
+	match t with
 		| None -> None
 		| Some t -> Some (completion_type_of_type ctx t,completion_type_of_type ctx (follow t))
-	in
-	raise_fields (DisplayToplevel.collect ctx (Some p) with_type) (CRToplevel ct) po
+
+let raise_toplevel ctx dk with_type po p =
+	let expected_type = get_expected_type ctx with_type in
+	raise_fields (DisplayToplevel.collect ctx (match dk with DKPattern _ -> TKPattern p | _ -> TKExpr p) with_type) (CRToplevel expected_type) po
 
 let rec handle_signature_display ctx e_ast with_type =
 	ctx.in_display <- true;
@@ -157,7 +160,7 @@ let rec handle_signature_display ctx e_ast with_type =
 		let display_arg,el = loop 0 [] el in
 		(* If our display position exceeds the argument number we add a null expression in order to make
 		unify_call_args error out. *)
-		let el = if display_arg >= List.length el then el @ [EConst (Ident "null"),null_pos] else el in
+		let el = if el <> [] && display_arg >= List.length el then el @ [EConst (Ident "null"),null_pos] else el in
 		let rec loop acc tl = match tl with
 			| (t,doc,values) :: tl ->
 				let keep (args,r) =
@@ -320,7 +323,7 @@ and display_expr ctx e_ast e dk with_type p =
 				let item = completion_item_of_expr ctx e2 in
 				raise_fields fields (CRField(item,e2.epos)) (Some {e.epos with pmin = e.epos.pmax - String.length s;})
 			| _ ->
-				raise_toplevel ctx with_type None p
+				raise_toplevel ctx dk with_type None p
 		end
 	| DMDefault | DMNone | DMModuleSymbols _ | DMDiagnostics _ | DMStatistics ->
 		let fields = DisplayFields.collect ctx e_ast e dk with_type p in
@@ -387,14 +390,14 @@ let handle_display ctx e_ast dk with_type =
 		type_expr ctx e_ast with_type
 	with Error (Unknown_ident n,_) when ctx.com.display.dms_kind = DMDefault ->
         if dk = DKDot && ctx.com.json_out = None then raise (Parser.TypePath ([n],None,false,p))
-		else raise_toplevel ctx with_type (Some (Parser.cut_pos_at_display p)) p
+		else raise_toplevel ctx dk with_type (Some p) p
 	| Error ((Type_not_found (path,_) | Module_not_found path),_) as err when ctx.com.display.dms_kind = DMDefault ->
 		if ctx.com.json_out = None then	begin try
 			raise_fields (DisplayFields.get_submodule_fields ctx path) (CRField((make_ci_module path),p)) None
 		with Not_found ->
 			raise err
 		end else
-			raise_toplevel ctx with_type (Some (Parser.cut_pos_at_display p)) p
+			raise_toplevel ctx dk with_type (Some p) p
 	| DisplayException(DisplayFields(l,CRTypeHint,p)) when (match fst e_ast with ENew _ -> true | _ -> false) ->
 		let timer = Timer.timer ["display";"toplevel";"filter ctors"] in
 		ctx.pass <- PBuildClass;
@@ -405,14 +408,14 @@ let handle_display ctx e_ast dk with_type =
 				(pack,mt.module_name) = ctx.m.curmod.m_path
 			in
 			match item.ci_kind with
-			| ITType({kind = (Class | Abstract)} as mt,_) when not mt.is_private || is_private_to_current_module mt ->
+			| ITType({kind = (Class | Abstract | TypeAlias)} as mt,_) when not mt.is_private || is_private_to_current_module mt ->
 				begin match mt.has_constructor with
 				| Yes -> true
 				| No -> false
 				| Maybe ->
 					begin try
 						let mt = ctx.g.do_load_type_def ctx null_pos {tpackage=mt.pack;tname=mt.module_name;tsub=Some mt.name;tparams=[]} in
-						begin match mt with
+						begin match resolve_typedef mt with
 						| TClassDecl c when has_constructor c -> true
 						| TAbstractDecl {a_impl = Some c} -> PMap.mem "_new" c.cl_statics
 						| _ -> false
@@ -427,6 +430,10 @@ let handle_display ctx e_ast dk with_type =
 		) l in
 		timer();
 		raise_fields l CRNew p
+	in
+	let e = match e.eexpr with
+		| TField(e1,FDynamic "bind") when (match follow e1.etype with TFun _ -> true | _ -> false) -> e1
+		| _ -> e
 	in
 	let is_display_debug = Meta.has (Meta.Custom ":debug.display") ctx.curfield.cf_meta in
 	if is_display_debug then begin
@@ -470,10 +477,10 @@ let handle_edisplay ctx e dk with_type =
 			| _ ->
 				handle_display ctx e dk with_type
 		end
-	| DKPattern,DMDefault ->
+	| DKPattern outermost,DMDefault ->
 		begin try
 			handle_display ctx e dk with_type
 		with DisplayException(DisplayFields(l,CRToplevel _,p)) ->
-			raise_fields l CRPattern p
+			raise_fields l (CRPattern ((get_expected_type ctx with_type),outermost)) p
 		end
 	| _ -> handle_display ctx e dk with_type

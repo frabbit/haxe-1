@@ -1074,12 +1074,12 @@ and type_unop ctx op flag e p =
 		| AKAccess(a,tl,c,ebase,ekey) ->
 			begin try
 				(match op with Increment | Decrement -> () | _ -> raise Not_found);
-				let v_key = alloc_var "tmp" ekey.etype ekey.epos in
+				let v_key = alloc_var VGenerated "tmp" ekey.etype ekey.epos in
 				let evar_key = mk (TVar(v_key,Some ekey)) ctx.com.basic.tvoid ekey.epos in
 				let ekey = mk (TLocal v_key) ekey.etype ekey.epos in
 				(* get *)
 				let e_get = mk_array_get_call ctx (AbstractCast.find_array_access_raise ctx a tl ekey None p) c ebase p in
-				let v_get = alloc_var "tmp" e_get.etype e_get.epos in
+				let v_get = alloc_var VGenerated "tmp" e_get.etype e_get.epos in
 				let ev_get = mk (TLocal v_get) v_get.v_type p in
 				let evar_get = mk (TVar(v_get,Some e_get)) ctx.com.basic.tvoid p in
 				(* op *)
@@ -1344,7 +1344,7 @@ and handle_efield ctx e p mode =
 									(* if there was no module name part, last guess is that we're trying to get package completion *)
 									if ctx.in_display then begin
 										if ctx.com.json_out = None then raise (Parser.TypePath (List.map (fun (n,_,_) -> n) (List.rev acc),None,false,p))
-										else raise_fields (DisplayToplevel.collect ctx None NoValue) CRTypeHint (Some (Parser.cut_pos_at_display p0));
+										else raise_fields (DisplayToplevel.collect ctx TKType NoValue) CRTypeHint (Some p0);
 									end;
 									raise e)
 		in
@@ -1398,7 +1398,7 @@ and type_access ctx e p mode =
 				let monos = List.map (fun _ -> mk_mono()) c.cl_params in
 				let ct, cf = get_constructor ctx c monos p in
 				let args = match follow ct with TFun(args,ret) -> args | _ -> assert false in
-				let vl = List.map (fun (n,_,t) -> alloc_var n t c.cl_pos) args in
+				let vl = List.map (fun (n,_,t) -> alloc_var VGenerated n t c.cl_pos) args in
 				let vexpr v = mk (TLocal v) v.v_type p in
 				let el = List.map vexpr vl in
 				let ec,t = match c.cl_kind with
@@ -1481,7 +1481,7 @@ and type_vars ctx vl p =
 					Some e
 			) in
 			if starts_with v '$' then display_error ctx "Variables names starting with a dollar are not allowed" p;
-			let v = add_local_with_origin ctx v t pv TVarOrigin.TVOLocalVariable in
+			let v = add_local_with_origin ctx VUser v t pv TVarOrigin.TVOLocalVariable in
 			v.v_meta <- (Meta.UserVariable,[],pv) :: v.v_meta;
 			if ctx.in_display && DisplayPosition.encloses_display_position pv then
 				DisplayEmitter.display_variable ctx v pv;
@@ -1489,7 +1489,7 @@ and type_vars ctx vl p =
 		with
 			Error (e,p) ->
 				check_error ctx e p;
-				add_local ctx v t_dynamic pv, None (* TODO: What to do with this... *)
+				add_local ctx VUser v t_dynamic pv, None (* TODO: What to do with this... *)
 	) vl in
 	match vl with
 	| [v,eo] ->
@@ -1601,25 +1601,19 @@ and format_string ctx s p =
 	| Some e -> e
 
 and type_block ctx el with_type p =
-	let merge e = match e.eexpr with
+	let merge acc e = match e.eexpr with
 		| TMeta((Meta.MergeBlock,_,_), {eexpr = TBlock el}) ->
-			el
-		| _ -> [e]
+			List.rev el @ acc
+		| _ ->
+			e :: acc
 	in
-	let rec loop = function
-		| [] -> []
-		| [e] ->
-			(try
-				merge (type_expr ctx e with_type)
-			with Error (e,p) -> check_error ctx e p; [])
+	let rec loop acc = function
+		| [] -> List.rev acc
 		| e :: l ->
-			try
-				let e = type_expr ctx e NoValue in
-				merge e @ loop l
-			with
-				Error (e,p) -> check_error ctx e p; loop l
+			let acc = try merge acc (type_expr ctx e (if l = [] then with_type else NoValue)) with Error (e,p) -> check_error ctx e p; acc in
+			loop acc l
 	in
-	let l = loop el in
+	let l = loop [] el in
 	let rec loop = function
 		| [] -> ctx.t.tvoid
 		| [e] -> e.etype
@@ -1884,7 +1878,7 @@ and type_try ctx e1 catches with_type p =
 		if starts_with v '$' then display_error ctx "Catch variable names starting with a dollar are not allowed" p;
 		check_unreachable acc1 t2 (pos e_ast);
 		let locals = save_locals ctx in
-		let v = add_local_with_origin ctx v t pv (TVarOrigin.TVOCatchVariable) in
+		let v = add_local_with_origin ctx VUser v t pv (TVarOrigin.TVOCatchVariable) in
 		if ctx.is_display_file && DisplayPosition.encloses_display_position pv then
 			DisplayEmitter.display_variable ctx v pv;
 		let e = type_expr ctx e_ast with_type in
@@ -2026,7 +2020,7 @@ and type_local_function ctx name f with_type p =
 		| None -> None
 		| Some v ->
 			if starts_with v '$' then display_error ctx "Variable names starting with a dollar are not allowed" p;
-			let v = (add_local_with_origin ctx v ft pname (TVarOrigin.TVOLocalFunction)) in
+			let v = (add_local_with_origin ctx VUser v ft pname (TVarOrigin.TVOLocalFunction)) in
 			if params <> [] then v.v_extra <- Some (params,None);
 			Some v
 	) in
@@ -2158,6 +2152,10 @@ and type_return ctx e p =
 			let e = AbstractCast.cast_or_unify ctx ctx.ret e p in
 			begin match follow e.etype with
 			| TAbstract({a_path=[],"Void"},_) ->
+				begin match (Texpr.skip e).eexpr with
+				| TConst TNull -> error "Cannot return `null` from Void-function" p
+				| _ -> ()
+				end;
 				(* if we get a Void expression (e.g. from inlining) we don't want to return it (issue #4323) *)
 				mk (TBlock [
 					e;

@@ -14,19 +14,35 @@ open Common
 open Display
 open DisplayPosition
 
-let sort_fields l with_type p =
+let sort_fields l with_type tk =
+	let p = match tk with
+		| TKExpr p | TKField p -> Some p
+		| _ -> None
+	in
 	let l = List.map (fun ci ->
-		let i = get_sort_index ci (Option.default Globals.null_pos p) in
+		let i = get_sort_index tk ci (Option.default Globals.null_pos p) in
 		ci,i
 	) l in
 	let sort l =
 		List.map fst (List.sort (fun (_,i1) (_,i2) -> compare i1 i2) l)
 	in
+	(* This isn't technically accurate, but I don't think it matters. *)
+	let rec dynamify_type_params t = match follow t with
+		| TInst({cl_kind = KTypeParameter _},_) -> mk_mono()
+		| _ -> Type.map dynamify_type_params t
+	in
 	let l = match with_type with
 		| WithType t when (match follow t with TMono _ -> false | _ -> true) ->
-			let rec comp t' = match t' with
+			let rec comp item = match item.ci_type with
 				| None -> 9
 				| Some (t',_) ->
+				(* For enum constructors, we consider the return type of the constructor function
+				   so it has the same priority as argument-less constructors. *)
+				let t' = match item.ci_kind,follow t' with
+					| ITEnumField _,TFun(_,r) -> r
+					| _ -> t'
+				in
+				let t' = dynamify_type_params t' in
 				if type_iseq t' t then 0 (* equal types - perfect *)
 				else if t' == t_dynamic then 5 (* dynamic isn't good, but better than incompatible *)
 				else try Type.unify t' t; 1 (* assignable - great *)
@@ -38,9 +54,9 @@ let sort_fields l with_type p =
 					| _ ->
 						6 (* incompatible type - probably useless *)
 			in
-			let l = List.map (fun (ck,i1) ->
-				let i2 = comp (get_type ck) in
-				ck,(i2,i1)
+			let l = List.map (fun (item,i1) ->
+				let i2 = comp item in
+				item,(i2,i1)
 			) l in
 			sort l
 		| _ ->
@@ -131,17 +147,20 @@ let display_module_type ctx mt p = match ctx.com.display.dms_kind with
 
 let rec display_type ctx t p =
 	let dm = ctx.com.display in
-	match dm.dms_kind with
-	| DMHover ->
-		let ct = completion_type_of_type ctx t in
-		let ci = make_ci_expr (mk (TConst TNull) t p) (t,ct) in
-		raise_hover ci p
-	| _ ->
-		try display_module_type ctx (module_type_of_type t) p
-		with Exit -> match follow t,follow !t_dynamic_def with
-			| _,TDynamic _ -> () (* sanity check in case it's still t_dynamic *)
-			| TDynamic _,_ -> display_type ctx !t_dynamic_def p
-			| _ -> ()
+	try
+		display_module_type ctx (module_type_of_type t) p
+	with Exit ->
+		match follow t,follow !t_dynamic_def with
+		| _,TDynamic _ -> () (* sanity check in case it's still t_dynamic *)
+		| TDynamic _,_ -> display_type ctx !t_dynamic_def p
+		| _ ->
+			match dm.dms_kind with
+			| DMHover ->
+				let ct = completion_type_of_type ctx t in
+				let ci = make_ci_expr (mk (TConst TNull) t p) (t,ct) in
+				raise_hover ci p
+			| _ ->
+				()
 
 let check_display_type ctx t p =
 	let add_type_hint () =
@@ -162,6 +181,7 @@ let raise_position_of_type t =
 				| TMono r -> (match !r with None -> raise_position [null_pos] | Some t -> follow_null t)
 				| TLazy f -> follow_null (lazy_type f)
 				| TAbstract({a_path = [],"Null"},[t]) -> follow_null t
+				| TDynamic _ -> !t_dynamic_def
 				| _ -> t
 		in
 		try
@@ -270,6 +290,6 @@ let check_field_modifiers ctx c cf override display_modifier =
 				let ct = completion_type_of_type ctx ~values:(get_value_meta cf.cf_meta) cf.cf_type in
 				make_ci_class_field (CompletionClassField.make cf CFSMember origin true) (cf.cf_type,ct) :: fields
 			) missing_fields [] in
-			let l = sort_fields l NoValue None in
+			let l = sort_fields l NoValue TKOverride in
 			raise_fields l CROverride None
 		| _ -> ()

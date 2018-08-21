@@ -85,10 +85,18 @@ and tconstant =
 
 and tvar_extra = (type_params * texpr option) option
 
+and tvar_kind =
+	| VUser
+	| VGenerated
+	| VInlined
+	| VInlinedConstructorVariable
+	| VExtractorVariable
+
 and tvar = {
 	mutable v_id : int;
 	mutable v_name : string;
 	mutable v_type : t;
+	mutable v_kind : tvar_kind;
 	mutable v_capture : bool;
 	mutable v_extra : tvar_extra;
 	mutable v_meta : metadata;
@@ -457,7 +465,7 @@ let log_message prefix t = log_object prefix t (fun s -> s)
 
 let alloc_var =
 	let uid = ref 0 in
-	(fun n t p -> incr uid; { v_name = n; v_type = t; v_id = !uid; v_capture = false; v_extra = None; v_meta = []; v_pos = p })
+	(fun kind n t p -> incr uid; { v_kind = kind; v_name = n; v_type = t; v_id = !uid; v_capture = false; v_extra = None; v_meta = []; v_pos = p })
 
 let alloc_mid =
 	let mid = ref 0 in
@@ -2209,10 +2217,7 @@ let rec type_eq param a b =
 					let f2 = PMap.find n a2.a_fields in
 					if f1.cf_kind <> f2.cf_kind && (param = EqStrict || param = EqCoreType || not (unify_kind f1.cf_kind f2.cf_kind)) then error [invalid_kind n f1.cf_kind f2.cf_kind];
 					let a = f1.cf_type and b = f2.cf_type in
-					rec_stack eq_stack (a,b)
-						(fun (a2,b2) -> fast_eq a a2 && fast_eq b b2)
-						(fun() -> type_eq param a b)
-						(fun l -> error (invalid_field n :: l))
+					(try type_eq param a b with Unify_error l -> error (invalid_field n :: l))
 				with
 					Not_found ->
 						if is_closed a2 then error [has_no_field b n];

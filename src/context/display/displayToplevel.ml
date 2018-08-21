@@ -38,7 +38,7 @@ let explore_class_paths com timer class_paths recusive f_pack f_module =
 					| _ when Sys.is_directory (dir ^ file) && file.[0] >= 'a' && file.[0] <= 'z' ->
 						begin try
 							begin match PMap.find file com.package_rules with
-								| Forbidden -> ()
+								| Forbidden | Remap _ -> ()
 								| _ -> raise Not_found
 							end
 						with Not_found ->
@@ -127,7 +127,10 @@ let pack_similarity pack1 pack2 =
 	in
 	loop 0 pack1 pack2
 
-let collect ctx epos with_type =
+let is_pack_visible pack =
+	not (List.exists (fun s -> String.length s > 0 && s.[0] = '_') pack)
+
+let collect ctx tk with_type =
 	let t = Timer.timer ["display";"toplevel"] in
 	let cctx = CollectionContext.create ctx in
 	let curpack = fst ctx.curclass.cl_path in
@@ -148,24 +151,26 @@ let collect ctx epos with_type =
 				| TClassDecl c | TAbstractDecl { a_impl = Some c } when Meta.has Meta.CoreApi c.cl_meta ->
 					!merge_core_doc_ref ctx c
 				| _ -> ());
-                let is = get_import_status cctx true path in
-				add (make_ci_type (CompletionModuleType.of_module_type mt) is None) (Some (snd path));
-				add_path cctx path;
+				let is = get_import_status cctx true path in
+				if not (Meta.has Meta.NoCompletion (t_infos mt).mt_meta) then begin
+					add (make_ci_type (CompletionModuleType.of_module_type mt) is None) (Some (snd path));
+					add_path cctx path;
+				end
 			end
 	in
 
 	let process_decls pack name decls =
 		let run () = List.iter (fun (d,p) ->
 			begin try
-				let tname,is_private = match d with
-					| EClass d -> fst d.d_name,List.mem HPrivate d.d_flags
-					| EEnum d -> fst d.d_name,List.mem EPrivate d.d_flags
-					| ETypedef d -> fst d.d_name,List.mem EPrivate d.d_flags
-					| EAbstract d -> fst d.d_name,List.mem AbPrivate d.d_flags
+				let tname,is_private,meta = match d with
+					| EClass d -> fst d.d_name,List.mem HPrivate d.d_flags,d.d_meta
+					| EEnum d -> fst d.d_name,List.mem EPrivate d.d_flags,d.d_meta
+					| ETypedef d -> fst d.d_name,List.mem EPrivate d.d_flags,d.d_meta
+					| EAbstract d -> fst d.d_name,List.mem AbPrivate d.d_flags,d.d_meta
 					| _ -> raise Exit
 				in
 				let path = Path.full_dot_path pack name tname in
-				if not (path_exists cctx path) && not is_private then begin
+				if not (path_exists cctx path) && not is_private && not (Meta.has Meta.NoCompletion meta) then begin
 					add_path cctx path;
 					(* If we share a package, the module's main type shadows everything with the same name. *)
 					let shadowing_name = if pack_similarity curpack pack > 0 && tname = name then (Some name) else None in
@@ -177,7 +182,7 @@ let collect ctx epos with_type =
 				()
 			end
 		) decls in
-		if not (List.exists (fun s -> String.length s > 0 && s.[0] = '_') pack) then run()
+		if is_pack_visible pack then run()
 	in
 
 	(* Collection starts here *)
@@ -186,7 +191,9 @@ let collect ctx epos with_type =
 		let ct = DisplayEmitter.completion_type_of_type ctx ~values t in
 		(t,ct)
 	in
-	if epos <> None then begin
+	begin match tk with
+	| TKType | TKOverride -> ()
+	| TKExpr p | TKPattern p | TKField p ->
 		(* locals *)
 		PMap.iter (fun _ v ->
 			if not (is_gen_local v) then
@@ -234,7 +241,7 @@ let collect ctx epos with_type =
 			| TAbstractDecl ({a_impl = Some c} as a) when Meta.has Meta.Enum a.a_meta && not (path_exists cctx a.a_path) ->
 				add_path cctx a.a_path;
 				List.iter (fun cf ->
-					let ccf = CompletionClassField.make cf CFSMember (Self (TClassDecl c)) true in
+					let ccf = CompletionClassField.make cf CFSMember (Self (decl_of_class c)) true in
 					if (Meta.has Meta.Enum cf.cf_meta) && not (Meta.has Meta.NoCompletion cf.cf_meta) then
 						add (make_ci_enum_abstract_field a ccf (tpair cf.cf_type)) (Some cf.cf_name);
 				) c.cl_ordered_statics
@@ -270,8 +277,13 @@ let collect ctx epos with_type =
 				let class_import c =
 					let cf = PMap.find s c.cl_statics in
 					let cf = if name = cf.cf_name then cf else {cf with cf_name = name} in
-					let origin = StaticImport (TClassDecl c) in
-					add (make_ci_class_field (CompletionClassField.make cf CFSStatic origin is_qualified) (tpair ~values:(get_value_meta cf.cf_meta) cf.cf_type)) (Some name)
+					let decl,make = match c.cl_kind with 
+						| KAbstractImpl a -> TAbstractDecl a,
+							if Meta.has Meta.Enum cf.cf_meta then make_ci_enum_abstract_field a else make_ci_class_field
+						| _ -> TClassDecl c,make_ci_class_field
+					in
+					let origin = StaticImport decl in
+					add (make (CompletionClassField.make cf CFSStatic origin is_qualified) (tpair ~values:(get_value_meta cf.cf_meta) cf.cf_type)) (Some name)
 				in
 				match resolve_typedef mt with
 					| TClassDecl c -> class_import c;
@@ -362,17 +374,20 @@ let collect ctx epos with_type =
 		) files
 	end;
 
+	(* packages *)
 	Hashtbl.iter (fun path _ ->
-		add (make_ci_package path []) (Some (snd path))
+		let full_pack = fst path @ [snd path] in
+		if is_pack_visible full_pack then add (make_ci_package path []) (Some (snd path))
 	) packages;
+
 	(* sorting *)
 	let l = DynArray.to_list cctx.items in
-	let l = sort_fields l with_type epos in
+	let l = sort_fields l with_type tk in
 	t();
 	l
 
 let handle_unresolved_identifier ctx i p only_types =
-	let l = collect ctx (if only_types then None else Some p) NoValue in
+	let l = collect ctx (if only_types then TKType else TKExpr p) NoValue in
 	let cl = List.map (fun it ->
 		let s = CompletionItem.get_name it in
 		let i = StringError.levenshtein i s in

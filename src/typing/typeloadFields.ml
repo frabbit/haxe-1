@@ -163,7 +163,7 @@ let ensure_struct_init_constructor ctx c ast_fields p =
 				let has_default_expr = field_has_default_expr cf.cf_name in
 				let opt = has_default_expr || (Meta.has Meta.Optional cf.cf_meta) in
 				let t = if opt then ctx.t.tnull cf.cf_type else cf.cf_type in
-				let v = alloc_var cf.cf_name t p in
+				let v = alloc_var VUser cf.cf_name t p in
 				let ef = mk (TField(ethis,FInstance(c,params,cf))) t p in
 				let ev = mk (TLocal v) v.v_type p in
 				(* this.field = <constructor_argument> *)
@@ -603,7 +603,23 @@ let bind_type (ctx,cctx,fctx) cf r p =
 
 let check_field_display ctx fctx c cf =
 	if fctx.is_display_field then begin
-		let scope = if fctx.is_static then CFSStatic else if fctx.field_kind = FKConstructor then CFSConstructor else CFSMember in
+		let scope, cf = match c.cl_kind with
+			| KAbstractImpl _ ->
+				if Meta.has Meta.Impl cf.cf_meta then
+					(if cf.cf_name = "_new" then 
+						CFSConstructor, {cf with cf_name = "new"}
+					else
+						CFSMember, cf)
+				else
+					CFSStatic, cf;
+			| _ ->
+				(if fctx.is_static then
+					CFSStatic
+				else if fctx.field_kind = FKConstructor then
+					CFSConstructor
+				else
+					CFSMember), cf;
+		in
 		let origin = match c.cl_kind with
 			| KAbstractImpl a -> Self (TAbstractDecl a)
 			| _ -> Self (TClassDecl c)
@@ -1297,7 +1313,7 @@ let init_class ctx c p context_init herits fields =
 				()
 			| FKNormal ->
 				let dup = if fctx.is_static then PMap.exists cf.cf_name c.cl_fields || has_field cf.cf_name c.cl_super else PMap.exists cf.cf_name c.cl_statics in
-				if not cctx.is_native && not c.cl_extern && dup then error ("Same field name can't be use for both static and instance : " ^ cf.cf_name) p;
+				if not cctx.is_native && not c.cl_extern && dup then error ("Same field name can't be used for both static and instance : " ^ cf.cf_name) p;
 				if fctx.override <> None then c.cl_overrides <- cf :: c.cl_overrides;
 				let is_var cf = match cf.cf_kind with | Var _ -> true | _ -> false in
 				if PMap.mem cf.cf_name (if fctx.is_static then c.cl_statics else c.cl_fields) then

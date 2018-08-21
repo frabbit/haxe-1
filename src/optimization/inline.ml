@@ -258,7 +258,7 @@ class inline_state ctx ethis params cf f p = object(self)
 		try
 			Hashtbl.find locals v.v_id
 		with Not_found ->
-			let v' = alloc_var v.v_name v.v_type v.v_pos in
+			let v' = alloc_var VInlined v.v_name v.v_type v.v_pos in
 			v'.v_extra <- v.v_extra;
 			let i = {
 				i_var = v;
@@ -316,9 +316,10 @@ class inline_state ctx ethis params cf f p = object(self)
 			in
 			try loop e; true with Exit -> false
 		in
-		let is_writable e =
+		let rec is_writable e =
 			match e.eexpr with
 			| TField _ | TEnumParameter _ | TLocal _ | TArray _ -> true
+			| TCast(e1,None) -> is_writable e1
 			| _  -> false
 		in
 		let vars = List.fold_left (fun acc (i,e) ->
@@ -404,7 +405,7 @@ class inline_state ctx ethis params cf f p = object(self)
 			Build the expr/var subst list
 		*)
 		let ethis = (match ethis.eexpr with TConst TSuper -> { ethis with eexpr = TConst TThis } | _ -> ethis) in
-		let vthis = alloc_var "_this" ethis.etype ethis.epos in
+		let vthis = alloc_var VInlined "_this" ethis.etype ethis.epos in
 		let args1 = (ethis :: params) in
 		let args2 = ((vthis,None) :: f.tf_args) in
 		let vars = loop [] args1 args2 true in
@@ -417,7 +418,7 @@ class inline_state ctx ethis params cf f p = object(self)
 			if self#might_be_affected e then l.i_force_temp <- true;
 		) _inlined_vars;
 		let vars,subst = self#get_substitutions p in
-		let rec inline_params in_call e =
+		let rec inline_params in_call in_assignment e =
 			match e.eexpr with
 			| TLocal v ->
 				begin try
@@ -427,6 +428,7 @@ class inline_state ctx ethis params cf f p = object(self)
 							begin match e'.eexpr with
 								(* If we inline a function expression, we have to duplicate its locals. *)
 								| TFunction _ -> Texpr.duplicate_tvars e'
+								| TCast(e1,None) when in_assignment -> e1
 								| _ -> e'
 							end
 						| VIInlineIfCalled when in_call ->
@@ -439,12 +441,16 @@ class inline_state ctx ethis params cf f p = object(self)
 					e
 				end
 			| TCall(e1,el) ->
-				let e1 = inline_params true e1 in
-				let el = List.map (inline_params false) el in
+				let e1 = inline_params true false e1 in
+				let el = List.map (inline_params false false) el in
 				{e with eexpr = TCall(e1,el)}
-			| _ -> Type.map_expr (inline_params false) e
+			| TBinop((OpAssign | OpAssignOp _ as op),e1,e2) ->
+				let e1 = inline_params false true e1 in
+				let e2 = inline_params false false e2 in
+				{e with eexpr = TBinop(op,e1,e2)}
+			| _ -> Type.map_expr (inline_params false false) e
 		in
-		let e = (if PMap.is_empty subst then e else inline_params false e) in
+		let e = (if PMap.is_empty subst then e else inline_params false false e) in
 		let init = match vars with [] -> None | l -> Some l in
 		let md = ctx.curclass.cl_module.m_extra.m_display in
 		md.m_inline_calls <- (cf.cf_name_pos,{p with pmax = p.pmin + String.length cf.cf_name}) :: md.m_inline_calls;
@@ -684,6 +690,11 @@ let rec type_inline ctx cf f ethis params tret config p ?(self_calling_closure=f
 			{e with eexpr = TCall(e1,el)}
 		| TConst TSuper ->
 			error "Cannot inline function containing super" po
+		| TMeta((Meta.Ast,_,_) as m,e1) when term ->
+			(* Special case for @:ast-wrapped TSwitch nodes: If the recursion alters the type of the TSwitch node, we also want
+			   to alter the type of the TMeta node. *)
+			let e1 = map term in_call e1 in
+			{e with eexpr = TMeta(m,e1); etype = e1.etype}
 		| TMeta(m,e1) ->
 			let e1 = map term in_call e1 in
 			{e with eexpr = TMeta(m,e1)}

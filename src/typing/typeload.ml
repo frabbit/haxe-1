@@ -105,7 +105,7 @@ with Error((Module_not_found _ | Type_not_found _),p2) when p = p2 ->
 *)
 let load_type_def ctx p t =
 	let no_pack = t.tpackage = [] in
-	if t = Parser.magic_type_path then raise_fields (DisplayToplevel.collect ctx None NoValue) CRTypeHint None;
+	if t = Parser.magic_type_path then raise_fields (DisplayToplevel.collect ctx TKType NoValue) CRTypeHint None;
 	(* The type name is the module name or the module sub-type name *)
 	let tname = (match t.tsub with None -> t.tname | Some n -> n) in
 	try
@@ -365,7 +365,7 @@ and load_instance ctx ?(allow_display=false) (t,pn) allow_no_params =
 		t
 	with Error (Module_not_found path,_) when (ctx.com.display.dms_kind = DMDefault) && DisplayPosition.encloses_display_position pn ->
 		let s = s_type_path path in
-		raise_fields (DisplayToplevel.collect ctx None NoValue) CRTypeHint (Some {pn with pmin = pn.pmax - String.length s;});
+		raise_fields (DisplayToplevel.collect ctx TKType NoValue) CRTypeHint (Some {pn with pmin = pn.pmax - String.length s;});
 
 (*
 	build an instance from a complex type
@@ -398,7 +398,7 @@ and load_complex_type' ctx allow_display (t,p) =
 					| ITType({kind = Struct},_) -> true
 					| _ -> false
 				) l in
-				raise_fields l CRStructExtension p
+				raise_fields l (CRStructExtension true) p
 		) tl in
 		let tr = ref None in
 		let t = TMono tr in
@@ -450,7 +450,7 @@ and load_complex_type' ctx allow_display (t,p) =
 						| ITType({kind = Struct},_) -> true
 						| _ -> false
 					) l in
-					raise_fields l CRStructExtension p
+					raise_fields l (CRStructExtension false) p
 			) tl in
 			let tr = ref None in
 			let t = TMono tr in
@@ -469,6 +469,7 @@ and load_complex_type' ctx allow_display (t,p) =
 		| _ -> assert false
 		end
 	| CTAnonymous l ->
+		let displayed_field = ref None in
 		let rec loop acc f =
 			let n = fst f.cff_name in
 			let p = f.cff_pos in
@@ -546,18 +547,25 @@ and load_complex_type' ctx allow_display (t,p) =
 			init_meta_overloads ctx None cf;
 			if ctx.is_display_file then begin
 				DisplayEmitter.check_display_metadata ctx cf.cf_meta;
-				DisplayEmitter.maybe_display_field ctx Unknown CFSMember cf cf.cf_name_pos;
+				if DisplayPosition.encloses_display_position cf.cf_name_pos then displayed_field := Some cf;
 			end;
 			PMap.add n cf acc
 		in
-		mk_anon (List.fold_left loop PMap.empty l)
+		let a = { a_fields = (List.fold_left loop PMap.empty l); a_status = ref Closed; } in
+		begin match !displayed_field with
+		| None ->
+			()
+		| Some cf ->
+			DisplayEmitter.display_field ctx (AnonymousStructure a) CFSMember cf cf.cf_name_pos;
+		end;
+		TAnon a
 	| CTFunction (args,r) ->
 		match args with
 		| [CTPath { tpackage = []; tparams = []; tname = "Void" },_] ->
 			TFun ([],load_complex_type ctx allow_display r)
 		| _ ->
 			TFun (List.map (fun t ->
-				let t, opt = (match fst t with CTOptional t -> t, true | _ -> t,false) in
+				let t, opt = (match fst t with CTOptional t | CTParent((CTOptional t,_)) -> t, true | _ -> t,false) in
 				let n,t = (match fst t with CTNamed (n,t) -> (fst n), t | _ -> "", t) in
 				n,opt,load_complex_type ctx allow_display t
 			) args,load_complex_type ctx allow_display r)
@@ -866,7 +874,7 @@ let handle_path_display ctx path p =
 	in
 	match ImportHandling.convert_import_to_something_usable !DisplayPosition.display_position path,ctx.com.display.dms_kind with
 		| (IDKPackage [_],p),DMDefault ->
-			let fields = DisplayToplevel.collect ctx None Typecore.NoValue in
+			let fields = DisplayToplevel.collect ctx TKType Typecore.NoValue in
 			raise_fields fields CRImport (Some p)
 		| (IDKPackage sl,p),DMDefault ->
 			let sl = match List.rev sl with

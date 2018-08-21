@@ -184,7 +184,7 @@ module Pattern = struct
 				pctx.current_locals <- PMap.add name (v,p) pctx.current_locals;
 				v
 			| _ ->
-				let v = alloc_var name t p in
+				let v = alloc_var VUser name t p in
 				v.v_meta <- (TVarOrigin.encode_in_meta TVarOrigin.TVOPatternVariable) :: v.v_meta;
 				pctx.current_locals <- PMap.add name (v,p) pctx.current_locals;
 				ctx.locals <- PMap.add name v ctx.locals;
@@ -464,9 +464,25 @@ module Pattern = struct
 				restore();
 				let pat = make pctx toplevel e1.etype e2 in
 				PatExtractor(v,e1,pat)
+			(* Special case for completion on a pattern local: We don't want to add the local to the context
+			   while displaying (#7319) *)
+			| EDisplay((EConst (Ident _),_ as e),dk) when pctx.ctx.com.display.dms_kind = DMDefault ->
+				let locals = ctx.locals in
+				let pat = loop e in
+				let locals' = ctx.locals in
+				ctx.locals <- locals;
+				ignore(TyperDisplay.handle_edisplay ctx e (DKPattern toplevel) (WithType t));
+				ctx.locals <- locals';
+				pat
+			(* For signature completion, we don't want to recurse into the inner pattern because there's probably
+			   a EDisplay(_,DMMarked) in there. We can handle display immediately because inner patterns should not
+			   matter (#7326) *)
+			| EDisplay(e1,DKCall) ->
+				ignore(TyperDisplay.handle_edisplay ctx e (DKPattern toplevel) (WithType t));
+				loop e1
 			| EDisplay(e,dk) ->
 				let pat = loop e in
-				ignore(TyperDisplay.handle_edisplay ctx e (if toplevel then DKPattern else dk) (WithType t));
+				ignore(TyperDisplay.handle_edisplay ctx e (DKPattern toplevel) (WithType t));
 				pat
 			| _ ->
 				fail()
@@ -1098,8 +1114,7 @@ module Compile = struct
 					let patterns = make_offset_list (left2 + 1) (right2 - 1) pat pat_any @ patterns in
 					(left + 1, right - 1,ev :: subjects,((case,bindings,patterns) :: cases),ex_bindings)
 				with Not_found ->
-					let v = alloc_var "_hx_tmp" e1.etype e1.epos in
-					v.v_meta <- (Meta.Custom ":extractorVariable",[],v.v_pos) :: v.v_meta;
+					let v = alloc_var VExtractorVariable "_hx_tmp" e1.etype e1.epos in
 					let ex_bindings = (v,e1.epos,e1,left,right) :: ex_bindings in
 					let patterns = make_offset_list (left + 1) (right - 1) pat pat_any @ patterns in
 					let ev = mk (TLocal v) v.v_type e1.epos in
@@ -1459,7 +1474,7 @@ module Match = struct
 		) cases in
 		let infer_switch_type () =
 			match with_type with
-				| NoValue -> mk_mono()
+				| NoValue -> ctx.t.tvoid
 				| Value ->
 					let el = List.map (fun (case,_,_) -> match case.Case.case_expr with Some e -> e | None -> mk (TBlock []) ctx.t.tvoid p) cases in
 					unify_min ctx el

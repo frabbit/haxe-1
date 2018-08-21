@@ -50,7 +50,7 @@ let collect_static_extensions ctx items e p =
 		| (c,_) :: l ->
 			let rec dup t = Type.map dup t in
 			let acc = List.fold_left (fun acc f ->
-				if Meta.has Meta.NoUsing f.cf_meta || Meta.has Meta.Impl f.cf_meta || PMap.mem f.cf_name items then
+				if Meta.has Meta.NoUsing f.cf_meta || Meta.has Meta.NoCompletion f.cf_meta || Meta.has Meta.Impl f.cf_meta || PMap.mem f.cf_name items then
 					acc
 				else begin
 					let f = { f with cf_type = opt_type f.cf_type } in
@@ -71,7 +71,11 @@ let collect_static_extensions ctx items e p =
 							else begin
 								let f = prepare_using_field f in
 								let f = { f with cf_params = []; cf_public = true; cf_type = TFun(args,ret) } in
-								let origin = StaticExtension(TClassDecl c) in
+								let decl = match c.cl_kind with
+									| KAbstractImpl a -> TAbstractDecl a
+									| _ -> TClassDecl c
+								in
+								let origin = StaticExtension(decl) in
 								let ct = DisplayEmitter.completion_type_of_type ctx ~values:(get_value_meta f.cf_meta) f.cf_type in
 								let item = make_ci_class_field (CompletionClassField.make f CFSMember origin true) (f.cf_type,ct) in
 								PMap.add f.cf_name item acc
@@ -159,27 +163,42 @@ let collect ctx e_ast e dk with_type p =
 			(* Anons only have their own fields. *)
 			PMap.foldi (fun name cf acc ->
 				if is_new_item acc name then begin
-					let origin,check = match !(an.a_status) with
-						| Statics ({cl_kind = KAbstractImpl a} as c) -> Self (TAbstractDecl a),should_access c cf false
-						| Statics c -> Self (TClassDecl c),should_access c cf true
-						| EnumStatics en -> Self (TEnumDecl en),true
+					let allow_static_abstract_access c cf =
+						should_access c cf false &&
+						(not (Meta.has Meta.Impl cf.cf_meta) || Meta.has Meta.Enum cf.cf_meta)
+					in
+					let ct = DisplayEmitter.completion_type_of_type ctx ~values:(get_value_meta cf.cf_meta) cf.cf_type in
+					let add origin make_field =
+						PMap.add name (make_field (CompletionClassField.make cf CFSMember origin true) (cf.cf_type,ct)) acc
+					in
+					match !(an.a_status) with
+						| Statics ({cl_kind = KAbstractImpl a} as c) ->
+							if allow_static_abstract_access c cf then
+								let make = if Meta.has Meta.Enum cf.cf_meta then
+										(make_ci_enum_abstract_field a)
+									else
+										make_ci_class_field
+								in
+								add (Self (TAbstractDecl a)) make
+							else
+								acc;
+						| Statics c ->
+							if should_access c cf true then add (Self (TClassDecl c)) make_ci_class_field else acc;
+						| EnumStatics en ->
+							let ef = PMap.find name en.e_constrs in
+							PMap.add name (make_ci_enum_field (CompletionEnumField.make ef (Self (TEnumDecl en)) true) (cf.cf_type,ct)) acc
 						| AbstractStatics a ->
 							let check = match a.a_impl with
 								| None -> true
-								| Some c -> should_access c cf true
+								| Some c -> allow_static_abstract_access c cf
 							in
-							Self (TAbstractDecl a),check
+							if check then add (Self (TAbstractDecl a)) make_ci_class_field else acc;
 						| _ ->
 							let origin = match t with
 								| TType(td,_) -> Self (TTypeDecl td)
 								| _ -> AnonymousStructure an
 							in
-							origin,true
-					in
-					if check then begin
-						let ct = DisplayEmitter.completion_type_of_type ctx ~values:(get_value_meta cf.cf_meta) cf.cf_type in
-						PMap.add name (make_ci_class_field (CompletionClassField.make cf CFSMember origin true) (cf.cf_type,ct)) acc
-					end else acc
+							add origin make_ci_class_field;
 				end else
 					acc
 			) an.a_fields items
@@ -204,7 +223,7 @@ let collect ctx e_ast e dk with_type p =
 			cf.cf_doc <- Some "The character code of this character (inlined at compile-time).";
 			cf.cf_kind <- Var { v_read = AccNormal; v_write = AccNever };
 			let ct = DisplayEmitter.completion_type_of_type ctx ~values:(get_value_meta cf.cf_meta) cf.cf_type in
-			let item = make_ci_class_field (CompletionClassField.make cf CFSStatic BuiltIn true) (cf.cf_type,ct) in
+			let item = make_ci_class_field (CompletionClassField.make cf CFSMember BuiltIn true) (cf.cf_type,ct) in
 			PMap.add cf.cf_name item PMap.empty
 		| _ ->
 			PMap.empty
@@ -214,7 +233,7 @@ let collect ctx e_ast e dk with_type p =
 	(* Add static extensions *)
 	let items = collect_static_extensions ctx items e p in
 	let items = PMap.fold (fun item acc -> item :: acc) items [] in
-	let items = sort_fields items Value (Some p) in
+	let items = sort_fields items Value (TKField p) in
 	try
 		let sl = string_list_of_expr_path_raise e_ast in
 		(* Add submodule fields *)

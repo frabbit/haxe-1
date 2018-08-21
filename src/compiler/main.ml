@@ -213,7 +213,7 @@ module Initialize = struct
 				"n"
 			| Js ->
 				if not (PMap.exists (fst (Define.infos Define.JqueryVer)) com.defines.Define.values) then
-					Common.define_value com Define.JqueryVer "11204";
+					Common.define_value com Define.JqueryVer "30301";
 
 				let es_version =
 					try
@@ -832,6 +832,12 @@ try
 		let tctx = Typer.create com in
 		List.iter (MacroContext.call_init_macro tctx) (List.rev !config_macros);
 		List.iter (fun f -> f ()) (List.rev com.callbacks.after_init_macros);
+		begin match CompilationServer.get () with
+		| None -> ()
+		| Some cs ->
+			let sign = Define.get_signature com.defines in
+			try ignore(CompilationServer.get_sign cs sign) with Not_found -> ignore(CompilationServer.add_sign cs sign com)
+		end;
 		List.iter (fun cpath -> ignore(tctx.Typecore.g.Typecore.do_load_module tctx cpath null_pos)) (List.rev !classes);
 		Finalization.finalize tctx;
 		(* If we are trying to find references, let's syntax-explore everything we know to check for the
@@ -991,11 +997,11 @@ with
 			| CRTypeHint
 			| CRExtends
 			| CRImplements
-			| CRStructExtension
+			| CRStructExtension _
 			| CRImport
 			| CRUsing
 			| CRNew
-			| CRPattern
+			| CRPattern _
 			| CRTypeRelation ->
 				DisplayOutput.print_toplevel fields
 			| CRField _
@@ -1032,7 +1038,6 @@ with
 			begin match ctx.com.json_out with
 			| Some (f,_) ->
 				let ctx = DisplayJson.create_json_context false in
-				let pos = Parser.cut_pos_at_display pos in
 				let path = match List.rev p with
 					| name :: pack -> List.rev pack,name
 					| [] -> [],""

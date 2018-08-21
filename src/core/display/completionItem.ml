@@ -3,6 +3,13 @@ open Ast
 open Type
 open Genjson
 
+type toplevel_kind =
+	| TKExpr of pos
+	| TKType
+	| TKPattern of pos
+	| TKOverride
+	| TKField of pos
+
 module CompletionModuleKind = struct
 	type t =
 		| Class
@@ -132,19 +139,25 @@ module CompletionModuleType = struct
 			raise Exit
 
 	let of_module_type mt =
+		let has_ctor a = match a.a_impl with
+			| None -> false
+			| Some c -> PMap.mem "_new" c.cl_statics
+		in
 		let is_extern,kind,has_ctor = match mt with
 			| TClassDecl c ->
 				c.cl_extern,(if c.cl_interface then Interface else Class),has_constructor c
 			| TEnumDecl en ->
 				en.e_extern,Enum,false
 			| TTypeDecl td ->
-				false,(match follow td.t_type with TAnon _ -> Struct | _ -> TypeAlias),false
-			| TAbstractDecl a ->
-				let has_ctor = match a.a_impl with
-					| None -> false
-					| Some c -> PMap.mem "_new" c.cl_statics
+				let kind,has_ctor = match follow td.t_type with
+					| TAnon _ -> Struct,false
+					| TInst(c,_) -> TypeAlias,has_constructor c
+					| TAbstract(a,_) -> TypeAlias,has_ctor a
+					| _ -> TypeAlias,false
 				in
-				false,(if Meta.has Meta.Enum a.a_meta then EnumAbstract else Abstract),has_ctor
+				false,kind,has_ctor
+			| TAbstractDecl a ->
+				false,(if Meta.has Meta.Enum a.a_meta then EnumAbstract else Abstract),has_ctor a
 		in
 		let infos = t_infos mt in
 		let convert_type_param (s,t) = match follow t with
@@ -222,6 +235,10 @@ module ClassFieldOrigin = struct
 		)
 end
 
+let decl_of_class c = match c.cl_kind with
+	| KAbstractImpl a -> TAbstractDecl a
+	| _ -> TClassDecl c
+	
 module CompletionClassField = struct
 	type t = {
 		field : tclass_field;
@@ -418,7 +435,7 @@ let get_index item = match item.ci_kind with
 	| ITExpression _ -> 12
 	| ITTypeParameter _ -> 13
 
-let get_sort_index item p = match item.ci_kind with
+let get_sort_index tk item p = match item.ci_kind with
 	| ITLocal v ->
 		let i = p.pmin - v.v_pos.pmin in
 		let i = if i < 0 then 0 else i in
@@ -435,9 +452,9 @@ let get_sort_index item p = match item.ci_kind with
 		in
 		i,ccf.field.cf_name
 	| ITEnumField ef ->
-		20,(Printf.sprintf "%04i" ef.efield.ef_index)
+		(match tk with TKPattern _ | TKField _ -> -1 | _ -> 20),(Printf.sprintf "%04i" ef.efield.ef_index)
 	| ITEnumAbstractField(_,ccf) ->
-		21,ccf.field.cf_name
+		(match tk with TKPattern _ | TKField _ -> -1 | _ -> 21),ccf.field.cf_name
 	| ITTypeParameter c ->
 		30,snd c.cl_path
 	| ITType(cmt,is) ->
