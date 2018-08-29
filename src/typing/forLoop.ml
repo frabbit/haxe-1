@@ -73,7 +73,12 @@ module IterationKind = struct
 					let unroll = unroll (abs diff) in
 					if unroll then IteratorIntUnroll(Int32.to_int a,abs(diff),diff < 0)
 					else IteratorIntConst(efrom,eto,diff < 0)
-				| _ -> IteratorInt(efrom,eto)
+				| _ ->
+					let eto = match follow eto.etype with
+						| TAbstract ({ a_path = ([],"Int") }, []) -> eto
+						| _ -> { eto with eexpr = TCast(eto, None); etype = ctx.t.tint }
+					in
+					IteratorInt(efrom,eto)
 			in
 			it,e,ctx.t.tint
 		| TArrayDecl el,TInst({ cl_path = [],"Array" },[pt]) ->
@@ -329,7 +334,7 @@ let type_for_loop ctx handle_display it e2 p =
 	ctx.in_loop <- true;
 	let e2 = Expr.ensure_block e2 in
 	let iterator = IterationKind.of_texpr ctx e1 (is_cheap_enough ctx e2) p in
-	let i = add_local_with_origin ctx VUser i iterator.it_type pi (TVarOrigin.TVOForVariable) in
+	let i = add_local_with_origin ctx TVOForVariable i iterator.it_type pi in
 	let e2 = type_expr ctx e2 NoValue in
 	begin match dko with
 	| None -> ()
