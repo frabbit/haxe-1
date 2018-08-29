@@ -1645,6 +1645,36 @@ let macro_api ccom get_api =
 				encode_type (dup t)
 			with Exit -> vnull
 		);
+
+		"add_monos", vfun1 (fun t ->
+			try
+				let add_monos t =
+					let all = Hashtbl.create 0 in
+					let rec loop (t:t) =
+						begin match follow t with
+						| TInst({ cl_path = (pack,name); cl_kind = (KTypeParameter _) }, []) ->
+							let name = name in
+							begin try
+								begin
+									let s = Hashtbl.find all name in
+									s
+								end
+							with Not_found ->
+								begin
+								let t = mk_mono () in
+								Hashtbl.add all name t;
+								t
+								end
+							end
+						| t -> map loop t
+						end
+					in
+					loop t
+				in
+				let t = decode_type t in
+				encode_type (add_monos t)
+			with Exit -> vnull
+		);
 		"unify", vfun2 (fun t1 t2 ->
 			let e1 = mk (TObjectDecl []) (decode_type t1) Globals.null_pos in
 			vbool (((get_api()).cast_or_unify) (decode_type t2) e1 Globals.null_pos)
