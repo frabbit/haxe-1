@@ -678,10 +678,16 @@ let type_bind ctx (e : texpr) (args,ret) params p =
 			let a = if is_pos_infos t then
 					let infos = mk_infos ctx p [] in
 					ordered_args @ [type_expr ctx infos (WithType t)]
-				else if ctx.com.config.pf_pad_nulls then
-					(ordered_args @ [(mk (TConst TNull) t_dynamic p)])
-				else
-					ordered_args
+				else begin match follow t with
+				| TAbstract({a_impl = Some c; a_from_nothing = Some cf} as a,tl) ->
+					let t = AbstractCast.make_static_call ctx c cf a tl [] t p in
+					ordered_args @ [t]
+				| _ ->
+					if ctx.com.config.pf_pad_nulls then
+						(ordered_args @ [(mk (TConst TNull) t_dynamic p)])
+					else
+						ordered_args
+				end
 			in
 			loop args [] given_args missing_args a
 		| (n,o,t) :: _ , (EConst(Ident "_"),p) :: _ when not ctx.com.config.pf_can_skip_non_nullable_argument && o && not (is_nullable t) ->
