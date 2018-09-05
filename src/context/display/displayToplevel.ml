@@ -329,7 +329,10 @@ let collect ctx tk with_type =
 	List.iter (fun (s,t) -> match follow t with
 		| TInst(c,_) ->
 			add (make_ci_type_param c (tpair t)) (Some (snd c.cl_path))
-		| _ -> assert false
+		| t when is_in_type t ->
+			()
+		| _ ->
+			assert false
 	) ctx.type_params;
 
 	(* module types *)
