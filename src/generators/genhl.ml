@@ -2783,7 +2783,7 @@ and eval_expr ctx e =
 				[]
 			| (v,ec) :: next ->
 				let rv = alloc_var ctx v true in
-				let jnext = if v.v_type == t_dynamic then begin
+				let jnext = if (follow v.v_type) == t_dynamic || is_in_type v.v_type  then begin
 					op ctx (OMov (rv, rtrap));
 					(fun() -> ())
 				end else
