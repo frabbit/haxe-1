@@ -201,8 +201,7 @@ and jit_expr jit return e =
 		let num_captures = Hashtbl.length jit.captures in
 		let hasret = jit_closure.has_nonfinal_return in
 		let get_env = get_env jit_closure false (file_hash tf.tf_expr.epos.pfile) (EKLocalFunction jit.num_closures) in
-		let num_args = List.length tf.tf_args in
-		emit_closure ctx num_captures num_args get_env hasret exec
+		emit_closure ctx num_captures get_env hasret exec
 	(* branching *)
 	| TIf(e1,e2,eo) ->
 		let exec_cond = jit_expr jit false e1 in
@@ -264,7 +263,9 @@ and jit_expr jit return e =
 		let execs = List.map (jit_expr jit false) el in
 		let exec1 = jit_expr jit return e1 in
 		pop_scope jit;
-		emit_block (Array.of_list (execs @ [exec1]))
+		let execs = (Array.of_list (execs @ [exec1])) in
+		let l = Array.length execs in
+		emit_block execs l
 	| TReturn None ->
 		if return then emit_null
 		else begin
@@ -419,7 +420,10 @@ and jit_expr jit return e =
 			| FInstance(c,_,_) when not c.cl_interface ->
 				let proto = get_instance_prototype ctx (path_hash c.cl_path) e1.epos in
 				let i = get_instance_field_index proto name e1.epos in
-				emit_instance_field_read (jit_expr jit false e1) i
+				begin match e1.eexpr with
+					| TConst TThis -> emit_this_field_read (get_slot jit 0 e.epos) i
+					| _ -> emit_instance_field_read (jit_expr jit false e1) i
+				end
 			| FAnon _ ->
 				begin match follow e1.etype with
 					| TAnon an ->
@@ -562,8 +566,7 @@ let jit_tfunction ctx key_type key_field tf static pos =
 	(* Create the [vfunc] instance depending on the number of arguments. *)
 	let hasret = jit.has_nonfinal_return in
 	let get_env = get_env jit static (file_hash tf.tf_expr.epos.pfile) (EKMethod(key_type,key_field)) in
-	let num_args = List.length tf.tf_args + (if not static then 1 else 0) in
-	let f = create_function ctx num_args get_env hasret empty_array exec in
+	let f = create_function ctx get_env hasret empty_array exec in
 	t();
 	f
 
