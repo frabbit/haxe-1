@@ -121,3 +121,5 @@ hk-test/main.n
 .DS_Store
 tests/sourcemaps/bin
 /*_plugin.ml
+tests/benchs/export/
+tests/benchs/dump/
