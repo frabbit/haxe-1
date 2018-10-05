@@ -19,46 +19,44 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
+package haxe.iterators;
 
-import php.*;
+import php.Global.*;
+import php.NativeString;
 
-@:coreApi extern class String {
+class StringKeyValueIteratorUnicode {
+	var charOffset:Int = 0;
+	var byteOffset:Int = 0;
+	var totalBytes:Int;
+	var s:NativeString;
 
-	var length(default,null) : Int;
-
-	@:pure function new(string:String) : Void;
-
-	@:pure @:runtime inline function toUpperCase() : String {
-		return Global.mb_strtoupper(this);
+	public inline function new(s:String) {
+		this.s = s;
+		totalBytes = strlen(s);
 	}
 
-	@:pure @:runtime inline function toLowerCase() : String {
-		return Global.mb_strtolower(this);
+	public inline function hasNext() {
+		return byteOffset < totalBytes;
 	}
 
-	@:pure @:runtime inline function charAt(index : Int) : String {
-		return index < 0 ? '' : Global.mb_substr(this, index, 1);
+	public inline function next() {
+		var code = ord(s[byteOffset]);
+		if(code < 0xC0) {
+			byteOffset++;
+		} else if(code < 0xE0) {
+			code = ((code - 0xC0) << 6) + ord(s[byteOffset + 1]) - 0x80;
+			byteOffset += 2;
+		} else if(code < 0xF0) {
+			code = ((code - 0xE0) << 12) + ((ord(s[byteOffset + 1]) - 0x80) << 6) + ord(s[byteOffset + 2]) - 0x80;
+			byteOffset += 3;
+		} else {
+			code = ((code - 0xF0) << 18) + ((ord(s[byteOffset + 1]) - 0x80) << 12) + ((ord(s[byteOffset + 2]) - 0x80) << 6) + ord(s[byteOffset + 3]) - 0x80;
+			byteOffset += 4;
+		}
+		return { key: charOffset++, value: code };
 	}
 
-	@:pure function charCodeAt( index : Int) : Null<Int>;
-
-	@:pure function indexOf( str : String, ?startIndex : Int ) : Int;
-
-	@:pure function lastIndexOf( str : String, ?startIndex : Int ) : Int;
-
-	@:pure function split( delimiter : String ) : Array<String>;
-
-	@:pure @:runtime inline function substr( pos : Int, ?len : Int ) : String {
-		return Global.mb_substr(this, pos, len);
-	}
-
-	@:pure function substring( startIndex : Int, ?endIndex : Int ) : String;
-
-	@:pure @:runtime inline function toString() : String {
-		return this;
-	}
-
-	@:pure @:runtime static inline function fromCharCode( code : Int ) : String {
-		return Global.mb_chr(code);
+	static public inline function unicodeKeyValueIterator(s:String) {
+		return new StringKeyValueIteratorUnicode(s);
 	}
 }
