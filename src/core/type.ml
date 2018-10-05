@@ -1352,9 +1352,16 @@ and s_type2 ctx t =
 	| TFun ([],t) ->
 		"Void -> " ^ s_fun ctx t false
 	| TFun (l,t) ->
-		String.concat " -> " (List.map (fun (s,b,t) ->
-			(if b then "?" else "") ^ (if s = "" then "" else s ^ " : ") ^ s_fun ctx t true
-		) l) ^ " -> " ^ s_fun ctx t false
+		let args = match l with
+			| [] -> "()"
+			| ["",b,t] -> Printf.sprintf "%s%s" (if b then "?" else "") (s_fun ctx t true)
+			| _ ->
+				let args = String.concat ", " (List.map (fun (s,b,t) ->
+					(if b then "?" else "") ^ (if s = "" then "" else s ^ " : ") ^ s_fun ctx t true
+				) l) in
+				"(" ^ args ^ ")"
+		in
+		Printf.sprintf "%s -> %s" args (s_fun ctx t false)
 	| TAnon a ->
 		begin
 			match !(a.a_status) with
