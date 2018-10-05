@@ -99,102 +99,106 @@ let call_to_string ctx ?(resume=false) e =
 	ctx.meta <- List.tl ctx.meta;
 	!build_call_ref ctx acc [] (WithType.with_type ctx.t.tstring) e.epos
 
-	let rec unify_call_args' ctx el args r callp inline force_inline =
-		let in_call_args = ctx.in_call_args in
-		ctx.in_call_args <- true;
-		let call_error err p =
-			raise (Error (Call_error err,p))
-		in
-		let arg_error ul name opt p =
-			let err = Stack (ul,Custom ("For " ^ (if opt then "optional " else "") ^ "function argument '" ^ name ^ "'")) in
-			call_error (Could_not_unify err) p
-		in
-		let mk_pos_infos t =
-			let infos = mk_infos ctx callp [] in
-			type_expr ctx infos (WithType.with_type t)
-		in
-		let rec default_value name t =
-			if is_pos_infos t then
-				mk_pos_infos t
-			else
-					null (ctx.t.tnull t) callp
-		in
-		let skipped = ref [] in
-		let invalid_skips = ref [] in
-		let skip name ul t p =
-			if not ctx.com.config.pf_can_skip_non_nullable_argument && not (is_nullable t) then
-				invalid_skips := name :: !invalid_skips;
-			skipped := (name,ul,p) :: !skipped;
-			default_value name t
-		in
-		(* let force_inline, is_extern = match cf with Some(TInst(c,_),f) -> is_forced_inline (Some c) f, c.cl_extern | _ -> false, false in *)
-		let type_against name t e =
-			try
-				let e = type_expr ctx e (WithType.with_argument t name) in
-				AbstractCast.cast_or_unify_raise ctx t e e.epos
-			with Error(l,p) when (match l with Call_error _ | Module_not_found _ -> false | _ -> true) ->
-				raise (WithTypeError (l,p))
-		in
-		let rec loop el args = match el,args with
-			| [],[] ->
-				begin match List.rev !invalid_skips with
-					| [] -> ()
-					| name :: _ -> call_error (Cannot_skip_non_nullable name) callp;
-				end;
-				[]
-			| _,[name,false,t] when (match follow t with TAbstract({a_path = ["haxe";"extern"],"Rest"},_) -> true | _ -> false) ->
-				begin match follow t with
-					| TAbstract({a_path=(["haxe";"extern"],"Rest")},[t]) ->
-						(try List.map (fun e -> type_against name t e,false) el with WithTypeError(ul,p) -> arg_error ul name false p)
-					| _ ->
-						assert false
-				end
-			| [],(_,false,_) :: _ ->
-				call_error (Not_enough_arguments args) callp
-			| [],(name,true,t) :: args ->
-				begin match follow t with
-					| TAbstract({a_impl = Some c; a_from_nothing = Some cf} as a,tl) ->
-						let t = (AbstractCast.make_static_call ctx c cf a tl [] t callp,true) in
-						begin match args with
-							| [] -> [t]
-							| _ -> t :: (loop [] args)
-						end
-					| _ ->
-						begin match args with
-						| [] ->
-							if not (inline && (ctx.g.doinline || force_inline)) && not ctx.com.config.pf_pad_nulls then begin
-								if is_pos_infos t then [mk_pos_infos t,true]
-								else []
-							end else begin
-								let e_def = default_value name t in
-								[e_def,true]
-							end
-						| _ ->
+let rec unify_call_args' ctx el args r callp inline force_inline =
+	let in_call_args = ctx.in_call_args in
+	ctx.in_call_args <- true;
+	let call_error err p =
+		raise (Error (Call_error err,p))
+	in
+	let arg_error ul name opt p =
+		let err = Stack (ul,Custom ("For " ^ (if opt then "optional " else "") ^ "function argument '" ^ name ^ "'")) in
+		call_error (Could_not_unify err) p
+	in
+	let mk_pos_infos t =
+		let infos = mk_infos ctx callp [] in
+		type_expr ctx infos (WithType.with_type t)
+	in
+	let rec default_value name t =
+		if is_pos_infos t then
+			mk_pos_infos t
+		else
+				null (ctx.t.tnull t) callp
+	in
+	let skipped = ref [] in
+	let invalid_skips = ref [] in
+	let skip name ul t p =
+		if not ctx.com.config.pf_can_skip_non_nullable_argument && not (is_nullable t) then
+			invalid_skips := name :: !invalid_skips;
+		skipped := (name,ul,p) :: !skipped;
+		default_value name t
+	in
+	(* let force_inline, is_extern = match cf with Some(TInst(c,_),f) -> is_forced_inline (Some c) f, c.cl_extern | _ -> false, false in *)
+	let type_against name t e =
+		try
+			let e = type_expr ctx e (WithType.with_argument t name) in
+			AbstractCast.cast_or_unify_raise ctx t e e.epos
+		with Error(l,p) when (match l with Call_error _ | Module_not_found _ -> false | _ -> true) ->
+			raise (WithTypeError (l,p))
+	in
+	let rec loop el args = match el,args with
+		| [],[] ->
+			begin match List.rev !invalid_skips with
+				| [] -> ()
+				| name :: _ -> call_error (Cannot_skip_non_nullable name) callp;
+			end;
+			[]
+		| _,[name,false,t] when (match follow t with TAbstract({a_path = ["haxe";"extern"],"Rest"},_) -> true | _ -> false) ->
+			begin match follow t with
+				| TAbstract({a_path=(["haxe";"extern"],"Rest")},[t]) ->
+					(try List.map (fun e -> type_against name t e,false) el with WithTypeError(ul,p) -> arg_error ul name false p)
+				| _ ->
+					assert false
+			end
+		| [],(_,false,_) :: _ ->
+			call_error (Not_enough_arguments args) callp
+		| [],(name,true,t) :: args ->
+			begin match follow t with
+				| TAbstract({a_impl = Some c; a_from_nothing = Some cf} as a,tl) ->
+					let t = (AbstractCast.make_static_call ctx c cf a tl [] t callp,true) in
+					begin match args with
+						| [] -> [t]
+						| _ -> t :: (loop [] args)
+					end
+				| _ ->
+					begin match args with
+					| [] ->
+						if not (inline && (ctx.g.doinline || force_inline)) && not ctx.com.config.pf_pad_nulls then begin
+							if is_pos_infos t then [mk_pos_infos t,true]
+							else []
+						end else begin
 							let e_def = default_value name t in
-							(e_def,true) :: (loop [] args)
+							[e_def,true]
 						end
-				end
-			| (_,p) :: _, [] ->
-				begin match List.rev !skipped with
-					| [] -> call_error Too_many_arguments p
-					| (s,ul,p) :: _ -> arg_error ul s true p
-				end
-			| e :: el,(name,opt,t) :: args ->
-				begin try
-					let e = type_against name t e in
-					(e,opt) :: loop el args
-				with
-					WithTypeError (ul,p)->
-						if opt then
-							let e_def = skip name ul t p in
-							(e_def,true) :: loop (e :: el) args
-						else
-							arg_error ul name false p
-				end
-		in
-		let el = try loop el args with exc -> ctx.in_call_args <- in_call_args; raise exc; in
-		ctx.in_call_args <- in_call_args;
-		el,TFun(args,r)
+					| _ ->
+						let e_def = default_value name t in
+						(e_def,true) :: (loop [] args)
+					end
+			end
+		| (e,p) :: el, [] ->
+			begin match List.rev !skipped with
+			| [] ->
+				if ctx.com.display.dms_display then begin
+					let e = type_expr ctx (e,p) WithType.value in
+					(e,false) :: loop el []
+				end	else call_error Too_many_arguments p
+			| (s,ul,p) :: _ -> arg_error ul s true p
+			end
+		| e :: el,(name,opt,t) :: args ->
+			begin try
+				let e = type_against name t e in
+				(e,opt) :: loop el args
+			with
+				WithTypeError (ul,p)->
+					if opt then
+						let e_def = skip name ul t p in
+						(e_def,true) :: loop (e :: el) args
+					else
+						arg_error ul name false p
+			end
+	in
+	let el = try loop el args with exc -> ctx.in_call_args <- in_call_args; raise exc; in
+	ctx.in_call_args <- in_call_args;
+	el,TFun(args,r)
 
 	let unify_call_args ctx el args r p inline force_inline =
 		let el,tf = unify_call_args' ctx el args r p inline force_inline in
