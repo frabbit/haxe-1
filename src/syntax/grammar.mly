@@ -124,31 +124,20 @@ let rec	parse_file s =
 	| [< '(Kwd Package,_); pack = parse_package; s >] ->
 		begin match s with parser
 		| [< '(Const(Ident _),p) when pack = [] >] -> error (Custom "Package name must start with a lowercase character") p
-		| [< psem = semicolon; l = parse_type_decls psem.pmax pack []; '(Eof,_) >] -> pack , l
+		| [< psem = semicolon; l = parse_type_decls TCAfterImport psem.pmax pack []; '(Eof,_) >] -> pack , l
 		end
-	| [< l = parse_type_decls (-1) [] []; '(Eof,_) >] -> [] , l
+	| [< l = parse_type_decls TCBeforePackage (-1) [] []; '(Eof,_) >] -> [] , l
 
-and parse_type_decls pmax pack acc s =
+and parse_type_decls mode pmax pack acc s =
 	try
-		(* We check if we hit the magic type path here *)
-		if !in_display_file then begin
-			let pmin = match Stream.peek s with
-				| Some (Eof,_) | None -> max_int
-				| Some tk -> (pos tk).pmin
-			in
-			(* print_endline (Printf.sprintf "(%i <= %i) (%i > %i)" pmax !display_position.pmin pmin !display_position.pmax); *)
-			if pmax <= !display_position.pmin && pmin > !display_position.pmax then begin
-				let had_package = pack <> [] in
-				let mode = match acc with
-					| [] -> if had_package then TCAfterImport else TCBeforePackage
-					| ((EClass _ | EEnum _ | ETypedef _ | EAbstract _),_) :: _ -> TCAfterType
-					| ((EImport _ | EUsing _),_) :: _ -> TCAfterImport
-				in
-				delay_syntax_completion (SCTypeDecl mode) !display_position
-			end
-		end;
+		check_type_decl_completion mode pmax s;
 		match s with parser
-		| [< (v,p) = parse_type_decl; l = parse_type_decls p.pmax pack ((v,p) :: acc) >] -> l
+		| [< (v,p) = parse_type_decl mode >] ->
+			let mode = match v with
+				| EImport _ | EUsing _ -> TCAfterImport
+				| _ -> TCAfterType
+			in
+			parse_type_decls mode p.pmax pack ((v,p) :: acc) s
 		| [< >] -> List.rev acc
 	with
 	| TypePath ([],Some (name,false),b,p) ->
@@ -164,7 +153,7 @@ and parse_type_decls pmax pack acc s =
 		raise (TypePath (pack,Some(name,true),b,p))
 	| Stream.Error _ when !in_display ->
 		ignore(resume false false s);
-		parse_type_decls (last_pos s).pmax pack acc s
+		parse_type_decls mode (last_pos s).pmax pack acc s
 
 and parse_abstract doc meta flags = parser
 	| [< '(Kwd Abstract,p1); name = type_name; tl = parse_constraint_params; st = parse_abstract_subtype; sl = plist parse_abstract_relations; s >] ->
@@ -183,7 +172,7 @@ and parse_abstract doc meta flags = parser
 			d_data = fl;
 		},punion p1 p2)
 
-and parse_type_decl s =
+and parse_type_decl mode s =
 	match s with parser
 	| [< '(Kwd Import,p1) >] -> parse_import s p1
 	| [< '(Kwd Using,p1) >] -> parse_using s p1
@@ -249,15 +238,7 @@ and parse_type_decl s =
 		| [< a,p = parse_abstract doc meta c >] ->
 			EAbstract a,p
 		| [< >] ->
-			if not !in_display_file then raise Stream.Failure;
-			match c with
-			| [] -> raise Stream.Failure
-			| (_,p) :: _ ->
-				if would_skip_display_position p s then begin
-					let flags = List.map fst c in
-					syntax_completion (SCAfterTypeFlag flags) p
-				end;
-				raise Stream.Failure
+			check_type_decl_flag_completion mode c s
 
 
 and parse_class doc meta cflags need_name s =
@@ -1301,8 +1282,9 @@ and expr_next' e1 = parser
 		| _ -> assert false)
 	| [< '(Dot,p); e = parse_field e1 p >] -> e
 	| [< '(POpen,p1); e = parse_call_params (fun el p2 -> (ECall(e1,el)),punion (pos e1) p2) p1; s >] -> expr_next e s
-	| [< '(BkOpen,_); e2 = secure_expr; s >] ->
+	| [< '(BkOpen,p1); e2 = secure_expr; s >] ->
 		let p2 = expect_unless_resume_p bkclose s in
+		let e2 = check_signature_mark e2 p1 p2 in
 		expr_next (EArray (e1,e2), punion (pos e1) p2) s
 	| [< '(Arrow,pa); s >] ->
 		let er = expr s in
@@ -1407,29 +1389,16 @@ and parse_call_params f p1 s =
 			| Stream.Error _ | Stream.Failure ->
 				mk_null_expr (punion_next p1 s)
 			in
-			let check_signature_mark e p2 =
-				if not (is_signature_display()) then e
-				else begin
-					let p = punion p1 p2 in
-					if true || not !was_auto_triggered then begin (* TODO: #6383 *)
-						if encloses_position_gt !display_position p then (mk_display_expr e DKMarked)
-						else e
-					end else begin
-						if !display_position.pmin = p1.pmax then (mk_display_expr e DKMarked)
-						else e
-					end
-				end
-			in
 			match s with parser
 			| [< '(PClose,p2) >] ->
-				let e = check_signature_mark e p2 in
+				let e = check_signature_mark e p1 p2 in
 				f (List.rev (e :: acc)) p2
 			| [< '(Comma,p2) >] ->
-				let e = check_signature_mark e p2 in
+				let e = check_signature_mark e p1 p2 in
 				parse_next_param (e :: acc) p2
 			| [< >] ->
 				let p2 = next_pos s in
-				let e = check_signature_mark e p2 in
+				let e = check_signature_mark e p1 p2 in
 				f (List.rev (e :: acc)) p2
 		in
 		match s with parser

@@ -268,3 +268,45 @@ let check_resume_range p s fyes fno =
 			fno()
 	end else
 		fno()
+
+let check_type_decl_flag_completion mode flags s =
+	if not !in_display_file then raise Stream.Failure;
+	let check_type_completion () = match Stream.peek s with
+		(* If there's an identifier coming up, it's probably an incomplete type
+			declaration. Let's just raise syntax completion in that case because
+			the parser would fail otherwise anyway. *)
+		| Some((Const(Ident _),p)) -> syntax_completion (SCTypeDecl mode) p
+		| _ -> raise Stream.Failure
+	in
+	match flags with
+	| [] -> check_type_completion()
+	| (_,p) :: _ ->
+		if would_skip_display_position p s then begin
+			let flags = List.map fst flags in
+			syntax_completion (SCAfterTypeFlag flags) p
+		end;
+		check_type_completion()
+
+let check_type_decl_completion mode pmax s =
+	if !in_display_file then begin
+		let pmin = match Stream.peek s with
+			| Some (Eof,_) | None -> max_int
+			| Some tk -> (pos tk).pmin
+		in
+		(* print_endline (Printf.sprintf "(%i <= %i) (%i >= %i)" pmax !display_position.pmin pmin !display_position.pmax); *)
+		if pmax <= !display_position.pmin && pmin >= !display_position.pmax then
+			delay_syntax_completion (SCTypeDecl mode) !display_position
+	end
+
+let check_signature_mark e p1 p2 =
+	if not (is_signature_display()) then e
+	else begin
+		let p = punion p1 p2 in
+		if true || not !was_auto_triggered then begin (* TODO: #6383 *)
+			if encloses_position_gt !display_position p then (mk_display_expr e DKMarked)
+			else e
+		end else begin
+			if !display_position.pmin = p1.pmax then (mk_display_expr e DKMarked)
+			else e
+		end
+	end

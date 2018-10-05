@@ -1006,7 +1006,8 @@ with
 			| CRUsing
 			| CRNew
 			| CRPattern _
-			| CRTypeRelation ->
+			| CRTypeRelation
+			| CRTypeDecl ->
 				DisplayOutput.print_toplevel fields
 			| CRField _
 			| CRStructureField
@@ -1018,7 +1019,7 @@ with
 	| DisplayException(DisplayHover ({hitem = {CompletionItem.ci_type = Some (t,_)}} as hover)) ->
 		let doc = CompletionItem.get_documentation hover.hitem in
 		raise (DisplayOutput.Completion (DisplayOutput.print_type t hover.hpos doc))
-	| DisplayException(DisplaySignatures(signatures,_,display_arg)) ->
+	| DisplayException(DisplaySignatures(signatures,_,display_arg,_)) ->
 		if ctx.com.display.dms_kind = DMSignature then
 			raise (DisplayOutput.Completion (DisplayOutput.print_signature signatures display_arg))
 		else
