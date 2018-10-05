@@ -648,19 +648,48 @@ let find_doc t =
 	in
 	doc
 
-let handle_syntax_completion com kind p = match com.json_out with
-	| None ->
-		(* Not supported *)
+let handle_syntax_completion com kind p =
+	let open Parser in
+	let l = match kind with
+		| SCClassRelation ->
+			[Extends;Implements]
+		| SCInterfaceRelation ->
+			[Extends]
+		| SCComment ->
+			[]
+		| SCTypeDecl mode ->
+			let l = [Private;Extern;Class;Interface;Enum;Abstract;Typedef;Final] in
+			let l = match mode with
+				| TCBeforePackage -> Package :: Import :: Using :: l
+				| TCAfterImport -> Import :: Using :: l
+				| TCAfterType -> l
+			in
+			l
+		| SCAfterTypeFlag flags ->
+			let l = [Class;Interface] in
+			let l = if List.mem DPrivate flags then l else Private :: l in
+			let l = if List.mem DExtern flags then l else Extern :: l in
+			let l = if List.mem DFinal flags then l else
+				Final :: Enum :: Abstract :: Typedef :: l
+			in
+			l
+	in
+	match l with
+	| [] ->
 		()
-	| Some(f,_) ->
-		match kind with
-		| Parser.SCClassRelation ->
-			let l = [make_ci_keyword Extends;make_ci_keyword Implements] in
+	| _ ->
+		let l = List.map make_ci_keyword l in
+		match com.json_out with
+		| None ->
+			let b = Buffer.create 0 in
+			Buffer.add_string b "<il>\n";
+			List.iter (fun item -> match item.ci_kind with
+				| ITKeyword kwd -> Buffer.add_string b (Printf.sprintf "<i k=\"keyword\">%s</i>" (s_keyword kwd));
+				| _ -> assert false
+			) l;
+			Buffer.add_string b "</il>";
+			let s = Buffer.contents b in
+			raise (Completion s)
+		| Some(f,_) ->
 			let ctx = Genjson.create_context GMFull in
 			f(fields_to_json ctx l CRTypeRelation None)
-		| Parser.SCInterfaceRelation ->
-			let l = [make_ci_keyword Extends] in
-			let ctx = Genjson.create_context GMFull in
-			f(fields_to_json ctx l CRTypeRelation None)
-		| Parser.SCComment ->
-			()
