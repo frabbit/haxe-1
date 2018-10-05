@@ -15,7 +15,7 @@ let is_forced_inline c cf =
 	| _ when cf.cf_extern -> true
 	| _ -> false
 
-let make_call ctx e params t p =
+let make_call ctx e params t ?(force_inline=false) p =
 	try
 		let ethis,cl,f = match e.eexpr with
 			| TField (ethis,fa) ->
@@ -28,7 +28,7 @@ let make_call ctx e params t p =
 			| _ ->
 				raise Exit
 		in
-		if f.cf_kind <> Method MethInline then raise Exit;
+		if not force_inline && f.cf_kind <> Method MethInline then raise Exit;
 		let config = match cl with
 			| Some ({cl_kind = KAbstractImpl _}) when Meta.has Meta.Impl f.cf_meta ->
 				let t = if f.cf_name = "_new" then
@@ -200,68 +200,68 @@ let rec unify_call_args' ctx el args r callp inline force_inline =
 	ctx.in_call_args <- in_call_args;
 	el,TFun(args,r)
 
-	let unify_call_args ctx el args r p inline force_inline =
-		let el,tf = unify_call_args' ctx el args r p inline force_inline in
-		List.map fst el,tf
+let unify_call_args ctx el args r p inline force_inline =
+	let el,tf = unify_call_args' ctx el args r p inline force_inline in
+	List.map fst el,tf
 
-	let unify_field_call ctx fa el args ret p inline =
-		let map_cf cf0 map cf =
-			let t = map (monomorphs cf.cf_params cf.cf_type) in
-			begin match cf.cf_expr,cf.cf_kind with
-			| None,Method MethInline when not ctx.com.config.pf_overload ->
-				(* This is really awkward and shouldn't be here. We'll keep it for
-				   3.2 in order to not break code that relied on the quirky behavior
-				   in 3.1.3, but it should really be reviewed afterwards.
-				   Related issue: https://github.com/HaxeFoundation/haxe/issues/3846
-				*)
-				cf.cf_expr <- cf0.cf_expr;
-				cf.cf_kind <- cf0.cf_kind;
-			| _ ->
-				()
-			end;
-			t,cf
-		in
-		let expand_overloads map cf =
-			(TFun(args,ret),cf) :: (List.map (map_cf cf map) cf.cf_overloads)
-		in
-		let candidates,co,cf,mk_fa = match fa with
-			| FStatic(c,cf) ->
-				expand_overloads (fun t -> t) cf,Some c,cf,(fun cf -> FStatic(c,cf))
-			| FAnon cf ->
-				expand_overloads (fun t -> t) cf,None,cf,(fun cf -> FAnon cf)
-			| FInstance(c,tl,cf) ->
-				let map = apply_params c.cl_params tl in
-				let cfl = if cf.cf_name = "new" || not (Meta.has Meta.Overload cf.cf_meta && ctx.com.config.pf_overload) then
-					List.map (map_cf cf map) cf.cf_overloads
-				else
-					List.map (fun (t,cf) -> map (monomorphs cf.cf_params t),cf) (Overloads.get_overloads c cf.cf_name)
-				in
-				(TFun(args,ret),cf) :: cfl,Some c,cf,(fun cf -> FInstance(c,tl,cf))
-			| FClosure(co,cf) ->
-				let c = match co with None -> None | Some (c,_) -> Some c in
-				expand_overloads (fun t -> t) cf,c,cf,(fun cf -> match co with None -> FAnon cf | Some (c,tl) -> FInstance(c,tl,cf))
-			| _ ->
-				error "Invalid field call" p
-		in
-		let is_forced_inline = is_forced_inline co cf in
-		let is_overload = Meta.has Meta.Overload cf.cf_meta in
-		let attempt_call t cf = match follow t with
-			| TFun(args,ret) ->
-				let el,tf = unify_call_args' ctx el args ret p inline is_forced_inline in
-				let mk_call ethis p_field =
-					let ef = mk (TField(ethis,mk_fa cf)) t p_field in
-					make_call ctx ef (List.map fst el) ret p
-				in
-				el,tf,mk_call
-			| _ ->
-				assert false
-		in
-		let maybe_raise_unknown_ident cerr p =
-			let rec loop err =
-				match err with
-				| Unknown_ident _ -> error (error_msg err) p
-				| Stack (e1,e2) -> (loop e1; loop e2)
-				| _ -> ()
+let unify_field_call ctx fa el args ret p inline =
+	let map_cf cf0 map cf =
+		let t = map (monomorphs cf.cf_params cf.cf_type) in
+		begin match cf.cf_expr,cf.cf_kind with
+		| None,Method MethInline when not ctx.com.config.pf_overload ->
+			(* This is really awkward and shouldn't be here. We'll keep it for
+				3.2 in order to not break code that relied on the quirky behavior
+				in 3.1.3, but it should really be reviewed afterwards.
+				Related issue: https://github.com/HaxeFoundation/haxe/issues/3846
+			*)
+			cf.cf_expr <- cf0.cf_expr;
+			cf.cf_kind <- cf0.cf_kind;
+		| _ ->
+			()
+		end;
+		t,cf
+	in
+	let expand_overloads map cf =
+		(TFun(args,ret),cf) :: (List.map (map_cf cf map) cf.cf_overloads)
+	in
+	let candidates,co,cf,mk_fa = match fa with
+		| FStatic(c,cf) ->
+			expand_overloads (fun t -> t) cf,Some c,cf,(fun cf -> FStatic(c,cf))
+		| FAnon cf ->
+			expand_overloads (fun t -> t) cf,None,cf,(fun cf -> FAnon cf)
+		| FInstance(c,tl,cf) ->
+			let map = apply_params c.cl_params tl in
+			let cfl = if cf.cf_name = "new" || not (Meta.has Meta.Overload cf.cf_meta && ctx.com.config.pf_overload) then
+				List.map (map_cf cf map) cf.cf_overloads
+			else
+				List.map (fun (t,cf) -> map (monomorphs cf.cf_params t),cf) (Overloads.get_overloads c cf.cf_name)
+			in
+			(TFun(args,ret),cf) :: cfl,Some c,cf,(fun cf -> FInstance(c,tl,cf))
+		| FClosure(co,cf) ->
+			let c = match co with None -> None | Some (c,_) -> Some c in
+			expand_overloads (fun t -> t) cf,c,cf,(fun cf -> match co with None -> FAnon cf | Some (c,tl) -> FInstance(c,tl,cf))
+		| _ ->
+			error "Invalid field call" p
+	in
+	let is_forced_inline = is_forced_inline co cf in
+	let is_overload = Meta.has Meta.Overload cf.cf_meta in
+	let attempt_call t cf = match follow t with
+		| TFun(args,ret) ->
+			let el,tf = unify_call_args' ctx el args ret p inline is_forced_inline in
+			let mk_call ethis p_field inline =
+				let ef = mk (TField(ethis,mk_fa cf)) t p_field in
+				make_call ctx ef (List.map fst el) ret ~force_inline:inline p
+			in
+			el,tf,mk_call
+		| _ ->
+			assert false
+	in
+	let maybe_raise_unknown_ident cerr p =
+		let rec loop err =
+			match err with
+			| Unknown_ident _ -> error (error_msg err) p
+			| Stack (e1,e2) -> (loop e1; loop e2)
+			| _ -> ()
 			in
 			match cerr with Could_not_unify err -> loop err | _ -> ()
 		in
@@ -283,7 +283,7 @@ let rec unify_call_args' ctx el args r callp inline force_inline =
 		in
 		let fail_fun () =
 			let tf = TFun(args,ret) in
-			[],tf,(fun ethis p_field ->
+			[],tf,(fun ethis p_field _ ->
 				let e1 = mk (TField(ethis,mk_fa cf)) tf p_field in
 				mk (TCall(e1,[])) ret p)
 		in
@@ -533,7 +533,7 @@ let rec build_call ctx acc el (with_type:WithType.t) p =
 		(match follow t with
 			| TFun (args,r) ->
 				let _,_,mk_call = unify_field_call ctx fmode el args r p true in
-				mk_call ethis p
+				mk_call ethis p true
 			| _ ->
 				error (s_type (print_context()) t ^ " cannot be called") p
 		)
@@ -638,7 +638,7 @@ let rec build_call ctx acc el (with_type:WithType.t) p =
 							type_generic_function ctx (e1,fa) el with_type p
 						| _ ->
 							let _,_,mk_call = unify_field_call ctx fa el args r p false in
-							mk_call e1 e.epos
+							mk_call e1 e.epos false
 					end
 				| _ ->
 					let el, tfunc = unify_call_args ctx el args r p false false in
