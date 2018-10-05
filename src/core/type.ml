@@ -2539,15 +2539,20 @@ and unify_apply a b =
 				unify a1 a2;
 				unify b1 b2;
 			end
+		| _, _,_, (TDynamic _) ->
+			begin
+				()
+			end
 		| _ ->
 			begin
+				err ()
 				(* log_type "error unify_apply3 A" a; *)
 				(* log_type "error unify_apply3 A fromApply" (from_apply a); *)
 				(* log_type "error unify_apply3 A toApply" (to_apply a); *)
 				(* log_type "error unify_apply3 B" b; *)
 				(* log_type "error unify_apply3 B fromApply" (from_apply b); *)
 				(* log_type "error unify_apply3 B toApply" (to_apply b); *)
-				err ()
+
 			end
 		end
 
