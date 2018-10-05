@@ -117,6 +117,7 @@ let collect ctx e_ast e dk with_type p =
 		| TInst(c0,tl) ->
 			(* For classes, browse the hierarchy *)
 			let fields = TClass.get_all_fields c0 tl in
+			merge_core_doc ctx (TClassDecl c0);
 			PMap.foldi (fun k (c,cf) acc ->
 				if should_access c cf false && is_new_item acc cf.cf_name then begin
 					let origin = if c == c0 then Self(TClassDecl c) else Parent(TClassDecl c) in
@@ -130,6 +131,7 @@ let collect ctx e_ast e dk with_type p =
 			let t = unapply_in_constraints_in_apply t1 t2 in
 			if is_apply_type t then PMap.empty else loop items t
 		| TAbstract({a_impl = Some c} as a,tl) ->
+			merge_core_doc ctx (TAbstractDecl a);
 			(* Abstracts should show all their @:impl fields minus the constructor. *)
 			let items = List.fold_left (fun acc cf ->
 				if Meta.has Meta.Impl cf.cf_meta && not (Meta.has Meta.Enum cf.cf_meta) && should_access c cf false && is_new_item acc cf.cf_name then begin
@@ -183,11 +185,13 @@ let collect ctx e_ast e dk with_type p =
 							else
 								acc;
 						| Statics c ->
+							merge_core_doc ctx (TClassDecl c);
 							if should_access c cf true then add (Self (TClassDecl c)) make_ci_class_field else acc;
 						| EnumStatics en ->
 							let ef = PMap.find name en.e_constrs in
 							PMap.add name (make_ci_enum_field (CompletionEnumField.make ef (Self (TEnumDecl en)) true) (cf.cf_type,ct)) acc
 						| AbstractStatics a ->
+							merge_core_doc ctx (TAbstractDecl a);
 							let check = match a.a_impl with
 								| None -> true
 								| Some c -> allow_static_abstract_access c cf
