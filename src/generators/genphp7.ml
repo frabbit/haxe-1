@@ -2201,9 +2201,9 @@ class code_writer (ctx:Common.context) hx_type_path php_name =
 		method write_expr_field expr access =
 			match access with
 				| FInstance ({ cl_path = [], "String"}, _, { cf_name = "length"; cf_kind = Var _ }) ->
-					self#write "strlen(";
+					self#write "mb_strlen(";
 					self#write_expr expr;
-					self#write ")"
+					self#write ", 'UTF-8')"
 				| FInstance (_, _, field) -> self#write_expr_for_field_access expr "->" (field_name field)
 				| FStatic (_, ({ cf_kind = Var _ } as field)) ->
 					(match (reveal_expr expr).eexpr with
@@ -2254,7 +2254,9 @@ class code_writer (ctx:Common.context) hx_type_path php_name =
 					self#write "()"
 				end
 		(**
-			Writes field access on Dynamic expression to output buffer
+			Writes field access on Dynamic expression to output buffer.
+			Returns `true` if requested field is most likely belongs to String (and field resolution will be handled at runtime).
+			Otherwise returns `false`
 		*)
 		method write_expr_field_if_string expr field_name =
 			(* Special case for String fields *)
@@ -3219,7 +3221,7 @@ class class_builder ctx (cls:tclass) =
 			Indicates if type should be declared as `final`
 		*)
 		method is_final =
-			if not (Meta.has Meta.Final cls.cl_meta) then
+			if not cls.cl_final then
 				false
 			else begin
 				let hacked = ref false in
@@ -3238,7 +3240,7 @@ class class_builder ctx (cls:tclass) =
 			Indicates if `field` should be declared as `final`
 		*)
 		method is_final_field (field:tclass_field) : bool =
-			Meta.has Meta.Final field.cf_meta
+			field.cf_final
 		(**
 			Check if there is no native php constructor in inheritance chain of this class.
 			E.g. `StsClass` does have a constructor while still can be called with `new StdClass()`.

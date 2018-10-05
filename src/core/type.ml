@@ -190,6 +190,7 @@ and tclass_field = {
 	mutable cf_expr_unoptimized : tfunc option;
 	mutable cf_overloads : tclass_field list;
 	mutable cf_extern : bool; (* this is only true if the field itself is extern, not its class *)
+	mutable cf_final : bool;
 }
 
 and tclass_kind =
@@ -227,6 +228,7 @@ and tclass = {
 	(* do not insert any fields above *)
 	mutable cl_kind : tclass_kind;
 	mutable cl_extern : bool;
+	mutable cl_final : bool;
 	mutable cl_interface : bool;
 	mutable cl_super : (tclass * tparams) option;
 	mutable cl_implements : (tclass * tparams) list;
@@ -473,6 +475,7 @@ let mk_class m path pos name_pos =
 		cl_private = false;
 		cl_kind = KNormal;
 		cl_extern = false;
+		cl_final = false;
 		cl_interface = false;
 		cl_params = [];
 		cl_super = None;
@@ -528,6 +531,7 @@ let mk_field name t p name_pos = {
 	cf_params = [];
 	cf_overloads = [];
 	cf_extern = false;
+	cf_final = false;
 }
 
 let null_module = {
@@ -1781,6 +1785,7 @@ module Printer = struct
 			"cl_params",s_type_params c.cl_params;
 			"cl_kind",s_class_kind c.cl_kind;
 			"cl_extern",string_of_bool c.cl_extern;
+			"cl_final",string_of_bool c.cl_final;
 			"cl_interface",string_of_bool c.cl_interface;
 			"cl_super",s_opt (fun (c,tl) -> s_type (TInst(c,tl))) c.cl_super;
 			"cl_implements",s_list ", " (fun (c,tl) -> s_type (TInst(c,tl))) c.cl_implements;
@@ -1914,6 +1919,7 @@ module Printer = struct
 		| HPrivate -> "HPrivate"
 		| HExtends tp -> "HExtends " ^ (s_type_path (fst tp))
 		| HImplements tp -> "HImplements " ^ (s_type_path (fst tp))
+		| HFinal -> "HFinal"
 
 	let s_placed f (x,p) =
 		s_pair (f x) (s_pos p)
@@ -1989,6 +1995,7 @@ type unify_error =
 	| Invariant_parameter of t * t
 	| Constraint_failure of string
 	| Missing_overload of tclass_field * t
+	| FinalInvariance (* nice band name *)
 	| Unify_custom of string
 
 exception Unify_error of unify_error list
@@ -2391,7 +2398,7 @@ let rec unify a b =
 					unify_new_monos := !monos @ !unify_new_monos;
 					rec_stack unify_stack (ft,f2.cf_type)
 						(fun (a2,b2) -> fast_eq b2 f2.cf_type && fast_eq_mono !unify_new_monos ft a2)
-						(fun() -> try unify_with_access ft f2 with e -> unify_new_monos := old_monos; raise e)
+						(fun() -> try unify_with_access f1 ft f2 with e -> unify_new_monos := old_monos; raise e)
 						(fun l -> error (invalid_field n :: l));
 					unify_new_monos := old_monos;
 				| Method MethNormal | Method MethInline | Var { v_write = AccNo } | Var { v_write = AccNever } ->
@@ -2400,13 +2407,13 @@ let rec unify a b =
 					unify_new_monos := !monos @ !unify_new_monos;
 					rec_stack unify_stack (f2.cf_type,ft)
 						(fun(a2,b2) -> fast_eq_mono !unify_new_monos b2 ft && fast_eq f2.cf_type a2)
-						(fun() -> try unify_with_access ft f2 with e -> unify_new_monos := old_monos; raise e)
+						(fun() -> try unify_with_access f1 ft f2 with e -> unify_new_monos := old_monos; raise e)
 						(fun l -> error (invalid_field n :: l));
 					unify_new_monos := old_monos;
 				| _ ->
 					(* will use fast_eq, which have its own stack *)
 					try
-						unify_with_access ft f2
+						unify_with_access f1 ft f2
 					with
 						Unify_error l ->
 							error (invalid_field n :: l));
@@ -2580,7 +2587,7 @@ and unify_anons a b a1 a2 =
 				| _ -> error [invalid_kind n f1.cf_kind f2.cf_kind]);
 			if f2.cf_public && not f1.cf_public then error [invalid_visibility n];
 			try
-				unify_with_access (field_type f1) f2;
+				unify_with_access f1 (field_type f1) f2;
 				(match !(a1.a_status) with
 				| Statics c when not (Meta.has Meta.MaybeUsed f1.cf_meta) -> f1.cf_meta <- (Meta.MaybeUsed,[],f1.cf_pos) :: f1.cf_meta
 				| _ -> ());
@@ -2750,12 +2757,14 @@ and with_variance f t1 t2 =
 	with Unify_error _ ->
 		raise (Unify_error l)
 
-and unify_with_access t1 f2 =
+and unify_with_access f1 t1 f2 =
 	match f2.cf_kind with
 	(* write only *)
 	| Var { v_read = AccNo } | Var { v_read = AccNever } -> unify f2.cf_type t1
 	(* read only *)
-	| Method MethNormal | Method MethInline | Var { v_write = AccNo } | Var { v_write = AccNever } -> unify t1 f2.cf_type
+	| Method MethNormal | Method MethInline | Var { v_write = AccNo } | Var { v_write = AccNever } ->
+		if f1.cf_final <> f2.cf_final then raise (Unify_error [FinalInvariance]);
+		unify t1 f2.cf_type
 	(* read/write *)
 	| _ -> with_variance (type_eq EqBothDynamic) t1 f2.cf_type
 

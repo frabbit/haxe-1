@@ -1652,11 +1652,13 @@ and type_object_decl ctx fl with_type p =
 		let fl = List.map (fun ((n,pn,qs),e) ->
 			let is_valid = Lexer.is_valid_identifier n in
 			if PMap.mem n !fields then error ("Duplicate field in object declaration : " ^ n) p;
+			let is_final = ref false in
 			let e = try
 				let t = match !dynamic_parameter with
 					| Some t -> t
 					| None ->
 						let cf = PMap.find n field_map in
+						if cf.cf_final then is_final := true;
 						if ctx.in_display && DisplayPosition.encloses_display_position pn then DisplayEmitter.display_field ctx Unknown CFSMember cf pn;
 						cf.cf_type
 				in
@@ -1671,6 +1673,7 @@ and type_object_decl ctx fl with_type p =
 			if is_valid then begin
 				if starts_with n '$' then error "Field names starting with a dollar are not allowed" p;
 				let cf = mk_field n e.etype (punion pn e.epos) pn in
+				if !is_final then cf.cf_final <- true;
 				fields := PMap.add n cf !fields;
 			end;
 			((n,pn,qs),e)
@@ -2564,9 +2567,10 @@ let rec create com =
 			()
 	) ctx.g.std.m_types;
 	let m = TypeloadModule.load_module ctx ([],"String") null_pos in
-	(match m.m_types with
-	| [TClassDecl c] -> ctx.t.tstring <- TInst (c,[])
-	| _ -> assert false);
+	List.iter (fun mt -> match mt with
+		| TClassDecl c -> ctx.t.tstring <- TInst (c,[])
+		| _ -> ()
+	) m.m_types;
 	let m = TypeloadModule.load_module ctx ([],"Array") null_pos in
 	(try
 		List.iter (fun t -> (
