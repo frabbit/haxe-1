@@ -356,7 +356,7 @@ module StdBytes = struct
 			encode_bytes (Bytes.of_string s)
 		end
 	)
-	
+
 	let ofHex = vfun1 (fun v ->
 		let s = decode_string v in
 		let len = String.length s in
@@ -2023,7 +2023,7 @@ module StdString = struct
 					if i = l_this then raise Not_found;
 					let index = String.index_from s i chr in
 					DynArray.add acc (encode_range i (index - i));
-					loop1 (index + l_delimiter)
+					loop1 (index + (l_delimiter lsl (if ascii then 0 else 1)))
 				with Not_found ->
 					DynArray.add acc (encode_range i (l_this - i))
 			in
@@ -2094,11 +2094,23 @@ module StdString = struct
 		end
 	)
 
-	let toLowerCase = vifun0 (fun vthis -> encode_rope (Rope.lowercase (this vthis).srope))
+	let toLowerCase = vifun0 (fun vthis ->
+		let this = this vthis in
+		if this.sascii then
+			encode_rope (Rope.lowercase this.srope)
+		else
+			vstring (case_map this false)
+	)
 
 	let toString = vifun0 (fun vthis -> vthis)
 
-	let toUpperCase = vifun0 (fun vthis -> encode_rope (Rope.uppercase (this vthis).srope))
+	let toUpperCase = vifun0 (fun vthis ->
+		let this = this vthis in
+		if this.sascii then
+			encode_rope (Rope.uppercase this.srope)
+		else
+			vstring (case_map this true)
+	)
 
 	let cca = charCodeAt
 
@@ -2166,7 +2178,7 @@ module StdStringBuf = struct
 		in
 		let s' = Rope.sub s.srope i len in
 		let s' = if s.sascii then create_ascii_of_rope s'
-		else create_ucs2_of_rope s' len in
+		else create_ucs2_of_rope s' (len lsr 1) in
 		AwareBuffer.add_string this s';
 		vnull
 	)
