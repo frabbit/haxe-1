@@ -234,7 +234,7 @@ class Boot {
 	**/
 	public static function getPhpName( haxeName:String ) : Null<String> {
 		var prefix = getPrefix();
-		var phpParts = (prefix.length == 0 ? [] : [prefix]);
+		var phpParts = (Global.strlen(prefix) == 0 ? [] : [prefix]);
 
 		var haxeParts = haxeName.split('.');
 		for (part in haxeParts) {
@@ -668,7 +668,7 @@ private class HxString {
 	}
 
 	public static function charAt( str:String, index:Int) : String {
-		return index < 0 ? '' : Global.mb_substr(str, index, 1);
+		return index < 0 ? '' : Global.mb_substr(str, index, 1, 'UTF-8');
 	}
 
 	public static function charCodeAt( str:String, index:Int) : Null<Int> {
@@ -682,7 +682,7 @@ private class HxString {
 	public static function indexOf( str:String, search:String, startIndex:Int = null ) : Int {
 		if (startIndex == null) {
 			startIndex = 0;
-		} else if (startIndex < 0) {
+		} else if (startIndex < 0 && Const.PHP_VERSION_ID < 70100) { //negative ingexes are supported since 7.1.0
 			startIndex += str.length;
 		}
 		var index = Global.mb_strpos(str, search, startIndex, 'UTF-8');
@@ -720,18 +720,17 @@ private class HxString {
 	}
 
 	public static function substr( str:String, pos:Int, ?len:Int ) : String {
-		if (pos < -str.length) {
-			pos = 0;
-		} else if (pos >= str.length) {
-			return '';
-		}
 		return Global.mb_substr(str, pos, len, 'UTF-8');
 	}
 
 	public static function substring( str:String, startIndex:Int, ?endIndex:Int ) : String {
 		if (endIndex == null) {
-			endIndex = str.length;
-		} else if (endIndex < 0) {
+			if(startIndex < 0) {
+				startIndex = 0;
+			}
+			return Global.mb_substr(str, startIndex, null, 'UTF-8');
+		}
+		if (endIndex < 0) {
 			endIndex = 0;
 		}
 		if (startIndex < 0) {
