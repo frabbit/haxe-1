@@ -635,6 +635,8 @@ module Decision_tree = struct
 		| Fail ->
 			"<fail>"
 
+	let to_string tabs dt = Printf.sprintf "%2i %s" dt.dt_i (to_string tabs dt)
+
 	let equal_dt dt1 dt2 = dt1.dt_i = dt2.dt_i
 
 	let equal dt1 dt2 = match dt1,dt2 with
@@ -1368,9 +1370,9 @@ module TexprConverter = struct
 						let e_subject,unmatched,kind,finiteness = all_ctors ctx e_subject cases in
 						let unmatched = ExtList.List.filter_map (unify_constructor ctx params e_subject.etype) unmatched in
 						let loop toplevel params dt =
-							try Some (loop toplevel params dt)
+							try Some (loop false params dt)
 							with Not_exhaustive -> match with_type,finiteness with
-								| WithType.NoValue,Infinite -> None
+								| WithType.NoValue,Infinite when toplevel -> None
 								| _,CompileTimeFinite when unmatched = [] -> None
 								| _ when ctx.com.display.DisplayMode.dms_error_policy = DisplayMode.EPIgnore -> None
 								| _ -> report_not_exhaustive e_subject unmatched
@@ -1396,10 +1398,10 @@ module TexprConverter = struct
 							| [],RunTimeFinite ->
 								None
 							| _ ->
-								loop false params default
+								loop toplevel params default
 						in
 						let cases = ExtList.List.filter_map (fun (cons,dt,params) ->
-							let eo = loop false params dt in
+							let eo = loop toplevel params dt in
 							begin match eo with
 								| None -> None
 								| Some e -> Some (List.map (Constructor.to_texpr ctx match_debug) (List.sort Constructor.compare cons),e)
@@ -1460,7 +1462,7 @@ module TexprConverter = struct
 								mk (TIf(e_cond,e_then,Some e_else)) t_switch (punion e_then.epos e_else.epos)
 							)
 						with Not_exhaustive ->
-							if toplevel then (fun () -> loop false params dt2)
+							if toplevel then (fun () -> loop toplevel params dt2)
 							else if ctx.com.display.DisplayMode.dms_error_policy = DisplayMode.EPIgnore then (fun () -> mk (TConst TNull) (mk_mono()) dt2.dt_pos)
 							else report_not_exhaustive e [(ConConst TNull,dt.dt_pos),dt.dt_pos]
 						in
