@@ -69,16 +69,23 @@ let create com api is_macro =
 						raise Exit
 					in
 					let s = Common.defined_value com Define.EvalDebugger in
-					if s = "1" then raise Exit;
 					let host,port = try ExtString.String.split s ":" with _ -> fail "Invalid host format, expected host:port" in
 					let port = try int_of_string port with _ -> fail "Invalid port, expected int" in
-					Some (try Socket.create host port with exc -> fail (Printexc.to_string exc))
+					Some (try
+						let socket = Socket.create host port in
+						{
+							socket = socket;
+							connection = EvalDebugSocket.make_connection socket;
+						};
+					with exc ->
+						fail (Printexc.to_string exc)
+					)
 				with _ ->
 					None
 			in
 			let debug' = {
-				debug = com.Common.debug || support_debugger;
 				breakpoints = Hashtbl.create 0;
+				function_breakpoints = Hashtbl.create 0;
 				support_debugger = support_debugger;
 				debug_state = DbgStart;
 				breakpoint = EvalDebugMisc.make_breakpoint 0 0 BPDisabled BPAny None;
@@ -86,6 +93,7 @@ let create com api is_macro =
 				environment_offset_delta = 0;
 				debug_socket = socket;
 				exception_mode = CatchUncaught;
+				caught_exception = vnull;
 			} in
 			debug := Some debug';
 			debug'
@@ -408,7 +416,7 @@ let rec value_to_expr v p =
 			let proto = get_static_prototype_raise (get_ctx()) e.epath in
 			let expr = path e.epath in
 			let name = match proto.pkind with
-				| PEnum names -> List.nth names e.eindex
+				| PEnum names -> fst (List.nth names e.eindex)
 				| _ -> assert false
 			in
 			(EField (expr, name), p)
