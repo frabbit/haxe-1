@@ -1777,6 +1777,10 @@ let macro_api ccom get_api =
 					(match !r with
 					| None -> t
 					| Some t -> t)
+				| TAbstract({a_path=[],"-Apply"},[t1;t2]) ->
+					(match from_apply_option t with
+					| Some t -> t
+					| None -> t)
 				| TAbstract _ | TEnum _ | TInst _ | TFun _ | TAnon _ | TDynamic _ ->
 					t
 				| TType (t,tl) ->
