@@ -51,7 +51,6 @@ type module_check_policy =
 	| NoCheckDependencies
 	| NoCheckShadowing
 
-
 type t =
 	| TMono of t option ref
 	| TEnum of tenum * tparams
@@ -83,7 +82,7 @@ and tconstant =
 	| TThis
 	| TSuper
 
-and tvar_extra = (type_params * texpr * bool) option
+and tvar_extra = (type_params * texpr option) option
 
 and tvar_origin =
 	| TVOLocalVariable
@@ -113,7 +112,7 @@ and tvar = {
 }
 
 and tfunc = {
-	tf_args : (tvar * tconstant option) list;
+	tf_args : (tvar * texpr option) list;
 	tf_type : t;
 	tf_expr : texpr;
 }
@@ -1526,7 +1525,7 @@ and s_expr s_type e =
 		| Prefix -> sprintf "(%s %s)" (s_unop op) (loop e)
 		| Postfix -> sprintf "(%s %s)" (loop e) (s_unop op))
 	| TFunction f ->
-		let args = slist (fun (v,o) -> sprintf "%s : %s%s" (s_var v) (s_type v.v_type) (match o with None -> "" | Some c -> " = " ^ s_const c)) f.tf_args in
+		let args = slist (fun (v,o) -> sprintf "%s : %s%s" (s_var v) (s_type v.v_type) (match o with None -> "" | Some c -> " = " ^ loop c)) f.tf_args in
 		sprintf "Function(%s) : %s = %s" args (s_type f.tf_type) (loop f.tf_expr)
 	| TVar (v,eo) ->
 		sprintf "Vars %s" (sprintf "%s : %s%s" (s_var v) (s_type v.v_type) (match eo with None -> "" | Some e -> " = " ^ loop e))
@@ -1589,7 +1588,7 @@ let rec s_expr_pretty print_var_ids tabs top_level s_type e =
 		| Prefix -> sprintf "%s %s" (s_unop op) (loop e)
 		| Postfix -> sprintf "%s %s" (loop e) (s_unop op))
 	| TFunction f ->
-		let args = clist (fun (v,o) -> sprintf "%s:%s%s" (local v) (s_type v.v_type) (match o with None -> "" | Some c -> " = " ^ s_const c)) f.tf_args in
+		let args = clist (fun (v,o) -> sprintf "%s:%s%s" (local v) (s_type v.v_type) (match o with None -> "" | Some c -> " = " ^ loop c)) f.tf_args in
 		sprintf "%s(%s) %s" (if top_level then "" else "function") args (loop f.tf_expr)
 	| TVar (v,eo) ->
 		sprintf "var %s" (sprintf "%s%s" (local v) (match eo with None -> "" | Some e -> " = " ^ loop e))
@@ -1680,7 +1679,7 @@ let rec s_expr_ast print_var_ids tabs s_type e =
 	| TNew (c,tl,el) -> tag "New" ((s_type (TInst(c,tl))) :: (List.map loop el))
 	| TFunction f ->
 		let arg (v,cto) =
-			tag "Arg" ~t:(Some v.v_type) ~extra_tabs:"\t" (match cto with None -> [local v None] | Some ct -> [local v None;const ct None])
+			tag "Arg" ~t:(Some v.v_type) ~extra_tabs:"\t" (match cto with None -> [local v None] | Some ct -> [local v None;loop ct])
 		in
 		tag "Function" ((List.map arg f.tf_args) @ [loop f.tf_expr])
 	| TVar (v,eo) -> var v (match eo with None -> [] | Some e -> [loop e])
@@ -1892,8 +1891,8 @@ module Printer = struct
 			"a_write",s_opt (fun cf -> cf.cf_name) a.a_write;
 		]
 
-	let s_tvar_extra (tl,e,_) =
-		Printf.sprintf "Some(%s, %s)" (s_type_params tl) (s_expr_ast true "" s_type e)
+	let s_tvar_extra (tl,eo) =
+		Printf.sprintf "Some(%s, %s)" (s_type_params tl) (s_opt (s_expr_ast true "" s_type) eo)
 
 	let s_tvar v =
 		s_record_fields "" [
@@ -2027,6 +2026,8 @@ type unify_error =
 	| Constraint_failure of string
 	| Missing_overload of tclass_field * t
 	| FinalInvariance (* nice band name *)
+	| Invalid_function_argument of int
+	| Invalid_return_type
 	| Unify_custom of string
 
 exception Unify_error of unify_error list
@@ -2214,12 +2215,19 @@ let rec type_eq param a b =
 		List.iter2 (type_eq param) tl1 tl2
 	| TAnon a1, TAnon a2 ->
 		(try
+			(match !(a2.a_status) with
+			| Statics c -> (match !(a1.a_status) with Statics c2 when c == c2 -> () | _ -> error [])
+			| EnumStatics e -> (match !(a1.a_status) with EnumStatics e2 when e == e2 -> () | _ -> error [])
+			| AbstractStatics a -> (match !(a1.a_status) with AbstractStatics a2 when a == a2 -> () | _ -> error [])
+			| _ -> ()
+			);
 			PMap.iter (fun n f1 ->
 				try
 					let f2 = PMap.find n a2.a_fields in
 					if f1.cf_kind <> f2.cf_kind && (param = EqStrict || param = EqCoreType || not (unify_kind f1.cf_kind f2.cf_kind)) then error [invalid_kind n f1.cf_kind f2.cf_kind];
 					let a = f1.cf_type and b = f2.cf_type in
-					(try type_eq param a b with Unify_error l -> error (invalid_field n :: l))
+					(try type_eq param a b with Unify_error l -> error (invalid_field n :: l));
+					if f1.cf_public != f2.cf_public then error [invalid_visibility n];
 				with
 					Not_found ->
 						if is_closed a2 then error [has_no_field b n];
@@ -2394,8 +2402,8 @@ let rec unify a b =
 			) l2 l1 (* contravariance *)
 		with
 			Unify_error l ->
-				let msg = if !i = 0 then "Cannot unify return types" else "Cannot unify argument " ^ (string_of_int !i) in
-				error (cannot_unify a b :: Unify_custom msg :: l))
+				let msg = if !i = 0 then Invalid_return_type else Invalid_function_argument !i in
+				error (cannot_unify a b :: msg :: l))
 	| TInst (c,tl) , TAnon an ->
 		if PMap.is_empty an.a_fields then (match c.cl_kind with
 			| KTypeParameter pl ->
@@ -3154,7 +3162,7 @@ module TExprToExpr = struct
 		| TNew (c,pl,el) -> ENew ((match (try convert_type (TInst (c,pl)) with Exit -> convert_type (TInst (c,[]))) with CTPath p -> p,null_pos | _ -> assert false),List.map convert_expr el)
 		| TUnop (op,p,e) -> EUnop (op,p,convert_expr e)
 		| TFunction f ->
-			let arg (v,c) = (v.v_name,v.v_pos), false, v.v_meta, mk_type_hint v.v_type null_pos, (match c with None -> None | Some c -> Some (EConst (tconst_to_const c),e.epos)) in
+			let arg (v,c) = (v.v_name,v.v_pos), false, v.v_meta, mk_type_hint v.v_type null_pos, (match c with None -> None | Some c -> Some (convert_expr c)) in
 			EFunction (None,{ f_params = []; f_args = List.map arg f.tf_args; f_type = mk_type_hint f.tf_type null_pos; f_expr = Some (convert_expr f.tf_expr) })
 		| TVar (v,eo) ->
 			EVars ([(v.v_name,v.v_pos), v.v_final, mk_type_hint v.v_type v.v_pos, eopt eo])

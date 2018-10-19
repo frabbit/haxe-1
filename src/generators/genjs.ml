@@ -303,7 +303,7 @@ let rec concat ctx s f = function
 let fun_block ctx f p =
 	let e = List.fold_left (fun e (a,c) ->
 		match c with
-		| None | Some TNull -> e
+		| None | Some {eexpr = TConst TNull} -> e
 		| Some c -> Type.concat (Texpr.set_default ctx.com.basic a c p) e
 	) f.tf_expr f.tf_args in
 	e
@@ -1490,7 +1490,7 @@ let generate com =
 	let vars = if has_feature ctx "has_enum"
 		then ("$estr = function() { return " ^ (ctx.type_accessor (TClassDecl { null_class with cl_path = ["js"],"Boot" })) ^ ".__string_rec(this,''); }") :: vars
 		else vars in
-	let vars = if enums_as_objects then "$hxEnums = $hxEnums || {}" :: vars else vars in
+	let vars = if (enums_as_objects && (has_feature ctx "has_enum" || has_feature ctx "Type.resolveEnum")) then "$hxEnums = $hxEnums || {}" :: vars else vars in
 	let vars,has_dollar_underscore =
 		if List.exists (function TEnumDecl { e_extern = false } -> true | _ -> false) com.types then
 			"$_" :: vars,true

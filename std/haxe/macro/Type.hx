@@ -753,7 +753,7 @@ typedef TVar = {
 		Special information which is internally used to keep track of closure.
 		information
 	**/
-	public var extra(default,never):Null<{params: Array<TypeParameter>, expr: TypedExpr, isInline: Bool}>;
+	public var extra(default,never):Null<{params: Array<TypeParameter>, expr: Null<TypedExpr>}>;
 
 	/**
 		The metadata of the variable.
@@ -795,7 +795,7 @@ typedef TFunc = {
 		A list of function arguments identified by an argument variable `v` and
 		an optional initialization `value`.
 	**/
-	var args: Array<{v:TVar, value:Null<TConstant>}>;
+	var args: Array<{v:TVar, value:Null<TypedExpr>}>;
 
 	/**
 		The return type of the function.

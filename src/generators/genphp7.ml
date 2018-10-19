@@ -642,7 +642,7 @@ let inject_defaults (ctx:Common.context) (func:tfunc) =
 		match args with
 			| [] -> body_exprs
 			| (_, None) :: rest -> inject rest body_exprs
-			| (_, Some TNull) :: rest -> inject rest body_exprs
+			| (_, Some {eexpr = TConst TNull}) :: rest -> inject rest body_exprs
 			| (var, Some const) :: rest ->
 				let expr = Texpr.set_default ctx.basic var const func.tf_expr.epos in
 			 	expr :: (inject rest body_exprs)
@@ -1657,7 +1657,13 @@ class code_writer (ctx:Common.context) hx_type_path php_name =
 				| TBlock exprs -> self#write_expr_block expr
 				| TFor (var, iterator, body) -> fail self#pos __POS__
 				| TIf (condition, if_expr, else_expr) -> self#write_expr_if condition if_expr else_expr
-				| TWhile (condition, expr, do_while) -> self#write_expr_while condition expr do_while
+				| TWhile (condition, expr, do_while) ->
+					(match (reveal_expr_with_parenthesis condition).eexpr with
+						| TField (_, FStatic ({ cl_path = path }, { cf_name = "foreachCondition" })) when path = syntax_type_path  ->
+							self#write_expr_syntax_foreach expr
+						| _ ->
+							self#write_expr_while condition expr do_while
+					)
 				| TSwitch (switch, cases, default ) -> self#write_expr_switch switch cases default
 				| TTry (try_expr, catches) -> self#write_expr_try_catch try_expr catches
 				| TReturn expr -> self#write_expr_return expr
@@ -2401,7 +2407,6 @@ class code_writer (ctx:Common.context) hx_type_path php_name =
 				| "coalesce" -> self#write_expr_syntax_coalesce args
 				| "instanceof" -> self#write_expr_syntax_instanceof args
 				| "nativeClassName" -> self#write_expr_syntax_native_class_name args
-				| "foreach" -> self#write_expr_syntax_foreach args
 				| "construct" -> self#write_expr_syntax_construct args
 				| "field" | "getField" -> self#write_expr_syntax_get_field args
 				| "setField" -> self#write_expr_syntax_set_field args
@@ -2595,25 +2600,22 @@ class code_writer (ctx:Common.context) hx_type_path php_name =
 		(**
 			Writes `foreach` expression to output buffer (for `php.Syntax.foreach()`)
 		*)
-		method write_expr_syntax_foreach args =
-			match args with
-				| collection_expr :: { eexpr = TFunction fn } :: [] ->
-					let (key_name, value_name) = match fn.tf_args with
-						| ({ v_name = key_name }, _) :: ({ v_name = value_name }, _) :: [] -> (key_name, value_name)
-						| _ -> fail self#pos __POS__
-					and add_parentheses =
-						match collection_expr.eexpr with
-							| TLocal _ -> false
+		method write_expr_syntax_foreach body =
+			match body.eexpr with
+				| TBlock ({ eexpr = TCall (_, [collection]) } :: { eexpr = TVar (key, _) } :: { eexpr = TVar (value, _) } :: _ :: body_exprs) ->
+					let add_parentheses =
+						match collection.eexpr with
+							| TLocal _ | TField _ | TArray _ -> false
 							| _ -> true
 					in
 					self#write "foreach (";
 					if add_parentheses then self#write "(";
-					self#write_expr collection_expr;
+					self#write_expr collection;
 					if add_parentheses then self#write ")";
-					self#write (" as $" ^ key_name ^ " => $" ^ value_name ^ ") ");
-					self#write_as_block fn.tf_expr
+					self#write (" as $" ^ key.v_name ^ " => $" ^ value.v_name ^ ") ");
+					self#write_as_block ~unset_locals:true { body with eexpr = TBlock body_exprs };
 				| _ ->
-					ctx.error "php.Syntax.foreach() only accepts anonymous function declaration for second argument." self#pos
+					fail self#pos __POS__
 		(**
 			Writes TCall to output buffer
 		*)
@@ -2815,9 +2817,11 @@ class code_writer (ctx:Common.context) hx_type_path php_name =
 					self#write ("$" ^ arg_name);
 					match default_value with
 						| None -> ()
-						| Some const ->
+						| Some expr ->
 							self#write " = ";
-							self#write_expr_const const
+							match expr.eexpr with
+								| TConst _ -> self#write_expr expr
+								| _ -> self#write "null"
 		(**
 			Write an access to a field of dynamic value
 		*)

@@ -515,8 +515,8 @@ let unescape s =
 					Buffer.add_char b c;
 					inext := !inext + 2;
 				| 'x' ->
-					let c = (try char_of_int (int_of_string ("0x" ^ String.sub s (i+1) 2)) with _ -> fail()) in
-					Buffer.add_char b c;
+					let u = (try (int_of_string ("0x" ^ String.sub s (i+1) 2)) with _ -> fail()) in
+					UTF8.add_uchar b (UChar.uchar_of_int u);
 					inext := !inext + 2;
 				| 'u' ->
 					let (u, a) =
@@ -531,9 +531,7 @@ let unescape s =
 						with _ ->
 							fail()
 					in
-					let ub = UTF8.Buf.create 0 in
-					UTF8.Buf.add_char ub (UChar.uchar_of_int u);
-					Buffer.add_string b (UTF8.Buf.contents ub);
+					UTF8.add_uchar b (UChar.uchar_of_int u);
 					inext := !inext + a;
 				| _ ->
 					fail());

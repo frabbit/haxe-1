@@ -1093,11 +1093,10 @@ and encode_tconst c =
 	encode_enum ITConstant tag pl
 
 and encode_tvar v =
-	let f_extra (pl,e,inline) =
+	let f_extra (pl,e) =
 		encode_obj [
 			"params",encode_type_params pl;
-			"expr",encode_texpr e;
-			"isInline",vbool inline;
+			"expr",vopt encode_texpr e
 		]
 	in
 	encode_obj [
@@ -1124,7 +1123,7 @@ and encode_tfunc func =
 		"args",encode_array (List.map (fun (v,c) ->
 			encode_obj [
 				"v",encode_tvar v;
-				"value",match c with None -> vnull | Some c -> encode_tconst c
+				"value",match c with None -> vnull | Some c -> encode_texpr c
 			]
 		) func.tf_args);
 		"t",encode_type func.tf_type;
@@ -1307,7 +1306,7 @@ let decode_module_type v =
 
 let rec decode_tfunc v =
 	{
-		tf_args = List.map (fun v -> decode_tvar (field v "v"),opt decode_tconst (field v "value")) (decode_array (field v "args"));
+		tf_args = List.map (fun v -> decode_tvar (field v "v"),opt decode_texpr (field v "value")) (decode_array (field v "args"));
 		tf_type = decode_type (field v "t");
 		tf_expr = decode_texpr (field v "expr")
 	}
