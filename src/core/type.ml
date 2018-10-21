@@ -811,7 +811,8 @@ and follow1 t =
 and t_in_abstract =
 	let a_path = ([], "-In") in
 	let a_params = [] in
-	TAbstract ({ null_abstract with a_path = a_path; a_params = a_params; a_private = false }, [])
+	let a_module = { null_abstract.a_module with m_path = ([], "-In") } in
+	TAbstract ({ null_abstract with a_path = a_path; a_module = a_module; a_params = a_params; a_private = false }, [])
 
 and t_in = ref t_in_abstract
 

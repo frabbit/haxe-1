@@ -242,7 +242,7 @@ let rec load_instance' ctx (t,p) allow_no_params =
 		begin match t.tparams with
 			| [] -> pt
 			(* CTPath({tpackage=[];tname="Void"}),_)*)
-			| [ TPType (CTPath ({tpackage=[]; tname="-In"; tsub=None}),ctpos) ] ->
+			| [ TPType (CTPath ({tpackage=[]; tname="-In"}),ctpos) ] ->
 
 				let p1 = TPType (CTPath {tpackage=[]; tname="-In"; tparams=[]; tsub=Some("-In")}, ctpos)  in
 				let t = { t with tparams = [p1] } in
