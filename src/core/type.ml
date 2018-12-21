@@ -3094,7 +3094,43 @@ module TExprToExpr = struct
 			| Some t -> convert_type t)
 		| TInst ({cl_private = true; cl_path=_,name},tl)
 		| TEnum ({e_private = true; e_path=_,name},tl)
-		| TType ({t_private = true; t_path=_,name},tl)
+		| TType ({t_private = true; t_path=_,name},tl) ->
+			CTPath {
+				tpackage = [];
+				tname = name;
+				tparams = List.map tparam tl;
+				tsub = None;
+			}
+
+
+		| TAbstract ({a_path=[],"-Apply"},[_;_]) as t ->
+			begin match from_apply_option t with
+			| Some t -> convert_type t
+			| None ->
+				begin
+				let rec loop t = begin match t with
+				| TAbstract ({a_path=([],"-Apply")},[a;b]) ->
+					let (t, params) = loop a in
+					(t, b::params)
+				| t ->
+					(t, [])
+				end
+				in
+				let (t, params) = loop t in
+				let rev = List.rev params in
+				let tparams = (List.map tparam rev) in
+				let ct = convert_type t in
+
+				let r = (match ct with
+				| CTPath(tp) -> CTPath({ tp with tparams = tparams })
+				| _ -> assert false) in
+
+
+				r
+
+				end
+			end
+
 		| TAbstract ({a_private = true; a_path=_,name},tl) ->
 			CTPath {
 				tpackage = [];
