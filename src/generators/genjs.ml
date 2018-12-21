@@ -905,9 +905,9 @@ and gen_syntax ctx meth args pos =
 		concat ctx "," (gen_value ctx) params;
 		spr ctx ")"
 	| "instanceof", [o;t] ->
-		spr ctx "(";
+		spr ctx "((";
 		gen_value ctx o;
-		print ctx " instanceof ";
+		print ctx ") instanceof ";
 		gen_value ctx t;
 		spr ctx ")"
 	| "typeof", [o] ->
@@ -1526,6 +1526,8 @@ let generate com =
 		match e.eexpr with
 		| TField (_,FClosure _) ->
 			add_feature ctx "use.$bind"
+		| TCall ({ eexpr = TField (_,f) } as ef, []) when field_name f = "iterator" && is_dynamic_iterator ctx ef ->
+			add_feature ctx "use.$getIterator";
 		| _ ->
 			Type.iter chk_features e
 	in
