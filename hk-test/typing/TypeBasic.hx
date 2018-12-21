@@ -123,15 +123,16 @@ class TypeBasic {
 
 	}
 
+
 	static function typeParameters <TP1, TP2, TP3> () {
 		var a:TP1<Int> = (null:HKApply<TP1, Int>);
 
 	}
-
+	#if !ignoreFailing
 	static function foo <TP1:TP1<_>>(a:TP1, b:TP1) {
 
 	}
-
+#end
 	static function typeParameters1  () {
 		function foo <A,T>(a:A<T>) {
 
