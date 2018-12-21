@@ -101,7 +101,7 @@ let tname str =
 	if Hashtbl.mem keywords ("_" ^ n) then "__" ^ n else n
 
 let is_gc_ptr = function
-	| HVoid | HUI8 | HUI16 | HI32 | HI64 | HF32 | HF64 | HBool | HType | HRef _ -> false
+	| HVoid | HUI8 | HUI16 | HI32 | HI64 | HF32 | HF64 | HBool | HType | HRef _ | HMethod _ -> false
 	| HBytes | HDyn | HFun _ | HObj _ | HArray | HVirtual _ | HDynObj | HAbstract _ | HEnum _ | HNull _ -> true
 
 let is_ptr = function
@@ -129,6 +129,7 @@ let rec ctype_no_ptr = function
 	| HAbstract (name,_) -> name,1
 	| HEnum _ -> "venum",1
 	| HNull _ -> "vdynamic",1
+	| HMethod _ -> "void",1
 
 let ctype t =
 	let t, nptr = ctype_no_ptr t in
@@ -173,6 +174,7 @@ let type_id t =
 	| HAbstract _ -> "HABSTRACT"
 	| HEnum _ -> "HENUM"
 	| HNull _ -> "HNULL"
+	| HMethod _ -> "HMETHOD"
 
 let var_type n t =
 	ctype t ^ " " ^ ident n
@@ -275,6 +277,7 @@ let generate_reflection ctx =
 		| HVoid | HF32 | HF64 | HI64 -> t
 		| HBool | HUI8 | HUI16 | HI32 -> HI32
 		| HBytes | HDyn | HFun _ | HObj _ | HArray | HType | HRef _ | HVirtual _ | HDynObj | HAbstract _ | HEnum _ | HNull _ -> HDyn
+		| HMethod _ -> assert false
 	in
 	let type_kind_id t =
 		match t with
@@ -1015,14 +1018,11 @@ let write_c com file (code:code) =
 	line "#endif";
 
 	let used_closures = Hashtbl.create 0 in
-	let bytes_strings = Hashtbl.create 0 in
 	Array.iter (fun f ->
 		Array.iteri (fun i op ->
 			match op with
 			| OStaticClosure (_,fid) ->
 				Hashtbl.replace used_closures fid ()
-			| OBytes (_,sid) ->
-				Hashtbl.replace bytes_strings sid ()
 			| _ ->
 				()
 		) f.code
@@ -1145,11 +1145,10 @@ let write_c com file (code:code) =
 	) code.globals;
 
 	Array.iteri (fun i str ->
-		if Hashtbl.mem bytes_strings i then
-			sexpr "extern vbyte bytes$%d[]" i
-		else if String.length str >= string_data_limit then
+		if String.length str >= string_data_limit then
 			sexpr "extern vbyte string$%d[]" i
 	) code.strings;
+	Array.iteri (fun i _ -> sexpr "extern vbyte bytes$%d[]" i) code.bytes;
 
 	Hashtbl.iter (fun fid _ -> sexpr "extern vclosure cl$%d" fid) used_closures;
 	line "";
@@ -1196,38 +1195,40 @@ let write_c com file (code:code) =
 	unblock ctx;
 	line "}";
 
+	let output_bytes f str =
+		for i = 0 to String.length str - 1 do
+			if (i+1) mod 0x80 = 0 then f "\\\n\t";
+			if i > 0 then f ",";
+			f (string_of_int (int_of_char str.[i]));
+		done
+	in
 	Array.iteri (fun i str ->
-		let output_bytes f str =
-			for i = 0 to String.length str - 1 do
-				if (i+1) mod 0x80 = 0 then f "\\\n\t";
-				if i > 0 then f ",";
-				f (string_of_int (int_of_char str.[i]));
-			done
-		in
-		if Hashtbl.mem bytes_strings i then begin
-			if String.length str > 1000 then begin
-				let bytes_file = "hl/bytes_" ^ (Digest.to_hex (Digest.string str)) ^ ".h" in
-				let abs_file = ctx.dir ^ "/" ^ bytes_file in
-				if not (Sys.file_exists abs_file) then begin
-					let ch = open_out_bin abs_file in
-					output_bytes (output_string ch) str;
-					close_out ch;
-				end;
-				sline "vbyte bytes$%d[] = {" i;
-				output ctx (Printf.sprintf "#%s  include \"%s\"\n" ctx.tabs bytes_file);
-				sexpr "}";
-			end else begin
-				output ctx (Printf.sprintf "vbyte bytes$%d[] = {" i);
-				output_bytes (output ctx) str;
-				sexpr "}";
-			end
-		end else if String.length str >= string_data_limit then
+		if String.length str >= string_data_limit then begin
 			let s = Common.utf8_to_utf16 str true in
 			sline "// %s..." (String.escaped (String.sub str 0 (string_data_limit-4)));
 			output ctx (Printf.sprintf "vbyte string$%d[] = {" i);
 			output_bytes (output ctx) s;
-			sexpr "}"
+			sexpr "}";
+		end
 	) code.strings;
+	Array.iteri (fun i bytes ->
+		if Bytes.length bytes > 1000 then begin
+			let bytes_file = "hl/bytes_" ^ (Digest.to_hex (Digest.bytes bytes)) ^ ".h" in
+			let abs_file = ctx.dir ^ "/" ^ bytes_file in
+			if not (Sys.file_exists abs_file) then begin
+				let ch = open_out_bin abs_file in
+				output_bytes (output_string ch) (Bytes.to_string bytes);
+				close_out ch;
+			end;
+			sline "vbyte bytes$%d[] = {" i;
+			output ctx (Printf.sprintf "#%s  include \"%s\"\n" ctx.tabs bytes_file);
+			sexpr "}";
+		end else begin
+			output ctx (Printf.sprintf "vbyte bytes$%d[] = {" i);
+			output_bytes (output ctx) (Bytes.to_string bytes);
+			sexpr "}";
+		end
+	) code.bytes;
 
 	Hashtbl.iter (fun fid _ ->
 		let ft = ctx.ftable.(fid) in
@@ -1298,7 +1299,7 @@ let write_c com file (code:code) =
 				let has_ptr = List.exists is_gc_ptr (Array.to_list tl) in
 				sprintf "{(const uchar*)%s, %d, %s, %s, %s, %s}" (string ctx nid) (Array.length tl) tval size (if has_ptr then "true" else "false") offsets
 			in
-			sexpr "static hl_enum_construct %s[] = {%s}" constr_name (String.concat "," (Array.to_list (Array.mapi constr_value e.efields)));
+			sexpr "static hl_enum_construct %s[] = {%s}" constr_name (if Array.length e.efields = 0 then "NULL" else String.concat "," (Array.to_list (Array.mapi constr_value e.efields)));
 			let efields = [
 				if e.eid = 0 then "NULL" else sprintf "(const uchar*)%s" (string ctx e.eid);
 				string_of_int (Array.length e.efields);
